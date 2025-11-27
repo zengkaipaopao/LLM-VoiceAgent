@@ -69,6 +69,12 @@ body {
   margin-top: 1rem;
 }
 
+/* Prevent Carbon side-nav overlay from blocking mouseleave into content */
+.bx--side-nav__overlay {
+  pointer-events: none;
+  background: transparent;
+}
+
 .test-tile {
   background: #bfbfbf;
 }

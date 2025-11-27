@@ -1,4 +1,4 @@
-import { ChangeEvent, useState } from 'react';
+import { useState } from 'react';
 import { Column, Grid, Tile, Toggle, UnorderedList, ListItem } from '@carbon/react';
 import { useAppState } from '../state/AppStateContext';
 
@@ -10,11 +10,9 @@ export function SettingsPage() {
     betaPromptEditor: true,
   });
 
-  const handleToggle =
-    (flag: keyof typeof featureFlags) =>
-    (_event: ChangeEvent<HTMLInputElement>, state: { checked: boolean }) => {
-      setFeatureFlags((prev) => ({ ...prev, [flag]: state.checked }));
-    };
+  const handleToggle = (flag: keyof typeof featureFlags) => (checked: boolean) => {
+    setFeatureFlags((prev) => ({ ...prev, [flag]: checked }));
+  };
 
   return (
     <section className="page-section">

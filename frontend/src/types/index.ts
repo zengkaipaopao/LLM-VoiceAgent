@@ -26,3 +26,10 @@ export interface AgentProfile {
   voice: string;
   temperature: number;
 }
+
+export interface ModelInfo {
+  id: string;
+  name: string;
+  provider: string;
+  description?: string;
+}

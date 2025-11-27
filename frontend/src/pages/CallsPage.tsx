@@ -1,5 +1,4 @@
 import {
-  DataTable,
   Table,
   TableBody,
   TableCell,
@@ -38,45 +37,34 @@ export function CallsPage() {
     <section className="page-section">
       <h1 className="page-title">通话记录</h1>
       <p className="page-subtitle">查看每一次呼入或呼出的细节，并准备接入录音、搜索与过滤。</p>
-      <DataTable rows={rows} headers={headers} isSortable>
-        {({
-          rows,
-          headers,
-          getHeaderProps,
-          getRowProps,
-          getTableProps,
-          getTableContainerProps,
-          getToolbarProps,
-        }) => (
-          <TableContainer title="通话列表" {...getTableContainerProps()}>
-            <TableToolbar {...getToolbarProps()}>
-              <TableToolbarContent>
-                <TableToolbarSearch persistent size="lg" placeholder="搜索号码或状态" />
-              </TableToolbarContent>
-            </TableToolbar>
-            <Table {...getTableProps()}>
-              <TableHead>
-                <TableRow>
-                  {headers.map((header) => (
-                    <TableHeader key={header.key} {...getHeaderProps({ header })}>
-                      {header.header}
-                    </TableHeader>
-                  ))}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {rows.map((row) => (
-                  <TableRow key={row.id} {...getRowProps({ row })}>
-                    {row.cells.map((cell) => (
-                      <TableCell key={cell.id}>{cell.value}</TableCell>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        )}
-      </DataTable>
+      <TableContainer title="通话列表">
+        <TableToolbar>
+          <TableToolbarContent>
+            <TableToolbarSearch persistent size="lg" placeholder="搜索号码或状态" />
+          </TableToolbarContent>
+        </TableToolbar>
+        <Table aria-label="通话记录">
+          <TableHead>
+            <TableRow>
+              {headers.map((header) => (
+                <TableHeader key={header.key}>{header.header}</TableHeader>
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {rows.map((row) => (
+              <TableRow key={row.id}>
+                <TableCell>{row.id}</TableCell>
+                <TableCell>{row.direction}</TableCell>
+                <TableCell>{row.counterpart}</TableCell>
+                <TableCell>{row.startedAt}</TableCell>
+                <TableCell>{row.durationSeconds}</TableCell>
+                <TableCell>{row.status}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
     </section>
   );
 }
