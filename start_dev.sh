@@ -33,8 +33,28 @@ ensure_node_modules() {
   fi
 }
 
+ensure_llm_sdks() {
+  # 在 poetry 环境中保证 LLM SDK 存在（OpenAI 已在依赖中，补充 Gemini/Claude）
+  if [ -n "$POETRY_BIN" ]; then
+    (
+      cd "$ROOT_DIR/backend" && \
+      "$POETRY_BIN" run python - <<'PY'
+try:
+    import google.generativeai  # type: ignore
+    import anthropic  # type: ignore
+    print("LLM SDK 已就绪")
+except Exception:
+    raise SystemExit(1)
+PY
+    ) || (
+      cd "$ROOT_DIR/backend" && "$POETRY_BIN" run pip install google-generativeai anthropic
+    )
+  fi
+}
+
 ensure_poetry
 ensure_node_modules
+ensure_llm_sdks
 
 BACKEND_CMD="cd \"$ROOT_DIR/backend\" && $POETRY_BIN run uvicorn app.main:app --reload --port 8000"
 FRONTEND_CMD="cd \"$ROOT_DIR/frontend\" && npm run dev"

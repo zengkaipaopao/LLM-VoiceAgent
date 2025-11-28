@@ -14,6 +14,8 @@ import {
 import { PageSubtitle } from '../../components/atoms/PageSubtitle';
 import { PageTitle } from '../../components/atoms/PageTitle';
 import { useModels } from '../../api/hooks';
+import { sendChat } from '../../api/chat';
+import { ModelInfo } from '../../types';
 
 type HistoryItem = {
   id: string;
@@ -25,25 +27,27 @@ type HistoryItem = {
 
 export function ModelTest() {
   const { data: models = [], isLoading: loadingModels, isError: modelError } = useModels();
-  const [model, setModel] = useState<string | null>(null);
+  const [modelId, setModelId] = useState<string | null>(null);
   const [useVoice, setUseVoice] = useState(false);
   const [message, setMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
 
   const canSend = useMemo(
-    () => message.trim().length > 0 && !useVoice && !!model,
-    [message, useVoice, model],
+    () => message.trim().length > 0 && !useVoice && !!modelId,
+    [message, useVoice, modelId],
   );
 
-  const modelItems = models.map((m) => `${m.name} (${m.provider})`);
+  const modelOptions = models.map((m: ModelInfo) => ({
+    id: m.id,
+    label: `${m.name} (${m.provider})`,
+  }));
 
   useEffect(() => {
-    if (!model && models.length > 0) {
-      const defaultItem = `${models[0].name} (${models[0].provider})`;
-      setModel(defaultItem);
+    if (!modelId && models.length > 0) {
+      setModelId(models[0].id);
     }
-  }, [model, models]);
+  }, [modelId, models]);
 
   const appendHistory = (items: HistoryItem[]) => setHistory((prev) => [...prev, ...items]);
 
@@ -55,18 +59,23 @@ export function ModelTest() {
       role: 'user',
       content: message.trim(),
       mode: 'text',
-      model: model ?? 'unknown',
+      model: modelId ?? 'unknown',
     };
-    const reply: HistoryItem = {
-      id: crypto.randomUUID(),
-      role: 'assistant',
-      content: `（示例回答，模型：${model ?? 'unknown'}）${message.slice(0, 40)}`,
-      mode: 'text',
-      model: model ?? 'unknown',
-    };
-    appendHistory([userMsg, reply]);
-    setMessage('');
-    setIsSending(false);
+    appendHistory([userMsg]);
+    try {
+      const response = await sendChat(modelId ?? 'unknown', [{ role: 'user', content: message.trim() }]);
+      const reply: HistoryItem = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: response.reply,
+        mode: 'text',
+        model: response.model_id,
+      };
+      appendHistory([reply]);
+    } finally {
+      setMessage('');
+      setIsSending(false);
+    }
   };
 
   const handleMockVoice = () => {
@@ -75,7 +84,7 @@ export function ModelTest() {
       role: 'user',
       content: '（语音输入占位）',
       mode: 'voice',
-      model: model ?? 'unknown',
+      model: modelId ?? 'unknown',
     };
     appendHistory([voiceMsg]);
   };
@@ -90,10 +99,11 @@ export function ModelTest() {
             <Stack gap={4}>
               <ComboBox
                 id="model-select"
-                items={modelItems}
-                selectedItem={model}
+                items={modelOptions}
+                itemToString={(item) => (item ? item.label : '')}
+                selectedItem={modelOptions.find((m) => m.id === modelId)}
                 onChange={(data) => {
-                  if (data.selectedItem) setModel(data.selectedItem);
+                  if (data.selectedItem) setModelId(data.selectedItem.id);
                 }}
                 titleText="选择模型"
                 placeholder={loadingModels ? '模型加载中...' : '选择模型'}
@@ -138,14 +148,25 @@ export function ModelTest() {
             <Stack gap={3}>
               <PageSubtitle>对话记录</PageSubtitle>
               {history.length === 0 && <div>暂无记录</div>}
-              {history.map((item) => (
-                <div key={item.id} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                  <Tag type={item.role === 'user' ? 'blue' : 'green'}>{item.role}</Tag>
-                  <Tag type="cool-gray">{item.model}</Tag>
-                  <Tag type={item.mode === 'voice' ? 'purple' : 'gray'}>{item.mode}</Tag>
-                  <span>{item.content}</span>
+              {history.length > 0 && (
+                <div className="chat-history">
+                  {history.map((item) => (
+                    <div
+                      key={item.id}
+                      className={`chat-bubble ${
+                        item.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-assistant'
+                      }`}
+                    >
+                      <div className="chat-meta">
+                        <Tag type={item.role === 'user' ? 'blue' : 'green'}>{item.role}</Tag>
+                        <Tag type="cool-gray">{item.model}</Tag>
+                        <Tag type={item.mode === 'voice' ? 'purple' : 'gray'}>{item.mode}</Tag>
+                      </div>
+                      <div className="chat-content">{item.content}</div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </Stack>
           </Tile>
         </Column>

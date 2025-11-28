@@ -69,6 +69,39 @@ body {
   margin-top: 1rem;
 }
 
+.chat-history {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.chat-bubble {
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: #f4f4f4;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+.chat-bubble-user {
+  background: #eef5ff;
+}
+
+.chat-bubble-assistant {
+  background: #f4f4f4;
+}
+
+.chat-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.chat-content {
+  color: var(--cds-text-primary, #161616);
+  white-space: pre-wrap;
+}
+
 /* Prevent Carbon side-nav overlay from blocking mouseleave into content */
 .bx--side-nav__overlay {
   pointer-events: none;
