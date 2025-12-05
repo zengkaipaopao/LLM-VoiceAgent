@@ -1,51 +1,39 @@
-import { FormEvent, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Button,
   Column,
-  ComposedModal,
   Grid,
-  ModalBody,
-  ModalFooter,
-  ModalHeader,
   StructuredListBody,
   StructuredListCell,
   StructuredListHead,
   StructuredListRow,
   StructuredListWrapper,
   Tag,
-  TextArea,
-  TextInput,
   Tile,
 } from '@carbon/react';
+
+import { PromptEditorModal } from '../features/prompts/components/PromptEditorModal';
+import { ModelManagerModal } from '../features/prompts/components/ModelManagerModal';
 import { useAppState } from '../state/AppStateContext';
-import { PromptTemplate } from '../types';
+import { ModelInfo, PromptTemplate } from '../types';
+import styles from './PromptsPage.module.css';
 
 export function PromptsPage() {
-  const { prompts, updatePromptTemplate } = useAppState();
+  const { prompts, models, allowedModels, updatePromptTemplate, updateAllowedModels } = useAppState();
   const [editingPrompt, setEditingPrompt] = useState<PromptTemplate | null>(null);
-  const [draft, setDraft] = useState<PromptTemplate | null>(null);
+  const [modelManagerOpen, setModelManagerOpen] = useState(false);
 
-  const openEditor = (prompt: PromptTemplate) => {
-    setEditingPrompt(prompt);
-    setDraft({ ...prompt });
-  };
+  const allowedSet = useMemo(() => new Set(allowedModels), [allowedModels]);
+  const allowedModelItems = useMemo<ModelInfo[]>(() => models.filter((model) => allowedSet.has(model.id)), [allowedSet, models]);
 
-  const closeEditor = () => {
-    setEditingPrompt(null);
-    setDraft(null);
-  };
+  const openModelManager = () => setModelManagerOpen(true);
 
-  const handleSave = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!editingPrompt || !draft) return;
-    updatePromptTemplate(editingPrompt.id, {
-      name: draft.name,
-      modelId: draft.modelId,
-      systemPrompt: draft.systemPrompt,
-      version: draft.version,
-    });
-    closeEditor();
-  };
+  const handlePromptSave = useCallback(
+    (id: string, payload: Partial<PromptTemplate>) => updatePromptTemplate(id, payload),
+    [updatePromptTemplate],
+  );
+
+  const handleAllowedModelsSave = useCallback((ids: string[]) => updateAllowedModels(ids), [updateAllowedModels]);
 
   return (
     <section className="page-section">
@@ -54,11 +42,19 @@ export function PromptsPage() {
       <Grid condensed fullWidth>
         <Column sm={4} md={8} lg={12}>
           <Tile>
-            <div className="prompt-header">
-              <h3>模型 Prompt 列表</h3>
-              <Tag type="teal">共 {prompts.length} 条</Tag>
+            <div className={styles.promptHeader}>
+              <div>
+                <h3 className={styles.tileTitle}>模型 Prompt 列表</h3>
+                <p className={styles.tileDescription}>统一查看与维护所有智能体的提示词、原始模型及更新时间。</p>
+              </div>
+              <div className={styles.promptHeaderActions}>
+                <Tag type="teal">共 {prompts.length} 条</Tag>
+                <Button size="sm" kind="secondary" onClick={openModelManager}>
+                  模型管理
+                </Button>
+              </div>
             </div>
-            <StructuredListWrapper className="prompt-list">
+            <StructuredListWrapper className={styles.promptList}>
               <StructuredListHead>
                 <StructuredListRow head>
                   <StructuredListCell head>序号</StructuredListCell>
@@ -72,14 +68,14 @@ export function PromptsPage() {
                   <StructuredListRow
                     key={`row-${prompt.id}`}
                     tabIndex={0}
-                    onClick={() => openEditor(prompt)}
+                    onClick={() => setEditingPrompt(prompt)}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
-                        openEditor(prompt);
+                        setEditingPrompt(prompt);
                       }
                     }}
-                    className="prompt-list__row"
+                    className={styles.promptListRow}
                   >
                     <StructuredListCell>{index + 1}</StructuredListCell>
                     <StructuredListCell>{prompt.name}</StructuredListCell>
@@ -92,48 +88,19 @@ export function PromptsPage() {
           </Tile>
         </Column>
       </Grid>
-      {editingPrompt && draft && (
-        <ComposedModal open onClose={closeEditor} size="lg">
-          <ModalHeader label={draft.modelId} title={`编辑 ${draft.name}`} closeButtonLabelText="关闭" />
-          <form onSubmit={handleSave}>
-            <ModalBody>
-              <TextInput
-                id="modal-prompt-name"
-                labelText="Prompt 名称"
-                value={draft.name}
-                onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-              />
-              <TextInput
-                id="modal-prompt-model"
-                labelText="模型 ID"
-                value={draft.modelId}
-                onChange={(event) => setDraft({ ...draft, modelId: event.target.value })}
-              />
-              <TextInput
-                id="modal-prompt-version"
-                labelText="版本号"
-                value={draft.version}
-                onChange={(event) => setDraft({ ...draft, version: event.target.value })}
-              />
-              <TextArea
-                id="modal-prompt-system"
-                labelText="系统 Prompt"
-                rows={8}
-                value={draft.systemPrompt}
-                onChange={(event) => setDraft({ ...draft, systemPrompt: event.target.value })}
-              />
-            </ModalBody>
-            <ModalFooter>
-              <Button kind="secondary" onClick={closeEditor}>
-                取消
-              </Button>
-              <Button kind="primary" type="submit">
-                保存
-              </Button>
-            </ModalFooter>
-          </form>
-        </ComposedModal>
-      )}
+      <PromptEditorModal
+        prompt={editingPrompt}
+        models={allowedModelItems}
+        onClose={() => setEditingPrompt(null)}
+        onSave={handlePromptSave}
+      />
+      <ModelManagerModal
+        open={modelManagerOpen}
+        models={models}
+        allowedModels={allowedModels}
+        onClose={() => setModelManagerOpen(false)}
+        onSave={handleAllowedModelsSave}
+      />
     </section>
   );
 }
