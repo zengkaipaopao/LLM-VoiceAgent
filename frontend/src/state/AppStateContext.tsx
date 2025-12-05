@@ -1,10 +1,12 @@
 import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { AgentProfile, CallLog, ModelInfo, PromptTemplate } from '../types';
+import { AgentProfile, CallLog, ModelInfo, PromptTemplate, ReservationRecord } from '../types';
 import { fetchPrompts, updatePrompt as updatePromptApi } from '../api/prompts';
 import { fetchAllowedModels, fetchModels, updateAllowedModels as updateAllowedModelsApi } from '../api/models';
+import { fetchAppointments } from '../api/appointments';
 
 type AppState = {
   calls: CallLog[];
+  reservations: ReservationRecord[];
   prompts: PromptTemplate[];
   models: ModelInfo[];
   allowedModels: string[];
@@ -13,6 +15,7 @@ type AppState = {
   updateAllowedModels: (ids: string[]) => Promise<string[]>;
   loadingPrompts: boolean;
   loadingModels: boolean;
+  loadingReservations: boolean;
 };
 
 const AppStateContext = createContext<AppState | undefined>(undefined);
@@ -65,6 +68,8 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
   const [allowedModels, setAllowedModels] = useState<string[]>([]);
   const [loadingPrompts, setLoadingPrompts] = useState(false);
   const [loadingModels, setLoadingModels] = useState(false);
+  const [reservations, setReservations] = useState<ReservationRecord[]>([]);
+  const [loadingReservations, setLoadingReservations] = useState(false);
 
   const loadPrompts = useCallback(async () => {
     setLoadingPrompts(true);
@@ -95,10 +100,24 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
     }
   }, []);
 
+  const loadReservations = useCallback(async () => {
+    setLoadingReservations(true);
+    try {
+      const data = await fetchAppointments();
+      setReservations(data);
+    } catch (error) {
+      console.error('加载预约记录失败', error);
+      setReservations([]);
+    } finally {
+      setLoadingReservations(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadPrompts();
     void loadModels();
-  }, [loadPrompts, loadModels]);
+    void loadReservations();
+  }, [loadPrompts, loadModels, loadReservations]);
 
   const updatePromptTemplate = useCallback(async (id: string, patch: Partial<PromptTemplate>) => {
     const updated = await updatePromptApi(id, patch);
@@ -116,6 +135,7 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
     () => ({
       calls: mockCalls,
       prompts,
+      reservations,
       models,
       allowedModels,
       agents: mockAgents,
@@ -123,8 +143,19 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
       updateAllowedModels,
       loadingPrompts,
       loadingModels,
+      loadingReservations,
     }),
-    [allowedModels, models, prompts, updateAllowedModels, updatePromptTemplate, loadingModels, loadingPrompts],
+    [
+      allowedModels,
+      loadingModels,
+      loadingPrompts,
+      loadingReservations,
+      models,
+      prompts,
+      reservations,
+      updateAllowedModels,
+      updatePromptTemplate,
+    ],
   );
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;

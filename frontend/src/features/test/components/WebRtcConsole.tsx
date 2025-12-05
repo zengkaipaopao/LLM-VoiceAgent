@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, InlineLoading, Tag, TextArea, Tile } from '@carbon/react';
 import { createRealtimeSession } from '../../../api/realtime';
+import { createAppointmentFromConversation } from '../../../api/appointments';
 import { PromptTemplate } from '../../../types';
 
 type RtcState = 'idle' | 'connecting' | 'connected' | 'error';
@@ -34,10 +35,13 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
   const [sessionMeta, setSessionMeta] = useState<{ id: string; model: string } | null>(null);
   const [command, setCommand] = useState('');
   const [logs, setLogs] = useState<ConsoleLog[]>([]);
+  const [savingAppointment, setSavingAppointment] = useState(false);
+  const [appointmentMessage, setAppointmentMessage] = useState<string | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const hasSavedRef = useRef(false);
   const voiceConfig = prompt?.voiceConfig;
   const instructions = useMemo(() => {
     const base = prompt?.systemPrompt ?? defaultInstructions;
@@ -115,6 +119,7 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
     setRtcState('connecting');
     setError(null);
     try {
+      hasSavedRef.current = false;
       const session = await createRealtimeSession({
         instructions,
         model: activeModel,
@@ -172,10 +177,48 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
     setupRemoteAudio,
   ]);
 
+  const handleCreateAppointment = useCallback(
+    async (options?: { auto?: boolean }) => {
+      if (!logs.length) {
+        if (!options?.auto) {
+          setAppointmentMessage('暂无可用的对话记录。');
+        }
+        return;
+      }
+      if (hasSavedRef.current) {
+        if (!options?.auto) {
+          setAppointmentMessage('本次会话已生成预约记录。');
+        }
+        return;
+      }
+      setSavingAppointment(true);
+      setAppointmentMessage(options?.auto ? '通话结束，正在生成预约记录…' : null);
+      try {
+        const messages = logs.map((log) => ({
+          role: log.direction === 'in' ? 'assistant' : log.direction === 'out' ? 'user' : 'system',
+          text: log.message,
+          timestamp: log.timestamp,
+        }));
+        await createAppointmentFromConversation(messages);
+        hasSavedRef.current = true;
+        setAppointmentMessage(
+          options?.auto ? '通话结束，预约记录已自动生成。' : '预约记录已生成，可在“预约记录”页面查看。',
+        );
+      } catch (err) {
+        console.error('创建预约记录失败', err);
+        setAppointmentMessage('生成预约记录失败，请稍后再试。');
+      } finally {
+        setSavingAppointment(false);
+      }
+    },
+    [logs],
+  );
+
   const disconnectRtc = useCallback(() => {
     cleanupConnection();
     appendLog({ direction: 'system', message: '已断开 WebRTC 连接' });
-  }, [appendLog, cleanupConnection]);
+    void handleCreateAppointment({ auto: true });
+  }, [appendLog, cleanupConnection, handleCreateAppointment]);
 
   const sendCommand = useCallback(() => {
     const text = command.trim();
@@ -269,6 +312,23 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
             当前会话：{sessionMeta.id} · 模型：{sessionMeta.model}
           </p>
         )}
+      </Tile>
+      <Tile className="session-panel">
+        <div>
+          <h4>预约记录</h4>
+          <p className="session-panel__helper">将当前日志发送给后端，由模型自动提取预约信息并存档。</p>
+          {appointmentMessage && <p className="session-panel__helper">{appointmentMessage}</p>}
+        </div>
+        <Button
+          kind="primary"
+          size="sm"
+          disabled={savingAppointment || !logs.length}
+          onClick={() => {
+            void handleCreateAppointment();
+          }}
+        >
+          {savingAppointment ? '生成中...' : '生成预约记录'}
+        </Button>
       </Tile>
     </div>
   );

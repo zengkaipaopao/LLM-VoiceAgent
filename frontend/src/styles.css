@@ -199,6 +199,16 @@ body {
   white-space: pre-wrap;
 }
 
+.tts-audio-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tts-audio-player {
+  width: 100%;
+}
+
 .test-tabs {
   width: 100%;
 }

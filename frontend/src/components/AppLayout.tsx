@@ -14,6 +14,7 @@ import {
   Theme,
 } from '@carbon/react';
 import {
+  Calendar,
   Dashboard,
   Notification,
   Phone,
@@ -27,6 +28,7 @@ import {
 const navLinks = [
   { to: '/', label: '仪表盘', icon: Dashboard },
   { to: '/calls', label: '通话记录', icon: Phone },
+  { to: '/appointments', label: '预约记录', icon: Calendar },
   { to: '/prompts', label: 'Prompt 管理', icon: WatsonHealthTextAnnotationToggle },
   { to: '/settings', label: '设置', icon: SettingsAdjust },
   { to: '/test', label: '测试', icon: SailboatCoastal },

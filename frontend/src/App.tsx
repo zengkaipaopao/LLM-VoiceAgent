@@ -4,6 +4,7 @@ import { AppLayout } from './components/AppLayout';
 import { DashboardPage } from './pages/DashboardPage';
 import { CallsPage } from './pages/CallsPage';
 import { PromptsPage } from './pages/PromptsPage';
+import { AppointmentsPage } from './pages/AppointmentsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TestHub } from './features/test';
 import { AppStateProvider } from './state/AppStateContext';
@@ -17,6 +18,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/calls" element={<CallsPage />} />
+            <Route path="/appointments" element={<AppointmentsPage />} />
             <Route path="/prompts" element={<PromptsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/test" element={<TestHub />} />

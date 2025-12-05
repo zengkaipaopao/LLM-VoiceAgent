@@ -1,7 +1,9 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, InlineLoading, Tag, TextArea, Tile, Toggle } from '@carbon/react';
+import { Button, InlineLoading, Select, SelectItem, Tag, TextArea, Tile, Toggle } from '@carbon/react';
 import { createRealtimeSession } from '../../../api/realtime';
+import { synthesizeSpeech } from '../../../api/tts';
 import { PromptTemplate } from '../../../types';
+import { useAppState } from '../../../state/AppStateContext';
 
 type ChatMessage = {
   id: string;
@@ -18,6 +20,24 @@ const quickPrompts = [
   '换一个更自然的寒暄开场',
   '继续追问客户的预算范围',
   '模拟客户反对「需要考虑」的处理',
+];
+
+const ttsModelOptions = [
+  { id: 'gpt-4o-mini-tts', label: 'gpt-4o-mini-tts' },
+  { id: 'gpt-4o-mini-tts-alloy', label: 'gpt-4o-mini-tts-alloy' },
+  { id: 'gpt-4o-mini-tts-marin', label: 'gpt-4o-mini-tts-marin' },
+];
+
+const ttsVoiceOptions = [
+  'alloy',
+  'ballad',
+  'verse',
+  'sage',
+  'marin',
+  'coral',
+  'echo',
+  'ash',
+  'shimmer',
 ];
 
 const connectionTagMap: Record<ConnectionState, { label: string; type: string }> = {
@@ -80,11 +100,27 @@ const formatTime = (timestamp?: string | number) => {
   });
 };
 
+const base64ToBlob = (base64: string, contentType: string) => {
+  const byteCharacters = atob(base64);
+  const byteNumbers = new Array(byteCharacters.length);
+  for (let i = 0; i < byteCharacters.length; i += 1) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  }
+  const byteArray = new Uint8Array(byteNumbers);
+  return new Blob([byteArray], { type: contentType });
+};
+
 type WebSocketConsoleProps = {
   prompt?: PromptTemplate;
 };
 
 export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
+  const { models, allowedModels } = useAppState();
+  const availableConversationModels = useMemo(() => {
+    if (!models.length) return [];
+    if (!allowedModels.length) return models;
+    return models.filter((model) => allowedModels.includes(model.id));
+  }, [allowedModels, models]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [autoReply, setAutoReply] = useState(true);
@@ -95,7 +131,15 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
   const historyRef = useRef<HTMLDivElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const responseMessageMapRef = useRef<Record<string, string>>({});
+  const responseContentRef = useRef<Record<string, string>>({});
   const pendingResponseRef = useRef<string | null>(null);
+  const [modelOverride, setModelOverride] = useState<string>('');
+  const [ttsEnabled, setTtsEnabled] = useState(false);
+  const [ttsModel, setTtsModel] = useState<string>(ttsModelOptions[0].id);
+  const [ttsVoice, setTtsVoice] = useState<string>(ttsVoiceOptions[0]);
+  const [ttsStatus, setTtsStatus] = useState<string | null>(null);
+  const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [ttsAudioUrl, setTtsAudioUrl] = useState<string | null>(null);
   const voiceConfig = prompt?.voiceConfig;
   const instructions = useMemo(() => {
     const base = prompt?.systemPrompt ?? defaultInstructions;
@@ -112,8 +156,43 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
     }
     return hints.length ? `${base}\n\n[语音指引]\n${hints.join('\n')}` : base;
   }, [prompt?.systemPrompt, prompt?.welcomeMessage, voiceConfig?.speakingRate]);
-  const activeModel = prompt?.modelId ?? fallbackModel;
+  const activeModel = modelOverride || prompt?.modelId || fallbackModel;
   const activeVoice = voiceConfig?.voice;
+  const speakText = useCallback(
+    async (text: string) => {
+      if (!ttsEnabled || !text.trim()) return;
+      setTtsStatus('正在生成语音...');
+      try {
+        const result = await synthesizeSpeech({
+          text,
+          model: ttsModel,
+          voice: ttsVoice,
+        });
+        if (ttsAudioUrl) {
+          URL.revokeObjectURL(ttsAudioUrl);
+        }
+        const blob = base64ToBlob(result.audioBase64, result.contentType);
+        const url = URL.createObjectURL(blob);
+        setTtsAudioUrl(url);
+        setTtsStatus('语音已生成，尝试播放...');
+        const audio = ttsAudioRef.current;
+        if (audio) {
+          audio.src = url;
+          const playPromise = audio.play();
+          if (playPromise) {
+            playPromise.catch((err) => {
+              console.warn('自动播放受阻', err);
+              setTtsStatus('语音生成成功，请手动播放音频。');
+            });
+          }
+        }
+      } catch (error) {
+        console.error('TTS 合成失败', error);
+        setTtsStatus('语音生成失败，请稍后再试。');
+      }
+    },
+    [ttsAudioUrl, ttsEnabled, ttsModel, ttsVoice],
+  );
 
   const ensureAssistantMessage = useCallback((responseId: string) => {
     const existing = responseMessageMapRef.current[responseId];
@@ -140,6 +219,7 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
     (responseId: string, delta: string) => {
       if (!delta) return;
       const targetId = ensureAssistantMessage(responseId);
+      responseContentRef.current[responseId] = (responseContentRef.current[responseId] ?? '') + delta;
       setMessages((prev) =>
         prev.map((message) =>
           message.id === targetId
@@ -159,6 +239,8 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
       if (!responseId) return;
       const messageId = responseMessageMapRef.current[responseId];
       if (!messageId) return;
+      const finalText = responseContentRef.current[responseId];
+      delete responseContentRef.current[responseId];
       setMessages((prev) =>
         prev.map((message) =>
           message.id === messageId
@@ -172,8 +254,11 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
       );
       delete responseMessageMapRef.current[responseId];
       setAssistantTyping(false);
+      if (finalText) {
+        void speakText(finalText);
+      }
     },
-    [],
+    [speakText],
   );
 
   const handleRealtimeFrame = useCallback(
@@ -290,6 +375,7 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
       wsRef.current = null;
     }
     responseMessageMapRef.current = {};
+    responseContentRef.current = {};
     pendingResponseRef.current = null;
     setMessages([]);
     setAssistantTyping(false);
@@ -344,10 +430,24 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
   }, [connectRealtime]);
 
   useEffect(() => {
+    return () => {
+      if (ttsAudioUrl) {
+        URL.revokeObjectURL(ttsAudioUrl);
+      }
+    };
+  }, [ttsAudioUrl]);
+
+  useEffect(() => {
     const container = historyRef.current;
     if (!container) return;
     container.scrollTop = container.scrollHeight;
   }, [messages]);
+
+  useEffect(() => {
+    if (!ttsEnabled) {
+      setTtsStatus(null);
+    }
+  }, [ttsEnabled]);
 
   const stats = useMemo(() => {
     const userTurns = messages.filter((message) => message.role === 'user').length;
@@ -508,6 +608,63 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
             toggled={autoReply}
             onToggle={toggleAutoReply}
           />
+        </Tile>
+        <Tile className="session-panel">
+          <div>
+            <h3>模型 & 语音配置</h3>
+            <p className="session-panel__helper">在此选择聊天模型和 TTS 语音，方便测试不同组合。</p>
+          </div>
+          <Select
+            id="ws-model-selector"
+            labelText="聊天模型"
+            value={modelOverride || '__prompt__'}
+            onChange={(event) => {
+              const value = event.target.value;
+              setModelOverride(value === '__prompt__' ? '' : value);
+            }}
+          >
+            <SelectItem
+              value="__prompt__"
+              text={`跟随 Prompt · ${prompt?.modelId ?? fallbackModel}`}
+            />
+            {availableConversationModels.map((model) => (
+              <SelectItem key={model.id} value={model.id} text={`${model.name} (${model.id})`} />
+            ))}
+          </Select>
+          <Toggle
+            id="tts-enable-toggle"
+            labelText="启用文本转语音"
+            labelA="关闭"
+            labelB="开启"
+            toggled={ttsEnabled}
+            onToggle={() => setTtsEnabled((prev) => !prev)}
+          />
+          <Select
+            id="tts-model-selector"
+            labelText="TTS 模型"
+            value={ttsModel}
+            onChange={(event) => setTtsModel(event.target.value)}
+            disabled={!ttsEnabled}
+          >
+            {ttsModelOptions.map((option) => (
+              <SelectItem key={option.id} value={option.id} text={option.label} />
+            ))}
+          </Select>
+          <Select
+            id="tts-voice-selector"
+            labelText="TTS 声音"
+            value={ttsVoice}
+            onChange={(event) => setTtsVoice(event.target.value)}
+            disabled={!ttsEnabled}
+          >
+            {ttsVoiceOptions.map((voice) => (
+              <SelectItem key={voice} value={voice} text={voice} />
+            ))}
+          </Select>
+          <div className="tts-audio-panel">
+            <p className="session-panel__helper">{ttsStatus ?? '关闭后仅输出文本，启用后可试听语音。'}</p>
+            <audio ref={ttsAudioRef} controls className="tts-audio-player" />
+          </div>
         </Tile>
       </div>
     </div>

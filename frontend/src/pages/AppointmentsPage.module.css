@@ -1,0 +1,44 @@
+.tableCell {
+  max-width: 160px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+  vertical-align: top;
+}
+
+.rawCell {
+  max-width: 240px;
+}
+
+.rowClickable {
+  cursor: pointer;
+}
+
+.rowClickable:focus {
+  outline: 2px solid #0f62fe;
+  outline-offset: -2px;
+}
+
+.detailsList {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 0.5rem 1rem;
+}
+
+.detailsList dt {
+  margin: 0;
+  font-weight: 600;
+  color: var(--cds-text-secondary, #525252);
+}
+
+.detailsList dd {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.helper {
+  margin: 0 0 1rem;
+  color: var(--cds-text-secondary, #525252);
+}

@@ -42,3 +42,16 @@ export interface ModelInfo {
   provider: string;
   description?: string;
 }
+
+export interface ReservationRecord {
+  id: string;
+  timestamp: string;
+  callerName: string;
+  company: string;
+  appointment: string;
+  category: string;
+  amount: string;
+  address: string;
+  summary: string;
+  rawMessages: string;
+}
