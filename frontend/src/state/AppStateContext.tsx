@@ -1,10 +1,11 @@
-import { ReactNode, createContext, useContext, useMemo } from 'react';
+import { ReactNode, createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { AgentProfile, CallLog, PromptTemplate } from '../types';
 
 type AppState = {
   calls: CallLog[];
   prompts: PromptTemplate[];
   agents: AgentProfile[];
+  updatePromptTemplate: (id: string, patch: Partial<PromptTemplate>) => void;
 };
 
 const AppStateContext = createContext<AppState | undefined>(undefined);
@@ -34,6 +35,7 @@ const mockPrompts: PromptTemplate[] = [
   {
     id: 'prompt_1',
     name: '售前顾问',
+    modelId: 'gpt-4o-realtime-preview-2024-12-17',
     systemPrompt: '你是专业的售前助手，帮助客户完成产品选型。',
     updatedAt: new Date().toISOString(),
     version: 'v1.0.0',
@@ -41,6 +43,7 @@ const mockPrompts: PromptTemplate[] = [
   {
     id: 'prompt_2',
     name: '客服回访',
+    modelId: 'gpt-4o-mini-2024-12-17',
     systemPrompt: '你负责售后回访并记录满意度。',
     updatedAt: new Date().toISOString(),
     version: 'v0.9.1',
@@ -69,13 +72,30 @@ type AppStateProviderProps = {
 };
 
 export function AppStateProvider({ children }: AppStateProviderProps) {
+  const [prompts, setPrompts] = useState<PromptTemplate[]>(() => mockPrompts);
+
+  const updatePromptTemplate = useCallback((id: string, patch: Partial<PromptTemplate>) => {
+    setPrompts((prev) =>
+      prev.map((prompt) =>
+        prompt.id === id
+          ? {
+              ...prompt,
+              ...patch,
+              updatedAt: new Date().toISOString(),
+            }
+          : prompt,
+      ),
+    );
+  }, []);
+
   const value = useMemo(
     () => ({
       calls: mockCalls,
-      prompts: mockPrompts,
+      prompts,
       agents: mockAgents,
+      updatePromptTemplate,
     }),
-    [],
+    [prompts, updatePromptTemplate],
   );
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;

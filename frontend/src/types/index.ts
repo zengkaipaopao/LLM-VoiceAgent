@@ -14,6 +14,7 @@ export interface CallLog {
 export interface PromptTemplate {
   id: string;
   name: string;
+  modelId: string;
   systemPrompt: string;
   updatedAt: string;
   version: string;

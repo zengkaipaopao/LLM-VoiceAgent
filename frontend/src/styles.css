@@ -60,6 +60,39 @@ body {
   margin-top: 0.75rem;
 }
 
+.prompt-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.prompt-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.prompt-editor__actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.prompt-list {
+  margin-top: 1rem;
+}
+
+.prompt-list__row {
+  cursor: pointer;
+}
+
+.prompt-list__row:focus {
+  outline: 2px solid #0f62fe;
+  outline-offset: -2px;
+}
+
 .settings-list {
   margin: 0.5rem 0 0;
   padding-left: 1.25rem;
@@ -73,6 +106,12 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--cds-border-subtle, #e0e0e0);
+  border-radius: 0.75rem;
+  background: #fff;
+  max-height: 420px;
+  overflow-y: auto;
 }
 
 .chat-bubble {
@@ -80,14 +119,18 @@ body {
   padding: 0.75rem 1rem;
   background: #f4f4f4;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+  width: fit-content;
+  max-width: 80%;
 }
 
 .chat-bubble-user {
   background: #eef5ff;
+  align-self: flex-end;
 }
 
 .chat-bubble-assistant {
   background: #f4f4f4;
+  align-self: flex-start;
 }
 
 .chat-meta {
@@ -102,12 +145,237 @@ body {
   white-space: pre-wrap;
 }
 
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.chat-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.chat-panel__helper {
+  font-size: 0.875rem;
+  color: var(--cds-text-secondary, #525252);
+}
+
+.chat-input-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.chat-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.quick-prompts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.quick-prompts__label {
+  font-size: 0.875rem;
+  color: var(--cds-text-secondary, #525252);
+}
+
+.quick-prompts__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.session-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.session-panel__helper {
+  margin: 0.25rem 0 0;
+  color: var(--cds-text-secondary, #525252);
+  font-size: 0.875rem;
+}
+
+.session-panel__error {
+  margin: 0.25rem 0 0;
+  color: #da1e28;
+  font-size: 0.875rem;
+}
+
+.session-meta {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.session-meta dt {
+  font-weight: 400;
+  color: var(--cds-text-secondary, #525252);
+}
+
+.session-meta dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.prompt-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.prompt-selector__summary {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--cds-text-secondary, #525252);
+  white-space: pre-wrap;
+}
+
+.test-tabs {
+  width: 100%;
+}
+
+.test-console,
+.sip-console,
+.webrtc-console {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.test-console {
+  flex-wrap: wrap;
+  flex-direction: row;
+}
+
+.test-console__column {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  flex: 1;
+  min-width: 320px;
+}
+
+.webrtc-console__header,
+.webrtc-console__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.rtc-audio-preview,
+.rtc-data-channel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.rtc-command-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.rtc-audio-element {
+  width: 100%;
+}
+
+.rtc-error {
+  margin-top: 0.5rem;
+}
+
+.console-log {
+  border: 1px solid var(--cds-border-subtle, #e0e0e0);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  max-height: 260px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: #fff;
+}
+
+.console-log__item {
+  font-size: 0.875rem;
+  border-left: 3px solid transparent;
+  padding-left: 0.5rem;
+}
+
+.console-log__item--in {
+  border-color: #8a3ffc;
+}
+
+.console-log__item--out {
+  border-color: #4589ff;
+}
+
+.console-log__item--system {
+  border-color: #8d8d8d;
+}
+
+.console-log__item span {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--cds-text-secondary, #525252);
+}
+
+.console-log__item p {
+  margin: 0.25rem 0 0;
+  word-break: break-all;
+}
+
+.console-log__empty {
+  color: var(--cds-text-secondary, #525252);
+  font-size: 0.875rem;
+}
+
+.rtc-session-tip {
+  margin-top: 0.75rem;
+  font-size: 0.875rem;
+  color: var(--cds-text-secondary, #525252);
+}
+
+.sip-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.sip-steps {
+  margin: 0.5rem 0 1rem;
+  padding-left: 1.25rem;
+  color: var(--cds-text-secondary, #525252);
+}
+
+.sip-session {
+  background: #f4f4f4;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
 /* Prevent Carbon side-nav overlay from blocking mouseleave into content */
 .bx--side-nav__overlay {
   pointer-events: none;
   background: transparent;
-}
-
-.test-tile {
-  background: #bfbfbf;
 }
