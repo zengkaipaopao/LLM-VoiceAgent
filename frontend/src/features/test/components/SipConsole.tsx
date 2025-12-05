@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useMemo, useState } from 'react';
 import { Button, InlineNotification, TextArea, TextInput, Tile } from '@carbon/react';
 import { createRealtimeSession } from '../../../api/realtime';
 import { PromptTemplate } from '../../../types';
@@ -21,8 +21,24 @@ export function SipConsole({ prompt }: SipConsoleProps) {
   const [status, setStatus] = useState<SipState>('idle');
   const [error, setError] = useState<string | null>(null);
   const [sessionInfo, setSessionInfo] = useState<{ id: string; client_secret: string; model: string } | null>(null);
-  const instructions = prompt?.systemPrompt ?? defaultInstructions;
+  const voiceConfig = prompt?.voiceConfig;
+  const instructions = useMemo(() => {
+    const base = prompt?.systemPrompt ?? defaultInstructions;
+    const welcome = prompt?.welcomeMessage?.trim();
+    const hints: string[] = [];
+    if (welcome) {
+      hints.push(`当电话接通后，请首先说：${welcome}`);
+    }
+    if (voiceConfig?.voice) {
+      hints.push(`合成语音请使用 ${voiceConfig.voice} 声线。`);
+    }
+    if (voiceConfig?.speakingRate) {
+      hints.push(`控制语速约为 ${voiceConfig.speakingRate} 倍，保持口吻一致。`);
+    }
+    return hints.length ? `${base}\n\n[语音指引]\n${hints.join('\n')}` : base;
+  }, [prompt?.systemPrompt, prompt?.welcomeMessage, voiceConfig?.speakingRate]);
   const activeModel = prompt?.modelId ?? fallbackModel;
+  const activeVoice = voiceConfig?.voice;
 
   const handleProvision = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -33,6 +49,7 @@ export function SipConsole({ prompt }: SipConsoleProps) {
       const session = await createRealtimeSession({
         instructions,
         model: activeModel,
+        voice: activeVoice,
         sip: {
           to: sipUri,
           from: fromNumber,

@@ -38,8 +38,25 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
-  const instructions = prompt?.systemPrompt ?? defaultInstructions;
+  const voiceConfig = prompt?.voiceConfig;
+  const instructions = useMemo(() => {
+    const base = prompt?.systemPrompt ?? defaultInstructions;
+    const welcome = prompt?.welcomeMessage?.trim();
+    const hints: string[] = [];
+    if (welcome) {
+      hints.push(`连接建立后先向用户播报：${welcome}`);
+    }
+    if (voiceConfig?.voice) {
+      hints.push(`合成语音请使用 ${voiceConfig.voice} 声线。`);
+    }
+    if (voiceConfig?.speakingRate) {
+      hints.push(`请将语速控制在 ${voiceConfig.speakingRate} 倍左右。`);
+    }
+    return hints.length ? `${base}\n\n[语音指引]\n${hints.join('\n')}` : base;
+  }, [prompt?.systemPrompt, prompt?.welcomeMessage, voiceConfig?.speakingRate]);
   const activeModel = prompt?.modelId ?? fallbackModel;
+  const activeVoice = voiceConfig?.voice;
+  const noiseSuppressionEnabled = voiceConfig?.noiseSuppression ?? true;
 
   const appendLog = useCallback((entry: Omit<ConsoleLog, 'id' | 'timestamp'>) => {
     setLogs((prev) => [
@@ -74,15 +91,24 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
     };
   }, []);
 
-  const configureDataChannel = useCallback((pc: RTCPeerConnection) => {
-    const channel = pc.createDataChannel('oai-events');
-    dataChannelRef.current = channel;
-    channel.onopen = () => appendLog({ direction: 'system', message: 'DataChannel 已建立' });
-    channel.onerror = (event) => appendLog({ direction: 'system', message: `DataChannel 错误: ${event}` });
-    channel.onmessage = (event) => {
-      appendLog({ direction: 'in', message: event.data });
-    };
-  }, [appendLog]);
+  const configureDataChannel = useCallback(
+    (pc: RTCPeerConnection) => {
+      const channel = pc.createDataChannel('oai-events');
+      dataChannelRef.current = channel;
+      channel.onopen = () => {
+        appendLog({ direction: 'system', message: 'DataChannel 已建立' });
+        // 连接建立后立即请求模型输出，用于触发 Prompt 中配置的开场白
+        const payload = JSON.stringify({ type: 'response.create' });
+        channel.send(payload);
+        appendLog({ direction: 'out', message: payload });
+      };
+      channel.onerror = (event) => appendLog({ direction: 'system', message: `DataChannel 错误: ${event}` });
+      channel.onmessage = (event) => {
+        appendLog({ direction: 'in', message: event.data });
+      };
+    },
+    [appendLog],
+  );
 
   const connectRtc = useCallback(async () => {
     if (rtcState === 'connecting' || rtcState === 'connected') return;
@@ -92,6 +118,7 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
       const session = await createRealtimeSession({
         instructions,
         model: activeModel,
+        voice: activeVoice,
       });
       const peer = new RTCPeerConnection(session.rtc_configuration ?? undefined);
       peerRef.current = peer;
@@ -99,7 +126,12 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
       setupRemoteAudio(peer);
       configureDataChannel(peer);
 
-      const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const audioConstraints: MediaTrackConstraints = {
+        noiseSuppression: noiseSuppressionEnabled,
+        echoCancellation: true,
+        autoGainControl: true,
+      };
+      const localStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
       localStreamRef.current = localStream;
       localStream.getTracks().forEach((track) => peer.addTrack(track, localStream));
 
@@ -128,7 +160,17 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
       cleanupConnection();
       setRtcState('error');
     }
-  }, [activeModel, appendLog, cleanupConnection, configureDataChannel, instructions, rtcState, setupRemoteAudio]);
+  }, [
+    activeModel,
+    activeVoice,
+    appendLog,
+    cleanupConnection,
+    configureDataChannel,
+    instructions,
+    noiseSuppressionEnabled,
+    rtcState,
+    setupRemoteAudio,
+  ]);
 
   const disconnectRtc = useCallback(() => {
     cleanupConnection();

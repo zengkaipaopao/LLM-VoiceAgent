@@ -1,0 +1,65 @@
+import { http } from './http';
+import { PromptTemplate, VoiceConfig } from '../types';
+
+type ApiPrompt = {
+  id: string;
+  name: string;
+  model_id: string;
+  system_prompt: string;
+  welcome_message?: string;
+  voice_config?: {
+    voice?: string;
+    speaking_rate?: number;
+    noise_suppression?: boolean;
+  };
+  version: string;
+  updated_at: string;
+};
+
+const mapVoiceConfig = (config?: ApiPrompt['voice_config']): VoiceConfig | undefined => {
+  if (!config) return undefined;
+  return {
+    voice: config.voice ?? undefined,
+    speakingRate: config.speaking_rate ?? undefined,
+    noiseSuppression: config.noise_suppression ?? undefined,
+  };
+};
+
+const toApiVoiceConfig = (config?: VoiceConfig) => {
+  if (!config) return undefined;
+  return {
+    voice: config.voice,
+    speaking_rate: config.speakingRate,
+    noise_suppression: config.noiseSuppression,
+  };
+};
+
+const mapPrompt = (prompt: ApiPrompt): PromptTemplate => ({
+  id: prompt.id,
+  name: prompt.name,
+  modelId: prompt.model_id,
+  systemPrompt: prompt.system_prompt,
+  welcomeMessage: prompt.welcome_message ?? '',
+  voiceConfig: mapVoiceConfig(prompt.voice_config),
+  version: prompt.version,
+  updatedAt: prompt.updated_at,
+});
+
+const toApiPayload = (payload: Partial<PromptTemplate>) => ({
+  name: payload.name,
+  model_id: payload.modelId,
+  system_prompt: payload.systemPrompt,
+  welcome_message: payload.welcomeMessage,
+  voice_config: toApiVoiceConfig(payload.voiceConfig),
+  version: payload.version,
+});
+
+export async function fetchPrompts() {
+  const response = await http.get<ApiPrompt[]>('/prompts');
+  return response.data.map(mapPrompt);
+}
+
+export async function updatePrompt(id: string, payload: Partial<PromptTemplate>) {
+  const response = await http.put<ApiPrompt>(`/prompts/${id}`, toApiPayload(payload));
+  return mapPrompt(response.data);
+}

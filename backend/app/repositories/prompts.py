@@ -1,30 +1,61 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
+from pathlib import Path
+from threading import Lock
+from typing import Any
 
-from app.schemas.prompts import PromptTemplate
+from app.schemas.prompts import PromptTemplate, PromptUpdate, VoiceConfig
 
 
 class PromptRepository:
-    def __init__(self) -> None:
-        self._items = {
-            "prompt_1": PromptTemplate(
-                id="prompt_1",
-                name="售前顾问",
-                system_prompt="你是专业的售前助手。",
-                updated_at=datetime.now(),
-                version="v1.0.0",
-            )
-        }
+    def __init__(self, data_file: Path | None = None) -> None:
+        base_dir = Path(__file__).resolve().parents[2]
+        self._data_file = data_file or base_dir / "data" / "prompts.json"
+        self._lock = Lock()
+        self._data_file.parent.mkdir(parents=True, exist_ok=True)
+        if not self._data_file.exists():
+            self._write_file([])
+
+    def _read_file(self) -> list[dict[str, Any]]:
+        if not self._data_file.exists():
+            return []
+        raw = self._data_file.read_text(encoding="utf-8")
+        if not raw.strip():
+            return []
+        return json.loads(raw)
+
+    def _write_file(self, payload: list[dict[str, Any]]) -> None:
+        self._data_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def list(self) -> list[PromptTemplate]:
-        return list(self._items.values())
+        return [PromptTemplate(**item) for item in self._read_file()]
 
-    def update(self, prompt_id: str, system_prompt: str) -> PromptTemplate:
-        prompt = self._items[prompt_id]
-        prompt.system_prompt = system_prompt
-        prompt.updated_at = datetime.now()
-        return prompt
+    def update(self, prompt_id: str, payload: PromptUpdate) -> PromptTemplate:
+        with self._lock:
+            items = self._read_file()
+            target = next((item for item in items if item["id"] == prompt_id), None)
+            if not target:
+                raise KeyError(prompt_id)
+            if payload.name is not None:
+                target["name"] = payload.name
+            if payload.model_id is not None:
+                target["model_id"] = payload.model_id
+            if payload.system_prompt is not None:
+                target["system_prompt"] = payload.system_prompt
+            if payload.welcome_message is not None:
+                target["welcome_message"] = payload.welcome_message
+            if payload.voice_config is not None:
+                if isinstance(payload.voice_config, VoiceConfig):
+                    target["voice_config"] = payload.voice_config.model_dump(exclude_none=True)
+                else:
+                    target["voice_config"] = payload.voice_config
+            if payload.version is not None:
+                target["version"] = payload.version
+            target["updated_at"] = datetime.utcnow().isoformat()
+            self._write_file(items)
+        return PromptTemplate(**target)
 
 
 prompt_repository = PromptRepository()

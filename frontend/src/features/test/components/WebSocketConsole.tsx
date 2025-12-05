@@ -96,8 +96,24 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
   const wsRef = useRef<WebSocket | null>(null);
   const responseMessageMapRef = useRef<Record<string, string>>({});
   const pendingResponseRef = useRef<string | null>(null);
-  const instructions = prompt?.systemPrompt ?? defaultInstructions;
+  const voiceConfig = prompt?.voiceConfig;
+  const instructions = useMemo(() => {
+    const base = prompt?.systemPrompt ?? defaultInstructions;
+    const welcome = prompt?.welcomeMessage?.trim();
+    const hints: string[] = [];
+    if (welcome) {
+      hints.push(`会话建立后请率先播报以下欢迎语：${welcome}`);
+    }
+    if (voiceConfig?.voice) {
+      hints.push(`如需语音输出，请匹配 OpenAI 声音预设：${voiceConfig.voice}。`);
+    }
+    if (voiceConfig?.speakingRate) {
+      hints.push(`请保持语速约为 ${voiceConfig.speakingRate} 倍，兼顾清晰与自然。`);
+    }
+    return hints.length ? `${base}\n\n[语音指引]\n${hints.join('\n')}` : base;
+  }, [prompt?.systemPrompt, prompt?.welcomeMessage, voiceConfig?.speakingRate]);
   const activeModel = prompt?.modelId ?? fallbackModel;
+  const activeVoice = voiceConfig?.voice;
 
   const ensureAssistantMessage = useCallback((responseId: string) => {
     const existing = responseMessageMapRef.current[responseId];
@@ -221,7 +237,7 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
     }
 
     try {
-      const session = await createRealtimeSession({ instructions, model: activeModel });
+      const session = await createRealtimeSession({ instructions, model: activeModel, voice: activeVoice });
       const secret = session.client_secret;
       if (!secret) {
         throw new Error('Realtime 服务返回的临时密钥为空');
@@ -266,7 +282,7 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
       setConnectionState('error');
       setSessionError(error instanceof Error ? error.message : '无法连接 Realtime 服务');
     }
-  }, [activeModel, handleRealtimeFrame, instructions]);
+  }, [activeModel, activeVoice, handleRealtimeFrame, instructions]);
 
   const resetConversation = useCallback(() => {
     if (wsRef.current) {

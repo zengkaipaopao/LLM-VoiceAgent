@@ -1,11 +1,18 @@
-import { ReactNode, createContext, useCallback, useContext, useMemo, useState } from 'react';
-import { AgentProfile, CallLog, PromptTemplate } from '../types';
+import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { AgentProfile, CallLog, ModelInfo, PromptTemplate } from '../types';
+import { fetchPrompts, updatePrompt as updatePromptApi } from '../api/prompts';
+import { fetchAllowedModels, fetchModels, updateAllowedModels as updateAllowedModelsApi } from '../api/models';
 
 type AppState = {
   calls: CallLog[];
   prompts: PromptTemplate[];
+  models: ModelInfo[];
+  allowedModels: string[];
   agents: AgentProfile[];
-  updatePromptTemplate: (id: string, patch: Partial<PromptTemplate>) => void;
+  updatePromptTemplate: (id: string, patch: Partial<PromptTemplate>) => Promise<PromptTemplate>;
+  updateAllowedModels: (ids: string[]) => Promise<string[]>;
+  loadingPrompts: boolean;
+  loadingModels: boolean;
 };
 
 const AppStateContext = createContext<AppState | undefined>(undefined);
@@ -31,25 +38,6 @@ const mockCalls: CallLog[] = [
   },
 ];
 
-const mockPrompts: PromptTemplate[] = [
-  {
-    id: 'prompt_1',
-    name: '售前顾问',
-    modelId: 'gpt-4o-realtime-preview-2024-12-17',
-    systemPrompt: '你是专业的售前助手，帮助客户完成产品选型。',
-    updatedAt: new Date().toISOString(),
-    version: 'v1.0.0',
-  },
-  {
-    id: 'prompt_2',
-    name: '客服回访',
-    modelId: 'gpt-4o-mini-2024-12-17',
-    systemPrompt: '你负责售后回访并记录满意度。',
-    updatedAt: new Date().toISOString(),
-    version: 'v0.9.1',
-  },
-];
-
 const mockAgents: AgentProfile[] = [
   {
     id: 'agent_1',
@@ -72,30 +60,71 @@ type AppStateProviderProps = {
 };
 
 export function AppStateProvider({ children }: AppStateProviderProps) {
-  const [prompts, setPrompts] = useState<PromptTemplate[]>(() => mockPrompts);
+  const [prompts, setPrompts] = useState<PromptTemplate[]>([]);
+  const [models, setModels] = useState<ModelInfo[]>([]);
+  const [allowedModels, setAllowedModels] = useState<string[]>([]);
+  const [loadingPrompts, setLoadingPrompts] = useState(false);
+  const [loadingModels, setLoadingModels] = useState(false);
 
-  const updatePromptTemplate = useCallback((id: string, patch: Partial<PromptTemplate>) => {
-    setPrompts((prev) =>
-      prev.map((prompt) =>
-        prompt.id === id
-          ? {
-              ...prompt,
-              ...patch,
-              updatedAt: new Date().toISOString(),
-            }
-          : prompt,
-      ),
-    );
+  const loadPrompts = useCallback(async () => {
+    setLoadingPrompts(true);
+    try {
+      const data = await fetchPrompts();
+      setPrompts(data);
+    } catch (error) {
+      console.error('加载 Prompt 配置失败', error);
+      setPrompts([]);
+    } finally {
+      setLoadingPrompts(false);
+    }
+  }, []);
+
+  const loadModels = useCallback(async () => {
+    setLoadingModels(true);
+    try {
+      const data = await fetchModels();
+      setModels(data);
+      const allowed = await fetchAllowedModels();
+      setAllowedModels(allowed);
+    } catch (error) {
+      console.error('加载模型列表失败', error);
+      setModels([]);
+      setAllowedModels([]);
+    } finally {
+      setLoadingModels(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadPrompts();
+    void loadModels();
+  }, [loadPrompts, loadModels]);
+
+  const updatePromptTemplate = useCallback(async (id: string, patch: Partial<PromptTemplate>) => {
+    const updated = await updatePromptApi(id, patch);
+    setPrompts((prev) => prev.map((prompt) => (prompt.id === id ? updated : prompt)));
+    return updated;
+  }, []);
+
+  const updateAllowedModels = useCallback(async (ids: string[]) => {
+    const updated = await updateAllowedModelsApi(ids);
+    setAllowedModels(updated);
+    return updated;
   }, []);
 
   const value = useMemo(
     () => ({
       calls: mockCalls,
       prompts,
+      models,
+      allowedModels,
       agents: mockAgents,
       updatePromptTemplate,
+      updateAllowedModels,
+      loadingPrompts,
+      loadingModels,
     }),
-    [prompts, updatePromptTemplate],
+    [allowedModels, models, prompts, updateAllowedModels, updatePromptTemplate, loadingModels, loadingPrompts],
   );
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;

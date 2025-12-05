@@ -16,6 +16,8 @@ export interface PromptTemplate {
   name: string;
   modelId: string;
   systemPrompt: string;
+  welcomeMessage: string;
+  voiceConfig?: VoiceConfig;
   updatedAt: string;
   version: string;
 }
@@ -26,6 +28,12 @@ export interface AgentProfile {
   llmProvider: 'openai' | 'anthropic' | 'azure';
   voice: string;
   temperature: number;
+}
+
+export interface VoiceConfig {
+  voice?: string;
+  speakingRate?: number;
+  noiseSuppression?: boolean;
 }
 
 export interface ModelInfo {

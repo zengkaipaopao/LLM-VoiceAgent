@@ -43,9 +43,6 @@ export function TestHub() {
                 setSelectedPromptId((selectedItem as PromptTemplate | null)?.id ?? null)
               }
             />
-            {selectedPrompt && (
-              <p className="prompt-selector__summary">{selectedPrompt.systemPrompt}</p>
-            )}
           </Tile>
         </Column>
         <Column sm={4} md={8} lg={12}>

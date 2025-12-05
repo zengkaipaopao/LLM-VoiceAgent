@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { http } from './http';
-import { CallLog, ModelInfo, PromptTemplate } from '../types';
+import { CallLog, ModelInfo } from '../types';
+import { fetchPrompts } from './prompts';
 
 type PaginatedResponse<T> = {
   data: T[];
@@ -21,10 +22,7 @@ export function useCalls() {
 export function usePrompts() {
   return useQuery({
     queryKey: ['prompts'],
-    queryFn: async () => {
-      const response = await http.get<PromptTemplate[]>('/prompts');
-      return response.data;
-    },
+    queryFn: fetchPrompts,
   });
 }
 
