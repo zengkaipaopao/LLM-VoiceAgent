@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     telephony_provider: str = "twilio"
     google_tts_access_token: str | None = None
+    google_tts_credentials_path: str | None = None
 
 
 settings = Settings()

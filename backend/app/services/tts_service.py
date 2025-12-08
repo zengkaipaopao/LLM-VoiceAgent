@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import base64
 import logging
+from threading import Lock
+from typing import Optional
 
 import httpx
 from fastapi import HTTPException
+from google.auth.transport.requests import Request
+from google.oauth2.service_account import Credentials as ServiceAccountCredentials
 
 from app.core.config import settings
 from app.schemas.tts import TtsRequest, TtsResponse
@@ -15,6 +19,11 @@ logger = logging.getLogger(__name__)
 class TtsService:
     _openai_endpoint = "https://api.openai.com/v1/audio/speech"
     _google_endpoint = "https://texttospeech.googleapis.com/v1/text:synthesize"
+    _google_scopes = ("https://www.googleapis.com/auth/cloud-platform",)
+
+    def __init__(self) -> None:
+        self._google_credentials: Optional[ServiceAccountCredentials] = None
+        self._credentials_lock = Lock()
 
     async def synthesize(self, payload: TtsRequest) -> TtsResponse:
         if payload.provider == "google":
@@ -51,8 +60,7 @@ class TtsService:
         return TtsResponse(audio_base64=audio_base64, content_type=content_type)
 
     async def _synthesize_with_google(self, payload: TtsRequest) -> TtsResponse:
-        if not settings.google_tts_access_token:
-            raise HTTPException(status_code=503, detail="未配置 Google TTS 访问令牌")
+        token = self._get_google_access_token()
         audio_encoding = self._map_audio_encoding(payload.format)
         request_body = {
             "input": {"text": payload.text},
@@ -75,7 +83,7 @@ class TtsService:
                 self._google_endpoint,
                 headers={
                     "Content-Type": "application/json",
-                    "Authorization": f"Bearer {settings.google_tts_access_token}",
+                    "Authorization": f"Bearer {token}",
                 },
                 json=request_body,
             )
@@ -91,6 +99,34 @@ class TtsService:
 
         content_type = self._map_content_type(payload.format)
         return TtsResponse(audio_base64=audio_content, content_type=content_type)
+
+    def _get_google_access_token(self) -> str:
+        if settings.google_tts_credentials_path:
+            with self._credentials_lock:
+                if self._google_credentials is None:
+                    try:
+                        self._google_credentials = ServiceAccountCredentials.from_service_account_file(
+                            settings.google_tts_credentials_path,
+                            scopes=self._google_scopes,
+                        )
+                    except Exception as exc:
+                        logger.exception("加载 Google TTS 凭证失败: %s", exc)
+                        raise HTTPException(status_code=503, detail="读取 Google TTS 凭证失败。") from exc
+                credentials = self._google_credentials
+                if not credentials.valid or credentials.expired or not credentials.token:
+                    try:
+                        credentials.refresh(Request())
+                    except Exception as exc:
+                        logger.exception("刷新 Google TTS token 失败: %s", exc)
+                        raise HTTPException(status_code=503, detail="刷新 Google TTS 凭证失败。") from exc
+                if not credentials.token:
+                    raise HTTPException(status_code=503, detail="无法获取 Google TTS 访问令牌。")
+                return credentials.token
+
+        if settings.google_tts_access_token:
+            return settings.google_tts_access_token
+
+        raise HTTPException(status_code=503, detail="未配置 Google TTS 凭证。")
 
     @staticmethod
     def _map_audio_encoding(fmt: str) -> str:

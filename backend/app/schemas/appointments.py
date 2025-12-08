@@ -5,6 +5,9 @@ from typing import Literal
 from pydantic import BaseModel
 
 
+AppointmentOperation = Literal["create", "update", "delete"]
+
+
 class AppointmentRecord(BaseModel):
     id: str
     timestamp: str
@@ -16,13 +19,17 @@ class AppointmentRecord(BaseModel):
     address: str
     summary: str
     raw_messages: str
-
-
-class ConversationMessage(BaseModel):
-    role: Literal["user", "assistant", "system"]
-    text: str
-    timestamp: str | None = None
+    operation: AppointmentOperation = "create"
 
 
 class AppointmentCreateRequest(BaseModel):
-    messages: list[ConversationMessage]
+    timestamp: str
+    caller_name: str
+    company: str
+    appointment: str
+    category: str
+    amount: str
+    address: str
+    summary: str
+    raw_messages: str
+    operation: AppointmentOperation = "create"

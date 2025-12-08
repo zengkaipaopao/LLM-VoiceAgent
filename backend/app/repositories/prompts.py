@@ -36,8 +36,15 @@ class PromptRepository:
         for item in items:
             if "capabilities" not in item:
                 appointment = item.pop("enable_appointment_logging", False)
-                item["capabilities"] = {"appointment_logging": appointment}
+                capabilities = PromptCapabilities(appointment_logging=appointment)
+                item["capabilities"] = capabilities.model_dump()
                 updated = True
+            else:
+                capabilities = PromptCapabilities(**item["capabilities"])
+                normalized = capabilities.model_dump()
+                if normalized != item["capabilities"]:
+                    item["capabilities"] = normalized
+                    updated = True
         if updated:
             self._write_file(items)
         return [PromptTemplate(**item) for item in items]
@@ -47,11 +54,12 @@ class PromptRepository:
             items = self._read_file()
             prompt_id = f"prompt_{uuid4().hex[:8]}"
             now = datetime.utcnow().isoformat()
-            capabilities = (
-                payload.capabilities.model_dump(exclude_defaults=True)
-                if isinstance(payload.capabilities, PromptCapabilities)
-                else payload.capabilities
-            ) or {"appointment_logging": False}
+            if isinstance(payload.capabilities, PromptCapabilities):
+                capabilities = payload.capabilities.model_dump()
+            elif payload.capabilities:
+                capabilities = payload.capabilities
+            else:
+                capabilities = PromptCapabilities().model_dump()
             record: dict[str, Any] = {
                 "id": prompt_id,
                 "name": payload.name,
@@ -92,9 +100,9 @@ class PromptRepository:
                 target["version"] = payload.version
             if payload.capabilities is not None:
                 if isinstance(payload.capabilities, PromptCapabilities):
-                    target["capabilities"] = payload.capabilities.model_dump(exclude_defaults=True)
+                    target["capabilities"] = payload.capabilities.model_dump()
                 else:
-                    target["capabilities"] = payload.capabilities
+                    target["capabilities"] = PromptCapabilities(**payload.capabilities).model_dump()
             target["updated_at"] = datetime.utcnow().isoformat()
             self._write_file(items)
         return PromptTemplate(**target)

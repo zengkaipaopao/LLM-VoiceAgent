@@ -11,6 +11,7 @@ class VoiceConfig(BaseModel):
 
 class PromptCapabilities(BaseModel):
     appointment_logging: bool = False
+    tts_enabled: bool = False
 
 
 class PromptTemplate(BaseModel):

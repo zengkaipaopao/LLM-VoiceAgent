@@ -13,7 +13,8 @@
     "version": "v1.0.0",
     "updated_at": "2025-12-08T05:59:47.575104",
     "capabilities": {
-      "appointment_logging": true
+      "appointment_logging": true,
+      "tts_enabled": true
     }
   },
   {
@@ -30,7 +31,8 @@
     "version": "v0.9.1",
     "updated_at": "2025-12-05T07:13:11.971517",
     "capabilities": {
-      "appointment_logging": false
+      "appointment_logging": false,
+      "tts_enabled": true
     }
   },
   {
@@ -47,7 +49,8 @@
     "version": "v1.0.0",
     "updated_at": "2025-12-08T02:31:02.186597",
     "capabilities": {
-      "appointment_logging": false
+      "appointment_logging": false,
+      "tts_enabled": true
     }
   }
 ]
