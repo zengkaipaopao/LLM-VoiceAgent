@@ -20,6 +20,15 @@ class PromptTemplate(BaseModel):
     version: str
 
 
+class PromptCreate(BaseModel):
+    name: str
+    model_id: str
+    system_prompt: str
+    welcome_message: str | None = None
+    voice_config: VoiceConfig | None = None
+    version: str
+
+
 class PromptUpdate(BaseModel):
     name: str | None = None
     model_id: str | None = None

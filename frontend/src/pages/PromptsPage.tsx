@@ -1,36 +1,62 @@
 import { useCallback, useMemo, useState } from 'react';
-import {
-  Button,
-  Column,
-  Grid,
-  StructuredListBody,
-  StructuredListCell,
-  StructuredListHead,
-  StructuredListRow,
-  StructuredListWrapper,
-  Tag,
-  Tile,
-} from '@carbon/react';
+import { Button, Column, Grid, Tag, Tile } from '@carbon/react';
 
 import { PromptEditorModal } from '../features/prompts/components/PromptEditorModal';
 import { ModelManagerModal } from '../features/prompts/components/ModelManagerModal';
+import { PromptTable } from '../features/prompts/components/PromptTable';
+import { PromptDeleteModal } from '../features/prompts/components/PromptDeleteModal';
 import { useAppState } from '../state/AppStateContext';
-import { ModelInfo, PromptTemplate } from '../types';
+import { ModelInfo, PromptFormValues, PromptTemplate } from '../types';
 import styles from './PromptsPage.module.css';
 
+type EditorState = {
+  mode: 'create' | 'edit';
+  prompt: PromptTemplate | null;
+} | null;
+
 export function PromptsPage() {
-  const { prompts, models, allowedModels, updatePromptTemplate, updateAllowedModels } = useAppState();
-  const [editingPrompt, setEditingPrompt] = useState<PromptTemplate | null>(null);
+  const {
+    prompts,
+    models,
+    allowedModels,
+    updatePromptTemplate,
+    createPromptTemplate,
+    deletePromptTemplate,
+    updateAllowedModels,
+    createCustomModel,
+    deleteCustomModel,
+  } = useAppState();
+  const [editorState, setEditorState] = useState<EditorState>(null);
   const [modelManagerOpen, setModelManagerOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<PromptTemplate | null>(null);
 
   const allowedSet = useMemo(() => new Set(allowedModels), [allowedModels]);
-  const allowedModelItems = useMemo<ModelInfo[]>(() => models.filter((model) => allowedSet.has(model.id)), [allowedSet, models]);
+  const allowedModelItems = useMemo<ModelInfo[]>(
+    () => models.filter((model) => allowedSet.has(model.id)),
+    [allowedSet, models],
+  );
 
   const openModelManager = () => setModelManagerOpen(true);
+  const openCreatePrompt = () => setEditorState({ mode: 'create', prompt: null });
+  const openEditPrompt = (prompt: PromptTemplate) => setEditorState({ mode: 'edit', prompt });
+  const closeEditor = () => setEditorState(null);
 
   const handlePromptSave = useCallback(
-    (id: string, payload: Partial<PromptTemplate>) => updatePromptTemplate(id, payload),
-    [updatePromptTemplate],
+    async (payload: PromptFormValues, promptId?: string) => {
+      if (editorState?.mode === 'edit' && promptId) {
+        await updatePromptTemplate(promptId, {
+          name: payload.name,
+          modelId: payload.modelId,
+          systemPrompt: payload.systemPrompt,
+          welcomeMessage: payload.welcomeMessage,
+          voiceConfig: payload.voiceConfig,
+          version: payload.version,
+        });
+      } else {
+        await createPromptTemplate(payload);
+      }
+    },
+    [createPromptTemplate, editorState?.mode, updatePromptTemplate],
   );
 
   const handleAllowedModelsSave = useCallback((ids: string[]) => updateAllowedModels(ids), [updateAllowedModels]);
@@ -49,49 +75,29 @@ export function PromptsPage() {
               </div>
               <div className={styles.promptHeaderActions}>
                 <Tag type="teal">共 {prompts.length} 条</Tag>
+                <Button size="sm" kind="primary" onClick={openCreatePrompt}>
+                  新增 Prompt
+                </Button>
                 <Button size="sm" kind="secondary" onClick={openModelManager}>
                   模型管理
                 </Button>
               </div>
             </div>
-            <StructuredListWrapper className={styles.promptList}>
-              <StructuredListHead>
-                <StructuredListRow head>
-                  <StructuredListCell head>序号</StructuredListCell>
-                  <StructuredListCell head>模型名称</StructuredListCell>
-                  <StructuredListCell head>原始模型</StructuredListCell>
-                  <StructuredListCell head>最近更新时间</StructuredListCell>
-                </StructuredListRow>
-              </StructuredListHead>
-              <StructuredListBody>
-                {prompts.map((prompt, index) => (
-                  <StructuredListRow
-                    key={`row-${prompt.id}`}
-                    tabIndex={0}
-                    onClick={() => setEditingPrompt(prompt)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        setEditingPrompt(prompt);
-                      }
-                    }}
-                    className={styles.promptListRow}
-                  >
-                    <StructuredListCell>{index + 1}</StructuredListCell>
-                    <StructuredListCell>{prompt.name}</StructuredListCell>
-                    <StructuredListCell>{prompt.modelId}</StructuredListCell>
-                    <StructuredListCell>{new Date(prompt.updatedAt).toLocaleString()}</StructuredListCell>
-                  </StructuredListRow>
-                ))}
-              </StructuredListBody>
-            </StructuredListWrapper>
+            <PromptTable
+              prompts={prompts}
+              className={styles.promptList}
+              onEdit={openEditPrompt}
+              onDelete={setDeleteTarget}
+            />
           </Tile>
         </Column>
       </Grid>
       <PromptEditorModal
-        prompt={editingPrompt}
+        open={Boolean(editorState)}
+        mode={editorState?.mode ?? 'edit'}
+        prompt={editorState?.prompt ?? null}
         models={allowedModelItems}
-        onClose={() => setEditingPrompt(null)}
+        onClose={closeEditor}
         onSave={handlePromptSave}
       />
       <ModelManagerModal
@@ -100,6 +106,18 @@ export function PromptsPage() {
         allowedModels={allowedModels}
         onClose={() => setModelManagerOpen(false)}
         onSave={handleAllowedModelsSave}
+        onCreateModel={createCustomModel}
+        onDeleteModel={deleteCustomModel}
+      />
+      <PromptDeleteModal
+        prompt={deleteTarget}
+        open={Boolean(deleteTarget)}
+        requiredPassword="admin"
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={async (prompt) => {
+          await deletePromptTemplate(prompt.id);
+          setDeleteTarget(null);
+        }}
       />
     </section>
   );

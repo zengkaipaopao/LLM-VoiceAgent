@@ -5,8 +5,9 @@ from datetime import datetime
 from pathlib import Path
 from threading import Lock
 from typing import Any
+from uuid import uuid4
 
-from app.schemas.prompts import PromptTemplate, PromptUpdate, VoiceConfig
+from app.schemas.prompts import PromptCreate, PromptTemplate, PromptUpdate, VoiceConfig
 
 
 class PromptRepository:
@@ -32,6 +33,27 @@ class PromptRepository:
     def list(self) -> list[PromptTemplate]:
         return [PromptTemplate(**item) for item in self._read_file()]
 
+    def create(self, payload: PromptCreate) -> PromptTemplate:
+        with self._lock:
+            items = self._read_file()
+            prompt_id = f"prompt_{uuid4().hex[:8]}"
+            now = datetime.utcnow().isoformat()
+            record: dict[str, Any] = {
+                "id": prompt_id,
+                "name": payload.name,
+                "model_id": payload.model_id,
+                "system_prompt": payload.system_prompt,
+                "welcome_message": payload.welcome_message,
+                "voice_config": payload.voice_config.model_dump(exclude_none=True)
+                if isinstance(payload.voice_config, VoiceConfig)
+                else payload.voice_config,
+                "version": payload.version,
+                "updated_at": now,
+            }
+            items.append(record)
+            self._write_file(items)
+        return PromptTemplate(**record)
+
     def update(self, prompt_id: str, payload: PromptUpdate) -> PromptTemplate:
         with self._lock:
             items = self._read_file()
@@ -56,6 +78,14 @@ class PromptRepository:
             target["updated_at"] = datetime.utcnow().isoformat()
             self._write_file(items)
         return PromptTemplate(**target)
+
+    def delete(self, prompt_id: str) -> None:
+        with self._lock:
+            items = self._read_file()
+            filtered = [item for item in items if item["id"] != prompt_id]
+            if len(filtered) == len(items):
+                raise KeyError(prompt_id)
+            self._write_file(filtered)
 
 
 prompt_repository = PromptRepository()

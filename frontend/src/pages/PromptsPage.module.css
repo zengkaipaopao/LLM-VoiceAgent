@@ -26,12 +26,3 @@
 .promptList {
   margin-top: 1rem;
 }
-
-.promptListRow {
-  cursor: pointer;
-}
-
-.promptListRow:focus {
-  outline: 2px solid #0f62fe;
-  outline-offset: -2px;
-}

@@ -1,8 +1,16 @@
 import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { AgentProfile, CallLog, ModelInfo, PromptTemplate, ReservationRecord } from '../types';
-import { fetchPrompts, updatePrompt as updatePromptApi } from '../api/prompts';
-import { fetchAllowedModels, fetchModels, updateAllowedModels as updateAllowedModelsApi } from '../api/models';
+import {
+  AgentProfile,
+  CallLog,
+  CreateModelPayload,
+  ModelInfo,
+  PromptFormValues,
+  PromptTemplate,
+  ReservationRecord,
+} from '../types';
 import { fetchAppointments } from '../api/appointments';
+import { usePromptsStore } from './stores/usePromptsStore';
+import { useModelsStore } from './stores/useModelsStore';
 
 type AppState = {
   calls: CallLog[];
@@ -12,7 +20,11 @@ type AppState = {
   allowedModels: string[];
   agents: AgentProfile[];
   updatePromptTemplate: (id: string, patch: Partial<PromptTemplate>) => Promise<PromptTemplate>;
+  createPromptTemplate: (payload: PromptFormValues) => Promise<PromptTemplate>;
+  deletePromptTemplate: (id: string) => Promise<void>;
   updateAllowedModels: (ids: string[]) => Promise<string[]>;
+  createCustomModel: (payload: CreateModelPayload) => Promise<ModelInfo>;
+  deleteCustomModel: (modelId: string) => Promise<void>;
   loadingPrompts: boolean;
   loadingModels: boolean;
   loadingReservations: boolean;
@@ -63,42 +75,23 @@ type AppStateProviderProps = {
 };
 
 export function AppStateProvider({ children }: AppStateProviderProps) {
-  const [prompts, setPrompts] = useState<PromptTemplate[]>([]);
-  const [models, setModels] = useState<ModelInfo[]>([]);
-  const [allowedModels, setAllowedModels] = useState<string[]>([]);
-  const [loadingPrompts, setLoadingPrompts] = useState(false);
-  const [loadingModels, setLoadingModels] = useState(false);
+  const {
+    prompts,
+    loadingPrompts,
+    updatePromptTemplate,
+    createPromptTemplate,
+    deletePromptTemplate,
+  } = usePromptsStore();
+  const {
+    models,
+    allowedModels,
+    loadingModels,
+    updateAllowedModels,
+    createCustomModel,
+    deleteCustomModel,
+  } = useModelsStore();
   const [reservations, setReservations] = useState<ReservationRecord[]>([]);
   const [loadingReservations, setLoadingReservations] = useState(false);
-
-  const loadPrompts = useCallback(async () => {
-    setLoadingPrompts(true);
-    try {
-      const data = await fetchPrompts();
-      setPrompts(data);
-    } catch (error) {
-      console.error('加载 Prompt 配置失败', error);
-      setPrompts([]);
-    } finally {
-      setLoadingPrompts(false);
-    }
-  }, []);
-
-  const loadModels = useCallback(async () => {
-    setLoadingModels(true);
-    try {
-      const data = await fetchModels();
-      setModels(data);
-      const allowed = await fetchAllowedModels();
-      setAllowedModels(allowed);
-    } catch (error) {
-      console.error('加载模型列表失败', error);
-      setModels([]);
-      setAllowedModels([]);
-    } finally {
-      setLoadingModels(false);
-    }
-  }, []);
 
   const loadReservations = useCallback(async () => {
     setLoadingReservations(true);
@@ -114,22 +107,8 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
   }, []);
 
   useEffect(() => {
-    void loadPrompts();
-    void loadModels();
     void loadReservations();
-  }, [loadPrompts, loadModels, loadReservations]);
-
-  const updatePromptTemplate = useCallback(async (id: string, patch: Partial<PromptTemplate>) => {
-    const updated = await updatePromptApi(id, patch);
-    setPrompts((prev) => prev.map((prompt) => (prompt.id === id ? updated : prompt)));
-    return updated;
-  }, []);
-
-  const updateAllowedModels = useCallback(async (ids: string[]) => {
-    const updated = await updateAllowedModelsApi(ids);
-    setAllowedModels(updated);
-    return updated;
-  }, []);
+  }, [loadReservations]);
 
   const value = useMemo(
     () => ({
@@ -140,7 +119,11 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
       allowedModels,
       agents: mockAgents,
       updatePromptTemplate,
+      createPromptTemplate,
+      deletePromptTemplate,
       updateAllowedModels,
+      createCustomModel,
+      deleteCustomModel,
       loadingPrompts,
       loadingModels,
       loadingReservations,
@@ -153,7 +136,11 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
       models,
       prompts,
       reservations,
+      createPromptTemplate,
+      deletePromptTemplate,
       updateAllowedModels,
+      createCustomModel,
+      deleteCustomModel,
       updatePromptTemplate,
     ],
   );

@@ -22,6 +22,15 @@ export interface PromptTemplate {
   version: string;
 }
 
+export interface PromptFormValues {
+  name: string;
+  modelId: string;
+  systemPrompt: string;
+  welcomeMessage: string;
+  version: string;
+  voiceConfig?: VoiceConfig;
+}
+
 export interface AgentProfile {
   id: string;
   name: string;
@@ -37,6 +46,13 @@ export interface VoiceConfig {
 }
 
 export interface ModelInfo {
+  id: string;
+  name: string;
+  provider: string;
+  description?: string;
+}
+
+export interface CreateModelPayload {
   id: string;
   name: string;
   provider: string;

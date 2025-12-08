@@ -12,7 +12,7 @@ import {
   Toggle,
 } from '@carbon/react';
 
-import { ModelInfo, PromptTemplate, VoiceConfig } from '../../../types';
+import { ModelInfo, PromptFormValues, PromptTemplate, VoiceConfig } from '../../../types';
 import styles from './PromptEditorModal.module.css';
 
 const defaultVoiceConfig: VoiceConfig = {
@@ -35,38 +35,52 @@ const voicePresets = [
 ];
 
 type PromptEditorModalProps = {
+  open: boolean;
+  mode: 'create' | 'edit';
   prompt: PromptTemplate | null;
   models: ModelInfo[];
   onClose: () => void;
-  onSave: (id: string, payload: Partial<PromptTemplate>) => Promise<void>;
+  onSave: (values: PromptFormValues, promptId?: string) => Promise<void>;
 };
 
-export function PromptEditorModal({ prompt, models, onClose, onSave }: PromptEditorModalProps) {
-  const [draft, setDraft] = useState<PromptTemplate | null>(null);
+const buildDraft = (
+  prompt: PromptTemplate | null,
+  models: ModelInfo[],
+  mode: 'create' | 'edit',
+): PromptFormValues => {
+  const fallbackModelId = prompt?.modelId ?? models[0]?.id ?? '';
+  return {
+    name: prompt?.name ?? '',
+    modelId: fallbackModelId,
+    systemPrompt: prompt?.systemPrompt ?? '',
+    welcomeMessage: prompt?.welcomeMessage ?? '',
+    version: prompt?.version ?? 'v1.0.0',
+    voiceConfig: { ...defaultVoiceConfig, ...(prompt?.voiceConfig ?? {}) },
+  };
+};
+
+export function PromptEditorModal({ open, mode, prompt, models, onClose, onSave }: PromptEditorModalProps) {
+  const [draft, setDraft] = useState<PromptFormValues>(() => buildDraft(prompt, models, mode));
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (prompt) {
-      setDraft({
-        ...prompt,
-        welcomeMessage: prompt.welcomeMessage ?? '',
-        voiceConfig: { ...defaultVoiceConfig, ...prompt.voiceConfig },
-      });
-    } else {
-      setDraft(null);
+    if (open) {
+      setDraft(buildDraft(prompt, models, mode));
+      setSaving(false);
+      setErrorMessage(null);
     }
-    setErrorMessage(null);
-    setSaving(false);
-  }, [prompt]);
+  }, [mode, models, open, prompt]);
 
-  const activeVoiceConfig = useMemo(() => ({
-    ...defaultVoiceConfig,
-    ...(draft?.voiceConfig ?? {}),
-  }), [draft?.voiceConfig]);
+  const activeVoiceConfig = useMemo(
+    () => ({
+      ...defaultVoiceConfig,
+      ...(draft.voiceConfig ?? {}),
+    }),
+    [draft.voiceConfig],
+  );
 
   const handleVoiceConfigChange = (patch: Partial<VoiceConfig>) => {
-    if (!draft) return;
     setDraft({
       ...draft,
       voiceConfig: {
@@ -78,18 +92,20 @@ export function PromptEditorModal({ prompt, models, onClose, onSave }: PromptEdi
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!prompt || !draft) return;
+    if (!draft.modelId) {
+      setErrorMessage('请先选择一个原始模型。');
+      return;
+    }
     try {
       setSaving(true);
       setErrorMessage(null);
-      await onSave(prompt.id, {
-        name: draft.name,
-        modelId: draft.modelId,
-        systemPrompt: draft.systemPrompt,
-        welcomeMessage: draft.welcomeMessage ?? '',
-        voiceConfig: activeVoiceConfig,
-        version: draft.version,
-      });
+      await onSave(
+        {
+          ...draft,
+          voiceConfig: activeVoiceConfig,
+        },
+        prompt?.id,
+      );
       onClose();
     } catch (error) {
       console.error('保存 Prompt 失败', error);
@@ -98,13 +114,17 @@ export function PromptEditorModal({ prompt, models, onClose, onSave }: PromptEdi
     }
   };
 
-  if (!prompt || !draft) {
+  if (!open) {
     return null;
   }
 
+  const selectedModel = models.find((model) => model.id === draft.modelId) ?? null;
+  const modalTitle = mode === 'edit' ? `编辑 ${prompt?.name ?? ''}` : '新增 Prompt';
+  const modalLabel = mode === 'edit' ? prompt?.modelId ?? '' : '创建新的 Prompt';
+
   return (
     <ComposedModal open onClose={onClose} size="lg">
-      <ModalHeader label={draft.modelId} title={`编辑 ${draft.name}`} closeButtonLabelText="关闭" />
+      <ModalHeader label={modalLabel} title={modalTitle} closeButtonLabelText="关闭" />
       <form onSubmit={handleSubmit}>
         <ModalBody className={styles.modalBody}>
           <div className={styles.sectionHeader}>
@@ -123,12 +143,12 @@ export function PromptEditorModal({ prompt, models, onClose, onSave }: PromptEdi
             label="选择模型"
             items={models}
             itemToString={(item) => (item ? item.name ?? item.id : '')}
-            selectedItem={models.find((model) => model.id === draft.modelId) ?? null}
-            onChange={({ selectedItem }) =>
-              setDraft({ ...draft, modelId: (selectedItem as ModelInfo).id })
-            }
+            selectedItem={selectedModel}
+            onChange={({ selectedItem }) => setDraft({ ...draft, modelId: (selectedItem as ModelInfo).id })}
             disabled={!models.length}
-            helperText={models.length ? undefined : '暂无可选模型，请先在页面上配置可用模型。'}
+            helperText={
+              models.length ? undefined : '暂无可选模型，请先在页面上配置可用模型。'
+            }
           />
           <TextInput
             id="modal-prompt-version"
@@ -205,8 +225,8 @@ export function PromptEditorModal({ prompt, models, onClose, onSave }: PromptEdi
           <Button kind="secondary" onClick={onClose}>
             取消
           </Button>
-          <Button kind="primary" type="submit" disabled={saving}>
-            {saving ? '保存中...' : '保存'}
+          <Button kind="primary" type="submit" disabled={saving || !draft.name.trim() || !draft.modelId}>
+            {saving ? '保存中...' : mode === 'edit' ? '保存' : '创建'}
           </Button>
         </ModalFooter>
       </form>

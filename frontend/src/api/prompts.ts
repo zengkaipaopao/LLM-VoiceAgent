@@ -1,5 +1,5 @@
 import { http } from './http';
-import { PromptTemplate, VoiceConfig } from '../types';
+import { PromptFormValues, PromptTemplate, VoiceConfig } from '../types';
 
 type ApiPrompt = {
   id: string;
@@ -45,7 +45,7 @@ const mapPrompt = (prompt: ApiPrompt): PromptTemplate => ({
   updatedAt: prompt.updated_at,
 });
 
-const toApiPayload = (payload: Partial<PromptTemplate>) => ({
+const toApiPayload = (payload: Partial<PromptTemplate> | PromptFormValues) => ({
   name: payload.name,
   model_id: payload.modelId,
   system_prompt: payload.systemPrompt,
@@ -62,4 +62,13 @@ export async function fetchPrompts() {
 export async function updatePrompt(id: string, payload: Partial<PromptTemplate>) {
   const response = await http.put<ApiPrompt>(`/prompts/${id}`, toApiPayload(payload));
   return mapPrompt(response.data);
+}
+
+export async function createPrompt(payload: PromptFormValues) {
+  const response = await http.post<ApiPrompt>('/prompts', toApiPayload(payload));
+  return mapPrompt(response.data);
+}
+
+export async function deletePrompt(id: string) {
+  await http.delete(`/prompts/${id}`);
 }
