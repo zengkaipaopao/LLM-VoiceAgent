@@ -15,11 +15,24 @@ import {
   TableToolbar,
   TableToolbarContent,
   TableToolbarSearch,
+  Tag,
 } from '@carbon/react';
 
 import { ReservationRecord } from '../types';
 import { useAppState } from '../state/AppStateContext';
 import styles from './AppointmentsPage.module.css';
+
+const operationLabel: Record<ReservationRecord['operation'], string> = {
+  create: '新規',
+  update: '変更',
+  delete: '取消',
+};
+
+const operationTagType: Record<ReservationRecord['operation'], string> = {
+  create: 'teal',
+  update: 'blue',
+  delete: 'magenta',
+};
 
 const headers = [
   { key: 'timestamp', header: '受付時間' },
@@ -31,6 +44,7 @@ const headers = [
   { key: 'address', header: '住所' },
   { key: 'summary', header: '要約' },
   { key: 'rawMessages', header: '原文ログ' },
+  { key: 'operation', header: '操作' },
 ];
 
 const detailLabels: Record<keyof ReservationRecord, string> = {
@@ -44,6 +58,7 @@ const detailLabels: Record<keyof ReservationRecord, string> = {
   address: '住所',
   summary: '要約',
   rawMessages: '原文ログ',
+  operation: '操作タイプ',
 };
 
 export function AppointmentsPage() {
@@ -129,6 +144,11 @@ export function AppointmentsPage() {
                       {record.rawMessages}
                     </span>
                   </TableCell>
+                  <TableCell>
+                    <Tag size="sm" type={operationTagType[record.operation]}>
+                      {operationLabel[record.operation]}
+                    </Tag>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -144,7 +164,15 @@ export function AppointmentsPage() {
               {(Object.keys(detailLabels) as Array<keyof ReservationRecord>).map((key) => (
                 <Fragment key={key}>
                   <dt>{detailLabels[key]}</dt>
-                  <dd>{selectedRecord[key]}</dd>
+                  <dd>
+                    {key === 'operation' ? (
+                      <Tag size="sm" type={operationTagType[selectedRecord.operation]}>
+                        {operationLabel[selectedRecord.operation]}
+                      </Tag>
+                    ) : (
+                      selectedRecord[key]
+                    )}
+                  </dd>
                 </Fragment>
               ))}
             </dl>

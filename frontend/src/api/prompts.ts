@@ -47,6 +47,7 @@ const mapPrompt = (prompt: ApiPrompt): PromptTemplate => ({
   capabilities: {
     appointmentLogging:
       prompt.capabilities?.appointment_logging ?? prompt.enable_appointment_logging ?? false,
+    ttsEnabled: prompt.capabilities?.tts_enabled ?? false,
   },
   voiceConfig: mapVoiceConfig(prompt.voice_config),
   version: prompt.version,
@@ -61,6 +62,7 @@ const toApiPayload = (payload: Partial<PromptTemplate> | PromptFormValues) => ({
   capabilities: payload.capabilities
     ? {
         appointment_logging: payload.capabilities.appointmentLogging,
+        tts_enabled: payload.capabilities.ttsEnabled,
       }
     : undefined,
   enable_appointment_logging: undefined,

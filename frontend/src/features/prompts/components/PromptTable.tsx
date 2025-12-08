@@ -35,6 +35,12 @@ const capabilityDescriptors: CapabilityDescriptor[] = [
     type: 'teal',
     helperText: '会话结束后支持自动生成预约记录',
   },
+  {
+    key: 'ttsEnabled',
+    label: '语音播报',
+    type: 'purple',
+    helperText: '开启文本转语音，测试页面可直接听到回复',
+  },
 ];
 
 const renderCapabilityTags = (capabilities?: PromptCapabilities) => {

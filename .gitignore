@@ -137,3 +137,6 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Google service account credentials (never commit)
+backend/gen-lang-client-*.json

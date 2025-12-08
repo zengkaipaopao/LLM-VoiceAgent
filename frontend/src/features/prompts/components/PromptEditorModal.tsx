@@ -23,6 +23,7 @@ const defaultVoiceConfig: VoiceConfig = {
 
 const defaultCapabilities: PromptCapabilities = {
   appointmentLogging: false,
+  ttsEnabled: true,
 };
 
 const voicePresets = [
@@ -87,6 +88,7 @@ export function PromptEditorModal({ open, mode, prompt, models, onClose, onSave 
     }),
     [draft.voiceConfig],
   );
+  const ttsEnabled = draft.capabilities?.ttsEnabled ?? true;
 
   const handleVoiceConfigChange = (patch: Partial<VoiceConfig>) => {
     setDraft({
@@ -188,29 +190,76 @@ export function PromptEditorModal({ open, mode, prompt, models, onClose, onSave 
             <h4 className={styles.sectionTitle}>功能配置</h4>
             <p className={styles.sectionSubtitle}>按业务需求开启特定工具，例如预约记录写入。</p>
           </div>
-          <Toggle
-            id="modal-enable-appointment"
-            labelText="生成预约记录"
-            labelA="关闭"
-            labelB="开启"
-            toggled={draft.capabilities?.appointmentLogging ?? false}
-            onToggle={() =>
-              setDraft((prev) => ({
-                ...prev,
-                capabilities: {
-                  ...defaultCapabilities,
-                  ...(prev.capabilities ?? {}),
-                  appointmentLogging: !(prev.capabilities?.appointmentLogging ?? false),
-                },
-              }))
-            }
-            helperText="开启后，测试页面会展示“生成预约记录”按钮并允许落盘通话摘要。"
-          />
-          <div className={styles.voiceConfig}>
+          <div className={styles.capabilityGrid}>
+            <div
+              className={`${styles.capabilityCard} ${
+                draft.capabilities?.appointmentLogging ? styles.capabilityCardActive : ''
+              }`}
+            >
+              <div className={styles.capabilityCopy}>
+                <p className={styles.capabilityEyebrow}>预约记录</p>
+                <h5>落盘预约摘要</h5>
+                <p>自动调用后端摘要模型，将对话写入「预约记录」页面。</p>
+              </div>
+              <Toggle
+                id="modal-enable-appointment"
+                labelText="生成预约记录"
+                labelA="关闭"
+                labelB="开启"
+                toggled={draft.capabilities?.appointmentLogging ?? false}
+                onToggle={() =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    capabilities: {
+                      ...defaultCapabilities,
+                      ...(prev.capabilities ?? {}),
+                      appointmentLogging: !(prev.capabilities?.appointmentLogging ?? false),
+                    },
+                  }))
+                }
+              />
+            </div>
+            <div
+              className={`${styles.capabilityCard} ${
+                ttsEnabled ? styles.capabilityCardActive : ''
+              }`}
+            >
+              <div className={styles.capabilityCopy}>
+                <p className={styles.capabilityEyebrow}>语音播报</p>
+                <h5>TTS/声音配置</h5>
+                <p>启用后，测试页面可切换 TTS 服务并试听机器人语音。</p>
+              </div>
+              <Toggle
+                id="modal-enable-tts"
+                labelText="语音播报 / TTS"
+                labelA="关闭"
+                labelB="开启"
+                toggled={ttsEnabled}
+                onToggle={() =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    capabilities: {
+                      ...defaultCapabilities,
+                      ...(prev.capabilities ?? {}),
+                      ttsEnabled: !(prev.capabilities?.ttsEnabled ?? true),
+                    },
+                  }))
+                }
+              />
+            </div>
+          </div>
+          <div
+            className={`${styles.voiceConfig} ${!ttsEnabled ? styles.voiceConfigDisabled : ''}`}
+            aria-disabled={!ttsEnabled}
+          >
             <div className={styles.voiceConfigHeader}>
               <p className={styles.voiceConfigEyebrow}>音频参数</p>
               <h4>声音与音频控制</h4>
-              <p>选择声线、语速和降噪策略，保持各测试链路体验一致。</p>
+              <p>
+                {ttsEnabled
+                  ? '选择声线、语速和降噪策略，保持各测试链路体验一致。'
+                  : '当前已关闭语音播报，开启后才能调整声音参数。'}
+              </p>
             </div>
             <div className={styles.voiceConfigGrid}>
               <Dropdown
@@ -223,6 +272,7 @@ export function PromptEditorModal({ open, mode, prompt, models, onClose, onSave 
                 onChange={({ selectedItem }) =>
                   handleVoiceConfigChange({ voice: (selectedItem as (typeof voicePresets)[number]).id })
                 }
+                disabled={!ttsEnabled}
               />
               <NumberInput
                 id="modal-voice-rate"
@@ -236,6 +286,7 @@ export function PromptEditorModal({ open, mode, prompt, models, onClose, onSave 
                   const numeric = Number(value);
                   handleVoiceConfigChange({ speakingRate: Number.isNaN(numeric) ? 1 : numeric });
                 }}
+                disabled={!ttsEnabled}
               />
               <div className={styles.voiceConfigToggle}>
                 <Toggle
@@ -245,6 +296,7 @@ export function PromptEditorModal({ open, mode, prompt, models, onClose, onSave 
                   labelB="开启"
                   toggled={activeVoiceConfig.noiseSuppression ?? true}
                   onToggle={(state) => handleVoiceConfigChange({ noiseSuppression: state })}
+                  disabled={!ttsEnabled}
                 />
                 <p>开启后将优先启用麦克风噪声抑制，WebRTC 测试最为明显。</p>
               </div>

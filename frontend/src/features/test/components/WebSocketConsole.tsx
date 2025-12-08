@@ -2,8 +2,14 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 're
 import { Button, InlineLoading, NumberInput, Select, SelectItem, Tag, TextArea, Tile, Toggle } from '@carbon/react';
 import { createRealtimeSession } from '../../../api/realtime';
 import { synthesizeSpeech } from '../../../api/tts';
-import { createAppointmentFromConversation } from '../../../api/appointments';
+import { submitAppointmentRecord } from '../../../api/appointments';
 import { PromptTemplate } from '../../../types';
+import {
+  buildRawTranscript,
+  composeAppointmentPayload,
+  extractAppointmentFromText,
+  ParsedAppointment,
+} from '../utils/appointment';
 
 type ChatMessage = {
   id: string;
@@ -16,10 +22,7 @@ type ChatMessage = {
 type ConnectionState = 'idle' | 'connecting' | 'connected' | 'error';
 
 const quickPrompts = [
-  '请总结刚才的通话亮点',
-  '换一个更自然的寒暄开场',
-  '继续追问客户的预算范围',
-  '模拟客户反对「需要考虑」的处理',
+  '株式会社EIIのコウです。2025年6月3日午前10時、神田2-4-33で粗大ゴミ4トンの回収をお願いします。追加の要望はありません。',
 ];
 
 const ttsProviderOptions = [
@@ -111,6 +114,12 @@ const connectionTagMap: Record<ConnectionState, { label: string; type: string }>
   error: { label: '连接异常', type: 'red' },
 };
 
+const operationLabelMap: Record<'create' | 'update' | 'delete', string> = {
+  create: '新增预约',
+  update: '修改预约',
+  delete: '取消预约',
+};
+
 const defaultInstructions =
   '你是 LLM Voice Agent 的实时调试助手，请使用自然、专业的中文语气与用户对话，必要时解释你的推理。';
 const fallbackModel = 'gpt-4o-realtime-preview-2024-12-17';
@@ -178,7 +187,13 @@ type WebSocketConsoleProps = {
   prompt?: PromptTemplate;
 };
 
-const AUTO_APPOINTMENT_PHRASES = ['ご利用ありがとうございました', 'ご用命ありがとうございました'];
+const AUTO_APPOINTMENT_PHRASES = [
+  'ご利用ありがとうございました',
+  'ご用命ありがとうございました',
+  '承りました',
+  '記録を行います',
+  '記録いたします',
+];
 
 const containsClosingPhrase = (text: string) =>
   AUTO_APPOINTMENT_PHRASES.some((phrase) => text.includes(phrase));
@@ -196,7 +211,8 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
   const responseMessageMapRef = useRef<Record<string, string>>({});
   const responseContentRef = useRef<Record<string, string>>({});
   const pendingResponseRef = useRef<string | null>(null);
-  const [ttsEnabled, setTtsEnabled] = useState(false);
+  const ttsCapabilityEnabled = prompt?.capabilities?.ttsEnabled ?? true;
+  const [ttsEnabled, setTtsEnabled] = useState(ttsCapabilityEnabled);
   const [ttsProvider, setTtsProvider] = useState<(typeof ttsProviderOptions)[number]['id']>('openai');
   const [ttsModel, setTtsModel] = useState<string>(ttsModelOptions.openai[0].id);
   const [ttsLanguage, setTtsLanguage] = useState<string>(googleLanguageOptions[0].code);
@@ -210,7 +226,9 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
   const [appointmentMessage, setAppointmentMessage] = useState<string | null>(null);
   const manualCloseRef = useRef(false);
   const autoAppointmentTriggeredRef = useRef(false);
+  const structuredAppointmentRef = useRef<ParsedAppointment | null>(null);
   const voiceConfig = prompt?.voiceConfig;
+  const appointmentEnabled = prompt?.capabilities?.appointmentLogging ?? false;
   const instructions = useMemo(() => {
     const base = prompt?.systemPrompt ?? defaultInstructions;
     const welcome = prompt?.welcomeMessage?.trim();
@@ -224,8 +242,15 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
     if (voiceConfig?.speakingRate) {
       hints.push(`请保持语速约为 ${voiceConfig.speakingRate} 倍，兼顾清晰与自然。`);
     }
+    if (appointmentEnabled) {
+      hints.push(
+        `[预约记录输出规则]
+- 当确认信息齐全后，请输出一段 JSON 代码块，使用三个反引号包裹。字段包含：operation（create=新規 / update=変更 / delete=取消）、timestamp（日本时间 ISO8601）、caller_name、company、appointment、category、amount、address、summary。
+- JSON 输出后，再用自然语言告知用户“已记录完毕”。`,
+      );
+    }
     return hints.length ? `${base}\n\n[语音指引]\n${hints.join('\n')}` : base;
-  }, [prompt?.systemPrompt, prompt?.welcomeMessage, voiceConfig?.speakingRate]);
+  }, [appointmentEnabled, prompt?.systemPrompt, prompt?.welcomeMessage, voiceConfig?.speakingRate]);
   const activeModel = prompt?.modelId || fallbackModel;
   const activeVoice = voiceConfig?.voice;
   const currentTtsVoiceMeta = useMemo(() => {
@@ -234,11 +259,10 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
     }
     return openAiVoiceOptions.find((voice) => voice.id === ttsVoice);
   }, [ttsLanguage, ttsProvider, ttsVoice]);
-  const appointmentEnabled = prompt?.capabilities?.appointmentLogging ?? false;
 
   const speakText = useCallback(
     async (text: string) => {
-      if (!ttsEnabled || !text.trim()) return;
+      if (!ttsCapabilityEnabled || !ttsEnabled || !text.trim()) return;
       setTtsStatus('正在生成语音...');
       try {
         const result = await synthesizeSpeech({
@@ -276,6 +300,7 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
     [
       currentTtsVoiceMeta?.languageCode,
       ttsAudioUrl,
+      ttsCapabilityEnabled,
       ttsEnabled,
       ttsModel,
       ttsPitch,
@@ -285,7 +310,19 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
     ],
   );
 
-  const handleCreateAppointment = useCallback(async () => {
+  const captureStructuredSummary = useCallback(
+    (content: string) => {
+      if (!appointmentEnabled) return;
+      const parsed = extractAppointmentFromText(content);
+      if (parsed) {
+        structuredAppointmentRef.current = parsed;
+        setAppointmentMessage('已捕获预约摘要，可生成记录。');
+      }
+    },
+    [appointmentEnabled],
+  );
+
+  const handleCreateAppointment = useCallback(async (options?: { auto?: boolean }) => {
     if (!appointmentEnabled) {
       setAppointmentMessage('当前 Prompt 未开启预约功能。');
       return;
@@ -294,20 +331,34 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
       setAppointmentMessage('暂无对话记录，无法生成预约。');
       return;
     }
+    const structured = structuredAppointmentRef.current;
+    if (!structured) {
+      setAppointmentMessage('尚未检测到预约摘要，请确认模型输出 JSON。');
+      return;
+    }
     setSavingAppointment(true);
-    setAppointmentMessage('正在生成预约记录...');
+    setAppointmentMessage(options?.auto ? '通话结束，正在生成预约记录…' : '正在生成预约记录...');
+    const previousAutoFlag = autoAppointmentTriggeredRef.current;
+    autoAppointmentTriggeredRef.current = true;
     try {
-      const payload = messages.map((message) => ({
-        role: message.role,
-        text: message.content,
-        timestamp: message.timestamp,
-      }));
-      await createAppointmentFromConversation(payload);
-      setAppointmentMessage('预约记录已生成，前往「预约记录」标签查看。');
-      autoAppointmentTriggeredRef.current = true;
+      const transcript = buildRawTranscript(
+        messages.map((message) => ({
+          role: message.role,
+          text: message.content,
+          timestamp: message.timestamp,
+        })),
+      );
+      await submitAppointmentRecord(composeAppointmentPayload(structured, transcript));
+      structuredAppointmentRef.current = null;
+      setAppointmentMessage(
+        options?.auto
+          ? `通话结束，已完成${operationLabelMap[structured.operation]}。`
+          : `已完成${operationLabelMap[structured.operation]}，前往「预约记录」查看。`,
+      );
     } catch (error) {
       console.error('WebSocket 生成预约失败', error);
       setAppointmentMessage('生成预约记录失败，请稍后再试。');
+      autoAppointmentTriggeredRef.current = previousAutoFlag;
     } finally {
       setSavingAppointment(false);
     }
@@ -317,8 +368,11 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
     (content: string) => {
       if (!appointmentEnabled || autoAppointmentTriggeredRef.current) return;
       if (containsClosingPhrase(content)) {
-        autoAppointmentTriggeredRef.current = true;
-        void handleCreateAppointment();
+        if (!structuredAppointmentRef.current) {
+          setAppointmentMessage('检测到结束语，但未解析到预约摘要，请确保输出 JSON。');
+          return;
+        }
+        void handleCreateAppointment({ auto: true });
       }
     },
     [appointmentEnabled, handleCreateAppointment],
@@ -386,10 +440,11 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
       setAssistantTyping(false);
       if (finalText) {
         void speakText(finalText);
+        captureStructuredSummary(finalText);
         maybeTriggerAutoAppointment(finalText);
       }
     },
-    [maybeTriggerAutoAppointment, speakText],
+    [captureStructuredSummary, maybeTriggerAutoAppointment, speakText],
   );
 
   const handleRealtimeFrame = useCallback(
@@ -531,6 +586,7 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
     setConnectionState('idle');
     autoAppointmentTriggeredRef.current = false;
     setAppointmentMessage(null);
+    structuredAppointmentRef.current = null;
   }, []);
 
   const clearConversation = useCallback(() => {
@@ -541,6 +597,7 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
     setAssistantTyping(false);
     setAppointmentMessage(null);
     autoAppointmentTriggeredRef.current = false;
+    structuredAppointmentRef.current = null;
   }, []);
 
   const sendConversationItem = useCallback((text: string) => {
@@ -667,6 +724,11 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
     }
   }, [ttsLanguage, ttsProvider]);
 
+useEffect(() => {
+  setTtsEnabled(ttsCapabilityEnabled);
+  structuredAppointmentRef.current = null;
+}, [prompt?.id, ttsCapabilityEnabled]);
+
   useEffect(() => {
     setTtsSpeakingRate(1);
     setTtsPitch(0);
@@ -700,6 +762,7 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
     }
     return openAiVoiceOptions;
   }, [ttsLanguage, ttsProvider]);
+  const ttsControlsDisabled = !ttsCapabilityEnabled || !ttsEnabled;
 
   return (
     <div className="ws-console">
@@ -852,13 +915,18 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
         <Tile className="session-panel">
           <div>
             <h3>语音配置</h3>
-            <p className="session-panel__helper">这里仅控制文本转语音，聊天模型始终跟随 Prompt 设置。</p>
+            <p className="session-panel__helper">
+              {ttsCapabilityEnabled
+                ? '这里仅控制文本转语音，聊天模型始终跟随 Prompt 设置。'
+                : '当前 Prompt 未启用语音播报，可在 Prompt 管理中开启。'}
+            </p>
           </div>
           <Select
             id="tts-provider-selector"
             labelText="TTS 服务商"
             value={ttsProvider}
             onChange={(event) => setTtsProvider(event.target.value as (typeof ttsProviderOptions)[number]['id'])}
+            disabled={!ttsCapabilityEnabled}
           >
             {ttsProviderOptions.map((provider) => (
               <SelectItem key={provider.id} value={provider.id} text={provider.label} />
@@ -870,7 +938,7 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
               labelText="语言"
               value={ttsLanguage}
               onChange={(event) => setTtsLanguage(event.target.value)}
-              disabled={!ttsEnabled}
+              disabled={ttsControlsDisabled}
             >
               {googleLanguageOptions.map((language) => (
                 <SelectItem key={language.code} value={language.code} text={`${language.label} · ${language.code}`} />
@@ -884,13 +952,14 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
             labelB="开启"
             toggled={ttsEnabled}
             onToggle={() => setTtsEnabled((prev) => !prev)}
+            disabled={!ttsCapabilityEnabled}
           />
           <Select
             id="tts-model-selector"
             labelText="TTS 模型"
             value={ttsModel}
             onChange={(event) => setTtsModel(event.target.value)}
-            disabled={!ttsEnabled}
+            disabled={ttsControlsDisabled}
           >
             {providerModelOptions.map((option) => (
               <SelectItem key={option.id} value={option.id} text={option.label} />
@@ -901,7 +970,7 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
             labelText="TTS 声音"
             value={ttsVoice}
             onChange={(event) => setTtsVoice(event.target.value)}
-            disabled={!ttsEnabled}
+            disabled={ttsControlsDisabled}
           >
             {providerVoiceOptions.map((voice) => (
               <SelectItem key={voice.id} value={voice.id} text={voice.label} />
@@ -922,7 +991,7 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
                     setTtsSpeakingRate(Math.min(4, Math.max(0.25, parsed)));
                   }
                 }}
-                disabled={!ttsEnabled}
+                disabled={ttsControlsDisabled}
               />
               <NumberInput
                 id="tts-pitch"
@@ -937,7 +1006,7 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
                     setTtsPitch(Math.min(20, Math.max(-20, parsed)));
                   }
                 }}
-                disabled={!ttsEnabled}
+                disabled={ttsControlsDisabled}
               />
             </>
           )}

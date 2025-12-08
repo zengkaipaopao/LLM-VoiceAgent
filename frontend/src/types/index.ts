@@ -35,6 +35,7 @@ export interface PromptFormValues {
 
 export interface PromptCapabilities {
   appointmentLogging: boolean;
+  ttsEnabled: boolean;
 }
 
 export interface AgentProfile {
@@ -76,4 +77,5 @@ export interface ReservationRecord {
   address: string;
   summary: string;
   rawMessages: string;
+  operation: 'create' | 'update' | 'delete';
 }
