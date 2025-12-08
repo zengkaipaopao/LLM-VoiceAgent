@@ -49,6 +49,7 @@ export function PromptsPage() {
           modelId: payload.modelId,
           systemPrompt: payload.systemPrompt,
           welcomeMessage: payload.welcomeMessage,
+          capabilities: payload.capabilities,
           voiceConfig: payload.voiceConfig,
           version: payload.version,
         });

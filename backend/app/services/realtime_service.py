@@ -15,6 +15,38 @@ logger = logging.getLogger(__name__)
 
 class RealtimeService:
     _endpoint = "https://api.openai.com/v1/realtime/sessions"
+    _channel_overrides: dict[str, dict[str, Any]] = {
+        "websocket": {
+            "turn_detection": {
+                "type": "server_vad",
+                "threshold": 0.5,
+                "prefix_padding_ms": 300,
+                "silence_duration_ms": 200,
+                "create_response": False,
+                "interrupt_response": False,
+            }
+        },
+        "webrtc": {
+            "turn_detection": {
+                "type": "server_vad",
+                "threshold": 0.5,
+                "prefix_padding_ms": 300,
+                "silence_duration_ms": 200,
+                "create_response": True,
+                "interrupt_response": True,
+            }
+        },
+        "sip": {
+            "turn_detection": {
+                "type": "server_vad",
+                "threshold": 0.5,
+                "prefix_padding_ms": 300,
+                "silence_duration_ms": 200,
+                "create_response": True,
+                "interrupt_response": True,
+            }
+        },
+    }
 
     async def create_session(self, payload: RealtimeSessionRequest) -> RealtimeSessionDTO:
         if not settings.openai_api_key:
@@ -25,6 +57,13 @@ class RealtimeService:
             "voice": payload.voice or settings.openai_realtime_voice,
             "instructions": payload.instructions or settings.openai_realtime_instructions,
         }
+        if payload.turn_detection is not None:
+            body["turn_detection"] = payload.turn_detection
+        else:
+            channel = (payload.channel or "").lower()
+            overrides = self._channel_overrides.get(channel)
+            if overrides:
+                body.update(overrides)
         if payload.sip:
             body["sip"] = payload.sip
 

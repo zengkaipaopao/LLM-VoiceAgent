@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     claude_models: str | None = None  # comma-separated model ids
     redis_url: str = "redis://localhost:6379/0"
     telephony_provider: str = "twilio"
+    google_tts_access_token: str | None = None
 
 
 settings = Settings()

@@ -9,6 +9,10 @@ export type SynthesizeSpeechPayload = {
   text: string;
   model: string;
   voice: string;
+  provider?: 'openai' | 'google';
+  languageCode?: string;
+  speakingRate?: number;
+  pitch?: number;
   format?: string;
 };
 

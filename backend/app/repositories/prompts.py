@@ -7,7 +7,7 @@ from threading import Lock
 from typing import Any
 from uuid import uuid4
 
-from app.schemas.prompts import PromptCreate, PromptTemplate, PromptUpdate, VoiceConfig
+from app.schemas.prompts import PromptCapabilities, PromptCreate, PromptTemplate, PromptUpdate, VoiceConfig
 
 
 class PromptRepository:
@@ -31,13 +31,27 @@ class PromptRepository:
         self._data_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def list(self) -> list[PromptTemplate]:
-        return [PromptTemplate(**item) for item in self._read_file()]
+        items = self._read_file()
+        updated = False
+        for item in items:
+            if "capabilities" not in item:
+                appointment = item.pop("enable_appointment_logging", False)
+                item["capabilities"] = {"appointment_logging": appointment}
+                updated = True
+        if updated:
+            self._write_file(items)
+        return [PromptTemplate(**item) for item in items]
 
     def create(self, payload: PromptCreate) -> PromptTemplate:
         with self._lock:
             items = self._read_file()
             prompt_id = f"prompt_{uuid4().hex[:8]}"
             now = datetime.utcnow().isoformat()
+            capabilities = (
+                payload.capabilities.model_dump(exclude_defaults=True)
+                if isinstance(payload.capabilities, PromptCapabilities)
+                else payload.capabilities
+            ) or {"appointment_logging": False}
             record: dict[str, Any] = {
                 "id": prompt_id,
                 "name": payload.name,
@@ -49,6 +63,7 @@ class PromptRepository:
                 else payload.voice_config,
                 "version": payload.version,
                 "updated_at": now,
+                "capabilities": capabilities,
             }
             items.append(record)
             self._write_file(items)
@@ -75,6 +90,11 @@ class PromptRepository:
                     target["voice_config"] = payload.voice_config
             if payload.version is not None:
                 target["version"] = payload.version
+            if payload.capabilities is not None:
+                if isinstance(payload.capabilities, PromptCapabilities):
+                    target["capabilities"] = payload.capabilities.model_dump(exclude_defaults=True)
+                else:
+                    target["capabilities"] = payload.capabilities
             target["updated_at"] = datetime.utcnow().isoformat()
             self._write_file(items)
         return PromptTemplate(**target)

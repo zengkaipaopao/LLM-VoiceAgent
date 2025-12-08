@@ -50,6 +50,7 @@ export function SipConsole({ prompt }: SipConsoleProps) {
         instructions,
         model: activeModel,
         voice: activeVoice,
+        channel: 'sip',
         sip: {
           to: sipUri,
           from: fromNumber,

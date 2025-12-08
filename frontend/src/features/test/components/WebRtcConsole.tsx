@@ -17,6 +17,36 @@ const defaultInstructions =
   '通过 WebRTC 与来电者保持双向语音 + DataChannel，且实时使用中文解释你的推理。';
 const fallbackModel = 'gpt-4o-realtime-preview-2024-12-17';
 
+const AUTO_APPOINTMENT_PHRASES = ['ご利用ありがとうございました', 'ご用命ありがとうございました'];
+
+const containsClosingPhrase = (text: string) =>
+  AUTO_APPOINTMENT_PHRASES.some((phrase) => text.includes(phrase));
+
+const extractRealtimeText = (payload: string): string | null => {
+  try {
+    const data = JSON.parse(payload);
+    if (typeof data.delta === 'string') return data.delta;
+    if (data.delta && typeof data.delta === 'object') {
+      if (typeof data.delta.text === 'string') return data.delta.text;
+      if (Array.isArray(data.delta.content)) {
+        return data.delta.content
+          .map((item: unknown) => {
+            if (typeof item === 'string') return item;
+            if (item && typeof item === 'object' && 'text' in item && typeof (item as { text?: string }).text === 'string') {
+              return (item as { text: string }).text;
+            }
+            return '';
+          })
+          .join('');
+      }
+    }
+    if (typeof data.text === 'string') return data.text;
+  } catch {
+    return payload;
+  }
+  return null;
+};
+
 const formatTime = (timestamp: string) => {
   return new Date(timestamp).toLocaleTimeString('zh-CN', {
     hour: '2-digit',
@@ -42,6 +72,7 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const hasSavedRef = useRef(false);
+  const autoAppointmentTriggeredRef = useRef(false);
   const voiceConfig = prompt?.voiceConfig;
   const instructions = useMemo(() => {
     const base = prompt?.systemPrompt ?? defaultInstructions;
@@ -61,6 +92,7 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
   const activeModel = prompt?.modelId ?? fallbackModel;
   const activeVoice = voiceConfig?.voice;
   const noiseSuppressionEnabled = voiceConfig?.noiseSuppression ?? true;
+  const appointmentEnabled = prompt?.capabilities?.appointmentLogging ?? false;
 
   const appendLog = useCallback((entry: Omit<ConsoleLog, 'id' | 'timestamp'>) => {
     setLogs((prev) => [
@@ -72,6 +104,50 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
       },
     ]);
   }, []);
+
+  const handleCreateAppointment = useCallback(
+    async (options?: { auto?: boolean }) => {
+      if (!appointmentEnabled) {
+        if (!options?.auto) {
+          setAppointmentMessage('当前 Prompt 未开启预约记录功能。');
+        }
+        return;
+      }
+      if (!logs.length) {
+        if (!options?.auto) {
+          setAppointmentMessage('暂无可用的对话记录。');
+        }
+        return;
+      }
+      if (hasSavedRef.current) {
+        if (!options?.auto) {
+          setAppointmentMessage('本次会话已生成预约记录。');
+        }
+        return;
+      }
+      setSavingAppointment(true);
+      setAppointmentMessage(options?.auto ? '通话结束，正在生成预约记录…' : null);
+      try {
+        const messages = logs.map((log) => ({
+          role: log.direction === 'in' ? 'assistant' : log.direction === 'out' ? 'user' : 'system',
+          text: log.message,
+          timestamp: log.timestamp,
+        }));
+        await createAppointmentFromConversation(messages);
+        hasSavedRef.current = true;
+        autoAppointmentTriggeredRef.current = true;
+        setAppointmentMessage(
+          options?.auto ? '通话结束，预约记录已自动生成。' : '预约记录已生成，可在“预约记录”页面查看。',
+        );
+      } catch (err) {
+        console.error('创建预约记录失败', err);
+        setAppointmentMessage('生成预约记录失败，请稍后再试。');
+      } finally {
+        setSavingAppointment(false);
+      }
+    },
+    [appointmentEnabled, logs],
+  );
 
   const cleanupConnection = useCallback(() => {
     dataChannelRef.current?.close();
@@ -109,9 +185,16 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
       channel.onerror = (event) => appendLog({ direction: 'system', message: `DataChannel 错误: ${event}` });
       channel.onmessage = (event) => {
         appendLog({ direction: 'in', message: event.data });
+        if (appointmentEnabled && !autoAppointmentTriggeredRef.current && typeof event.data === 'string') {
+          const text = extractRealtimeText(event.data);
+          if (text && containsClosingPhrase(text)) {
+            autoAppointmentTriggeredRef.current = true;
+            void handleCreateAppointment();
+          }
+        }
       };
     },
-    [appendLog],
+    [appendLog, appointmentEnabled, handleCreateAppointment],
   );
 
   const connectRtc = useCallback(async () => {
@@ -124,6 +207,7 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
         instructions,
         model: activeModel,
         voice: activeVoice,
+        channel: 'webrtc',
       });
       const peer = new RTCPeerConnection(session.rtc_configuration ?? undefined);
       peerRef.current = peer;
@@ -177,48 +261,13 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
     setupRemoteAudio,
   ]);
 
-  const handleCreateAppointment = useCallback(
-    async (options?: { auto?: boolean }) => {
-      if (!logs.length) {
-        if (!options?.auto) {
-          setAppointmentMessage('暂无可用的对话记录。');
-        }
-        return;
-      }
-      if (hasSavedRef.current) {
-        if (!options?.auto) {
-          setAppointmentMessage('本次会话已生成预约记录。');
-        }
-        return;
-      }
-      setSavingAppointment(true);
-      setAppointmentMessage(options?.auto ? '通话结束，正在生成预约记录…' : null);
-      try {
-        const messages = logs.map((log) => ({
-          role: log.direction === 'in' ? 'assistant' : log.direction === 'out' ? 'user' : 'system',
-          text: log.message,
-          timestamp: log.timestamp,
-        }));
-        await createAppointmentFromConversation(messages);
-        hasSavedRef.current = true;
-        setAppointmentMessage(
-          options?.auto ? '通话结束，预约记录已自动生成。' : '预约记录已生成，可在“预约记录”页面查看。',
-        );
-      } catch (err) {
-        console.error('创建预约记录失败', err);
-        setAppointmentMessage('生成预约记录失败，请稍后再试。');
-      } finally {
-        setSavingAppointment(false);
-      }
-    },
-    [logs],
-  );
-
   const disconnectRtc = useCallback(() => {
     cleanupConnection();
     appendLog({ direction: 'system', message: '已断开 WebRTC 连接' });
-    void handleCreateAppointment({ auto: true });
-  }, [appendLog, cleanupConnection, handleCreateAppointment]);
+    if (appointmentEnabled) {
+      void handleCreateAppointment({ auto: true });
+    }
+  }, [appendLog, appointmentEnabled, cleanupConnection, handleCreateAppointment]);
 
   const sendCommand = useCallback(() => {
     const text = command.trim();
@@ -313,23 +362,25 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
           </p>
         )}
       </Tile>
-      <Tile className="session-panel">
-        <div>
-          <h4>预约记录</h4>
-          <p className="session-panel__helper">将当前日志发送给后端，由模型自动提取预约信息并存档。</p>
-          {appointmentMessage && <p className="session-panel__helper">{appointmentMessage}</p>}
-        </div>
-        <Button
-          kind="primary"
-          size="sm"
-          disabled={savingAppointment || !logs.length}
-          onClick={() => {
-            void handleCreateAppointment();
-          }}
-        >
-          {savingAppointment ? '生成中...' : '生成预约记录'}
-        </Button>
-      </Tile>
+      {appointmentEnabled && (
+        <Tile className="session-panel">
+          <div>
+            <h4>预约记录</h4>
+            <p className="session-panel__helper">将当前日志发送给后端，由模型自动提取预约信息并存档。</p>
+            {appointmentMessage && <p className="session-panel__helper">{appointmentMessage}</p>}
+          </div>
+          <Button
+            kind="primary"
+            size="sm"
+            disabled={savingAppointment || !logs.length}
+            onClick={() => {
+              void handleCreateAppointment();
+            }}
+          >
+            {savingAppointment ? '生成中...' : '生成预约记录'}
+          </Button>
+        </Tile>
+      )}
     </div>
   );
 }

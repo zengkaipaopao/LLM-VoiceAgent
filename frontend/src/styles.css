@@ -209,6 +209,109 @@ body {
   width: 100%;
 }
 
+.ws-console {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.ws-console__main {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.ws-console__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.ws-console__side {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.ws-status-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.ws-status-card h4 {
+  margin: 0;
+}
+
+.ws-status-card p {
+  margin: 0.15rem 0 0;
+  color: var(--cds-text-secondary, #525252);
+  font-size: 0.875rem;
+}
+
+.ws-status-card__info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.ws-status-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 200px;
+}
+
+.ws-status-card__error {
+  color: #da1e28;
+  font-size: 0.875rem;
+}
+
+.ws-chat-panel {
+  min-height: 360px;
+}
+
+.ws-input-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.ws-quick-prompts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.ws-quick-prompts__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.ws-quick-prompts__chip {
+  border: 1px solid var(--cds-border-subtle, #d0d0d0);
+  border-radius: 999px;
+  background: #f4f4f4;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.ws-quick-prompts__chip:hover {
+  background: #e0e0e0;
+}
+
+@media (max-width: 1056px) {
+  .ws-console {
+    grid-template-columns: 1fr;
+  }
+}
+
 .test-tabs {
   width: 100%;
 }

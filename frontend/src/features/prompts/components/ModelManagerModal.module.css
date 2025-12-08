@@ -93,6 +93,12 @@
   gap: 0.5rem;
 }
 
+.usageTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
 .toolbar {
   display: flex;
   justify-content: space-between;
@@ -111,14 +117,14 @@
   color: var(--cds-text-secondary, #525252);
 }
 
-.providerFilterHeader {
+.filterHeader {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-top: 0.25rem;
 }
 
-.providerFilterList {
+.filterList {
   max-height: 220px;
   overflow-y: auto;
   display: flex;

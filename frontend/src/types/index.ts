@@ -17,6 +17,7 @@ export interface PromptTemplate {
   modelId: string;
   systemPrompt: string;
   welcomeMessage: string;
+  capabilities: PromptCapabilities;
   voiceConfig?: VoiceConfig;
   updatedAt: string;
   version: string;
@@ -27,8 +28,13 @@ export interface PromptFormValues {
   modelId: string;
   systemPrompt: string;
   welcomeMessage: string;
+  capabilities: PromptCapabilities;
   version: string;
   voiceConfig?: VoiceConfig;
+}
+
+export interface PromptCapabilities {
+  appointmentLogging: boolean;
 }
 
 export interface AgentProfile {

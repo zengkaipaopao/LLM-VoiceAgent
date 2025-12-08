@@ -7,6 +7,10 @@ type ApiPrompt = {
   model_id: string;
   system_prompt: string;
   welcome_message?: string;
+  enable_appointment_logging?: boolean;
+  capabilities?: {
+    appointment_logging?: boolean;
+  };
   voice_config?: {
     voice?: string;
     speaking_rate?: number;
@@ -40,6 +44,10 @@ const mapPrompt = (prompt: ApiPrompt): PromptTemplate => ({
   modelId: prompt.model_id,
   systemPrompt: prompt.system_prompt,
   welcomeMessage: prompt.welcome_message ?? '',
+  capabilities: {
+    appointmentLogging:
+      prompt.capabilities?.appointment_logging ?? prompt.enable_appointment_logging ?? false,
+  },
   voiceConfig: mapVoiceConfig(prompt.voice_config),
   version: prompt.version,
   updatedAt: prompt.updated_at,
@@ -50,6 +58,12 @@ const toApiPayload = (payload: Partial<PromptTemplate> | PromptFormValues) => ({
   model_id: payload.modelId,
   system_prompt: payload.systemPrompt,
   welcome_message: payload.welcomeMessage,
+  capabilities: payload.capabilities
+    ? {
+        appointment_logging: payload.capabilities.appointmentLogging,
+      }
+    : undefined,
+  enable_appointment_logging: undefined,
   voice_config: toApiVoiceConfig(payload.voiceConfig),
   version: payload.version,
 });

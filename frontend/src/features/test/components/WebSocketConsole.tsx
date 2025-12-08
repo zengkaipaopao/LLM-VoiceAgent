@@ -1,9 +1,9 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, InlineLoading, Select, SelectItem, Tag, TextArea, Tile, Toggle } from '@carbon/react';
+import { Button, InlineLoading, NumberInput, Select, SelectItem, Tag, TextArea, Tile, Toggle } from '@carbon/react';
 import { createRealtimeSession } from '../../../api/realtime';
 import { synthesizeSpeech } from '../../../api/tts';
+import { createAppointmentFromConversation } from '../../../api/appointments';
 import { PromptTemplate } from '../../../types';
-import { useAppState } from '../../../state/AppStateContext';
 
 type ChatMessage = {
   id: string;
@@ -22,23 +22,87 @@ const quickPrompts = [
   '模拟客户反对「需要考虑」的处理',
 ];
 
-const ttsModelOptions = [
-  { id: 'gpt-4o-mini-tts', label: 'gpt-4o-mini-tts' },
-  { id: 'gpt-4o-mini-tts-alloy', label: 'gpt-4o-mini-tts-alloy' },
-  { id: 'gpt-4o-mini-tts-marin', label: 'gpt-4o-mini-tts-marin' },
+const ttsProviderOptions = [
+  { id: 'openai', label: 'OpenAI gpt-4o-mini-tts' },
+  { id: 'google', label: 'Google Cloud Text-to-Speech' },
+] as const;
+
+const ttsModelOptions: Record<
+  (typeof ttsProviderOptions)[number]['id'],
+  Array<{ id: string; label: string }>
+> = {
+  openai: [{ id: 'gpt-4o-mini-tts', label: 'gpt-4o-mini-tts' }],
+  google: [
+    { id: 'google-wavenet', label: 'Wavenet（标准）' },
+    { id: 'google-neural2', label: 'Neural2（自然）' },
+    { id: 'google-studio', label: 'Studio（高保真）' },
+  ],
+};
+
+const openAiVoiceOptions = [
+  { id: 'alloy', label: 'alloy' },
+  { id: 'ballad', label: 'ballad' },
+  { id: 'verse', label: 'verse' },
+  { id: 'sage', label: 'sage' },
+  { id: 'marin', label: 'marin' },
+  { id: 'coral', label: 'coral' },
+  { id: 'echo', label: 'echo' },
+  { id: 'ash', label: 'ash' },
+  { id: 'shimmer', label: 'shimmer' },
+] as const;
+
+type GoogleVoiceOption = { id: string; label: string };
+type GoogleLanguageOption = { code: string; label: string; voices: GoogleVoiceOption[] };
+
+const googleLanguageOptions: GoogleLanguageOption[] = [
+  {
+    code: 'ja-JP',
+    label: '日语',
+    voices: [
+      { id: 'ja-JP-Wavenet-A', label: 'Wavenet A · 女声' },
+      { id: 'ja-JP-Wavenet-B', label: 'Wavenet B · 男声' },
+      { id: 'ja-JP-Wavenet-C', label: 'Wavenet C · 女声' },
+      { id: 'ja-JP-Wavenet-D', label: 'Wavenet D · 男声' },
+      { id: 'ja-JP-Neural2-C', label: 'Neural2 C · 女声' },
+      { id: 'ja-JP-Neural2-D', label: 'Neural2 D · 男声' },
+      { id: 'ja-JP-Studio-Q', label: 'Studio Q · 女声' },
+    ],
+  },
+  {
+    code: 'en-US',
+    label: '英语（美国）',
+    voices: [
+      { id: 'en-US-Wavenet-D', label: 'Wavenet D · 男声' },
+      { id: 'en-US-Wavenet-F', label: 'Wavenet F · 女声' },
+      { id: 'en-US-Neural2-H', label: 'Neural2 H · 女声' },
+      { id: 'en-US-Neural2-I', label: 'Neural2 I · 男声' },
+      { id: 'en-US-Studio-O', label: 'Studio O · 女声' },
+    ],
+  },
+  {
+    code: 'zh-CN',
+    label: '中文（普通话）',
+    voices: [
+      { id: 'cmn-CN-Wavenet-A', label: 'Wavenet A · 女声' },
+      { id: 'cmn-CN-Wavenet-B', label: 'Wavenet B · 男声' },
+      { id: 'cmn-CN-Wavenet-C', label: 'Wavenet C · 女声' },
+      { id: 'cmn-CN-Neural2-D', label: 'Neural2 D · 女声' },
+    ],
+  },
+  {
+    code: 'ko-KR',
+    label: '韩语',
+    voices: [
+      { id: 'ko-KR-Wavenet-A', label: 'Wavenet A · 女声' },
+      { id: 'ko-KR-Wavenet-B', label: 'Wavenet B · 男声' },
+      { id: 'ko-KR-Neural2-C', label: 'Neural2 C · 女声' },
+    ],
+  },
 ];
 
-const ttsVoiceOptions = [
-  'alloy',
-  'ballad',
-  'verse',
-  'sage',
-  'marin',
-  'coral',
-  'echo',
-  'ash',
-  'shimmer',
-];
+const getGoogleVoices = (languageCode: string): GoogleVoiceOption[] => {
+  return googleLanguageOptions.find((language) => language.code === languageCode)?.voices ?? [];
+};
 
 const connectionTagMap: Record<ConnectionState, { label: string; type: string }> = {
   idle: { label: '待连接', type: 'cool-gray' },
@@ -114,13 +178,12 @@ type WebSocketConsoleProps = {
   prompt?: PromptTemplate;
 };
 
+const AUTO_APPOINTMENT_PHRASES = ['ご利用ありがとうございました', 'ご用命ありがとうございました'];
+
+const containsClosingPhrase = (text: string) =>
+  AUTO_APPOINTMENT_PHRASES.some((phrase) => text.includes(phrase));
+
 export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
-  const { models, allowedModels } = useAppState();
-  const availableConversationModels = useMemo(() => {
-    if (!models.length) return [];
-    if (!allowedModels.length) return models;
-    return models.filter((model) => allowedModels.includes(model.id));
-  }, [allowedModels, models]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [autoReply, setAutoReply] = useState(true);
@@ -133,13 +196,20 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
   const responseMessageMapRef = useRef<Record<string, string>>({});
   const responseContentRef = useRef<Record<string, string>>({});
   const pendingResponseRef = useRef<string | null>(null);
-  const [modelOverride, setModelOverride] = useState<string>('');
   const [ttsEnabled, setTtsEnabled] = useState(false);
-  const [ttsModel, setTtsModel] = useState<string>(ttsModelOptions[0].id);
-  const [ttsVoice, setTtsVoice] = useState<string>(ttsVoiceOptions[0]);
+  const [ttsProvider, setTtsProvider] = useState<(typeof ttsProviderOptions)[number]['id']>('openai');
+  const [ttsModel, setTtsModel] = useState<string>(ttsModelOptions.openai[0].id);
+  const [ttsLanguage, setTtsLanguage] = useState<string>(googleLanguageOptions[0].code);
+  const [ttsVoice, setTtsVoice] = useState<string>(openAiVoiceOptions[0].id);
+  const [ttsSpeakingRate, setTtsSpeakingRate] = useState<number>(1);
+  const [ttsPitch, setTtsPitch] = useState<number>(0);
   const [ttsStatus, setTtsStatus] = useState<string | null>(null);
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
   const [ttsAudioUrl, setTtsAudioUrl] = useState<string | null>(null);
+  const [savingAppointment, setSavingAppointment] = useState(false);
+  const [appointmentMessage, setAppointmentMessage] = useState<string | null>(null);
+  const manualCloseRef = useRef(false);
+  const autoAppointmentTriggeredRef = useRef(false);
   const voiceConfig = prompt?.voiceConfig;
   const instructions = useMemo(() => {
     const base = prompt?.systemPrompt ?? defaultInstructions;
@@ -156,8 +226,16 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
     }
     return hints.length ? `${base}\n\n[语音指引]\n${hints.join('\n')}` : base;
   }, [prompt?.systemPrompt, prompt?.welcomeMessage, voiceConfig?.speakingRate]);
-  const activeModel = modelOverride || prompt?.modelId || fallbackModel;
+  const activeModel = prompt?.modelId || fallbackModel;
   const activeVoice = voiceConfig?.voice;
+  const currentTtsVoiceMeta = useMemo(() => {
+    if (ttsProvider === 'google') {
+      return getGoogleVoices(ttsLanguage).find((voice) => voice.id === ttsVoice);
+    }
+    return openAiVoiceOptions.find((voice) => voice.id === ttsVoice);
+  }, [ttsLanguage, ttsProvider, ttsVoice]);
+  const appointmentEnabled = prompt?.capabilities?.appointmentLogging ?? false;
+
   const speakText = useCallback(
     async (text: string) => {
       if (!ttsEnabled || !text.trim()) return;
@@ -167,6 +245,10 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
           text,
           model: ttsModel,
           voice: ttsVoice,
+          provider: ttsProvider,
+          languageCode: ttsProvider === 'google' ? ttsLanguage : undefined,
+          speakingRate: ttsProvider === 'google' ? ttsSpeakingRate : undefined,
+          pitch: ttsProvider === 'google' ? ttsPitch : undefined,
         });
         if (ttsAudioUrl) {
           URL.revokeObjectURL(ttsAudioUrl);
@@ -191,7 +273,55 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
         setTtsStatus('语音生成失败，请稍后再试。');
       }
     },
-    [ttsAudioUrl, ttsEnabled, ttsModel, ttsVoice],
+    [
+      currentTtsVoiceMeta?.languageCode,
+      ttsAudioUrl,
+      ttsEnabled,
+      ttsModel,
+      ttsPitch,
+      ttsProvider,
+      ttsSpeakingRate,
+      ttsVoice,
+    ],
+  );
+
+  const handleCreateAppointment = useCallback(async () => {
+    if (!appointmentEnabled) {
+      setAppointmentMessage('当前 Prompt 未开启预约功能。');
+      return;
+    }
+    if (!messages.length) {
+      setAppointmentMessage('暂无对话记录，无法生成预约。');
+      return;
+    }
+    setSavingAppointment(true);
+    setAppointmentMessage('正在生成预约记录...');
+    try {
+      const payload = messages.map((message) => ({
+        role: message.role,
+        text: message.content,
+        timestamp: message.timestamp,
+      }));
+      await createAppointmentFromConversation(payload);
+      setAppointmentMessage('预约记录已生成，前往「预约记录」标签查看。');
+      autoAppointmentTriggeredRef.current = true;
+    } catch (error) {
+      console.error('WebSocket 生成预约失败', error);
+      setAppointmentMessage('生成预约记录失败，请稍后再试。');
+    } finally {
+      setSavingAppointment(false);
+    }
+  }, [appointmentEnabled, messages]);
+
+  const maybeTriggerAutoAppointment = useCallback(
+    (content: string) => {
+      if (!appointmentEnabled || autoAppointmentTriggeredRef.current) return;
+      if (containsClosingPhrase(content)) {
+        autoAppointmentTriggeredRef.current = true;
+        void handleCreateAppointment();
+      }
+    },
+    [appointmentEnabled, handleCreateAppointment],
   );
 
   const ensureAssistantMessage = useCallback((responseId: string) => {
@@ -256,9 +386,10 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
       setAssistantTyping(false);
       if (finalText) {
         void speakText(finalText);
+        maybeTriggerAutoAppointment(finalText);
       }
     },
-    [speakText],
+    [maybeTriggerAutoAppointment, speakText],
   );
 
   const handleRealtimeFrame = useCallback(
@@ -276,7 +407,8 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
             }
             break;
           }
-          case 'response.output_text.delta': {
+          case 'response.output_text.delta':
+          case 'response.text.delta': {
             const responseId = (message.response_id as string | undefined) ?? pendingResponseRef.current;
             const delta = getTextDelta(message);
             if (responseId && delta) {
@@ -285,7 +417,9 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
             break;
           }
           case 'response.output_text.done':
-          case 'response.completed': {
+          case 'response.text.done':
+          case 'response.completed':
+          case 'response.done': {
             const responseId =
               (message.response?.id as string | undefined) ??
               (message.response_id as string | undefined) ??
@@ -322,7 +456,12 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
     }
 
     try {
-      const session = await createRealtimeSession({ instructions, model: activeModel, voice: activeVoice });
+      const session = await createRealtimeSession({
+        instructions,
+        model: activeModel,
+        voice: activeVoice,
+        channel: 'websocket',
+      });
       const secret = session.client_secret;
       if (!secret) {
         throw new Error('Realtime 服务返回的临时密钥为空');
@@ -331,7 +470,7 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
       const websocketUrl = session.websocket_url ?? `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(session.model)}`;
       const ws = new WebSocket(websocketUrl, [
         'realtime',
-        `openai-insecure-session.${secret}`,
+        `openai-insecure-api-key.${secret}`,
         'openai-beta.realtime-v1',
       ]);
 
@@ -342,8 +481,15 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
         if (wsRef.current === ws) {
           wsRef.current = null;
         }
-        setConnectionState('error');
-        setSessionError(event.reason || 'Realtime 会话已断开');
+        if (manualCloseRef.current) {
+          manualCloseRef.current = false;
+          setConnectionState('idle');
+          setSessionError(null);
+          setSessionMeta(null);
+        } else {
+          setConnectionState('error');
+          setSessionError(event.reason || 'Realtime 会话已断开');
+        }
       };
       ws.onerror = (event) => {
         console.error('Realtime WS error', event);
@@ -369,7 +515,8 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
     }
   }, [activeModel, activeVoice, handleRealtimeFrame, instructions]);
 
-  const resetConversation = useCallback(() => {
+  const disconnectSession = useCallback(() => {
+    manualCloseRef.current = true;
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
@@ -379,55 +526,97 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
     pendingResponseRef.current = null;
     setMessages([]);
     setAssistantTyping(false);
-    void connectRealtime();
-  }, [connectRealtime]);
+    setSessionMeta(null);
+    setSessionError(null);
+    setConnectionState('idle');
+    autoAppointmentTriggeredRef.current = false;
+    setAppointmentMessage(null);
+  }, []);
 
-  const sendUserMessage = useCallback((text: string, triggerResponse: boolean) => {
+  const clearConversation = useCallback(() => {
+    responseMessageMapRef.current = {};
+    responseContentRef.current = {};
+    pendingResponseRef.current = null;
+    setMessages([]);
+    setAssistantTyping(false);
+    setAppointmentMessage(null);
+    autoAppointmentTriggeredRef.current = false;
+  }, []);
+
+  const sendConversationItem = useCallback((text: string) => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       setSessionError('Realtime 通道未连接，无法发送消息');
-      return;
+      return false;
     }
-    const payload = {
-      type: 'conversation.item.create',
-      item: {
-        type: 'message',
-        role: 'user',
-        content: [
-          {
-            type: 'input_text',
-            text,
-          },
-        ],
-      },
-    };
-    ws.send(JSON.stringify(payload));
-
-    if (triggerResponse) {
-      ws.send(JSON.stringify({ type: 'response.create' }));
-      setAssistantTyping(true);
-    }
+    ws.send(
+      JSON.stringify({
+        type: 'conversation.item.create',
+        item: {
+          type: 'message',
+          role: 'user',
+          content: [
+            {
+              type: 'input_text',
+              text,
+            },
+          ],
+        },
+      }),
+    );
+    return true;
   }, []);
 
   const requestAssistantReply = useCallback(() => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) {
-      setSessionError('Realtime 通道未连接');
+      setSessionError('Realtime 通道未连接，无法发送消息');
       return;
     }
-    ws.send(JSON.stringify({ type: 'response.create' }));
+    ws.send(
+      JSON.stringify({
+        type: 'response.create',
+        response: {
+          modalities: ['text'],
+        },
+      }),
+    );
     setAssistantTyping(true);
   }, []);
 
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmed = input.trim();
+    if (!trimmed || isAssistantTyping || connectionState !== 'connected') return;
+
+    const timestamp = new Date().toISOString();
+    const userMessage: ChatMessage = {
+      id: `user-${timestamp}`,
+      role: 'user',
+      content: trimmed,
+      timestamp,
+    };
+    setMessages((prev) => [...prev, userMessage]);
+    setInput('');
+    const sent = sendConversationItem(trimmed);
+    if (sent && autoReply) {
+      requestAssistantReply();
+    }
+  };
+
   useEffect(() => {
-    void connectRealtime();
     return () => {
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
       }
     };
-  }, [connectRealtime]);
+  }, []);
+
+  useEffect(() => {
+    autoAppointmentTriggeredRef.current = false;
+    setAppointmentMessage(null);
+  }, [prompt?.id]);
 
   useEffect(() => {
     return () => {
@@ -449,6 +638,40 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
     }
   }, [ttsEnabled]);
 
+  useEffect(() => {
+    const providerModels = ttsModelOptions[ttsProvider];
+    setTtsModel((prev) => {
+      if (providerModels.some((option) => option.id === prev)) {
+        return prev;
+      }
+      return providerModels[0]?.id ?? prev;
+    });
+  }, [ttsProvider]);
+
+  useEffect(() => {
+    if (ttsProvider === 'google') {
+      const voices = getGoogleVoices(ttsLanguage);
+      setTtsVoice((prev) => {
+        if (voices.some((option) => option.id === prev)) {
+          return prev;
+        }
+        return voices[0]?.id ?? prev;
+      });
+    } else {
+      setTtsVoice((prev) => {
+        if (openAiVoiceOptions.some((option) => option.id === prev)) {
+          return prev;
+        }
+        return openAiVoiceOptions[0].id;
+      });
+    }
+  }, [ttsLanguage, ttsProvider]);
+
+  useEffect(() => {
+    setTtsSpeakingRate(1);
+    setTtsPitch(0);
+  }, [ttsProvider]);
+
   const stats = useMemo(() => {
     const userTurns = messages.filter((message) => message.role === 'user').length;
     const assistantTurns = messages.filter((message) => message.role === 'assistant').length;
@@ -460,25 +683,6 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
     };
   }, [messages]);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const trimmed = input.trim();
-    if (!trimmed || isAssistantTyping) return;
-
-    const timestamp = new Date().toISOString();
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `user-${timestamp}`,
-        role: 'user',
-        content: trimmed,
-        timestamp,
-      },
-    ]);
-    setInput('');
-    sendUserMessage(trimmed, autoReply);
-  };
-
   const handleQuickPrompt = (prompt: string) => {
     setInput(prompt);
   };
@@ -489,104 +693,140 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
 
   const connectionSummary = connectionTagMap[connectionState];
   const displayModel = sessionMeta?.model ?? activeModel;
+  const providerModelOptions = ttsModelOptions[ttsProvider];
+  const providerVoiceOptions = useMemo(() => {
+    if (ttsProvider === 'google') {
+      return getGoogleVoices(ttsLanguage);
+    }
+    return openAiVoiceOptions;
+  }, [ttsLanguage, ttsProvider]);
 
   return (
-    <div className="test-console">
-      <div className="test-console__column">
-        <Tile className="chat-panel">
-          <div className="chat-panel__header">
+    <div className="ws-console">
+      <div className="ws-console__main">
+        <Tile className="ws-status-card">
+          <div className="ws-status-card__info">
             <Tag type={connectionSummary.type} size="sm">
               {connectionSummary.label}
             </Tag>
-            <span className="chat-panel__helper">
-              模型：{displayModel} · Prompt：{prompt?.name ?? '默认 Prompt'} · Session：
-              {sessionMeta?.id ?? '尚未建立'}
-            </span>
+            <div>
+              <h4>{prompt?.name ?? '默认 Prompt'}</h4>
+              <p>
+                模型：{displayModel} · Session：{sessionMeta?.id ?? '尚未建立'}
+              </p>
+            </div>
           </div>
-          <div className="chat-history" ref={historyRef}>
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`chat-bubble ${message.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-assistant'}`}
-              >
-                <div className="chat-meta">
-                  <Tag type={message.role === 'user' ? 'blue' : 'purple'} size="sm">
-                    {message.role === 'user' ? '我' : '机器人'}
-                  </Tag>
-                  <span>{formatTime(message.timestamp)}</span>
-                  {message.streaming && message.role === 'assistant' && (
-                    <InlineLoading status="active" description="生成中" />
-                  )}
-                </div>
-                <div className="chat-content">{message.content}</div>
-              </div>
-            ))}
-            {isAssistantTyping && !messages.some((msg) => msg.streaming) && (
-              <div className="chat-bubble chat-bubble-assistant">
-                <div className="chat-meta">
-                  <Tag type="purple" size="sm">
-                    机器人
-                  </Tag>
-                  <InlineLoading status="active" description="思考中" />
-                </div>
-              </div>
-            )}
+          <div className="ws-status-card__actions">
+            <Button
+              kind="primary"
+              size="sm"
+              onClick={() => {
+                void connectRealtime();
+              }}
+              disabled={connectionState === 'connecting' || connectionState === 'connected'}
+            >
+              建立连接
+            </Button>
+            <Button
+              kind="ghost"
+              size="sm"
+              onClick={disconnectSession}
+              disabled={connectionState !== 'connected' && connectionState !== 'connecting'}
+            >
+              断开
+            </Button>
+            <Button kind="ghost" size="sm" onClick={clearConversation} disabled={messages.length === 0}>
+              清空对话
+            </Button>
+            {sessionError && <span className="ws-status-card__error">{sessionError}</span>}
           </div>
         </Tile>
-        <Tile>
-          <form className="chat-input-form" onSubmit={handleSubmit}>
-            <TextArea
-              id="test-chat-input"
-              labelText="你想让机器人做什么？"
-              placeholder="例如：请模拟客户提出异议，并帮我迭代回答。"
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              rows={4}
-              disabled={connectionState !== 'connected'}
-            />
-            <div className="chat-actions">
-              <Button kind="ghost" type="button" onClick={resetConversation}>
-                重新开始
-              </Button>
-              {!autoReply && (
-                <Button
-                  kind="secondary"
-                  type="button"
-                  onClick={requestAssistantReply}
-                  disabled={connectionState !== 'connected'}
+        <div className="ws-console__grid">
+          <Tile className="ws-chat-panel">
+            <div className="chat-history" ref={historyRef}>
+              {messages.map((message) => (
+                <div
+                  key={message.id}
+                  className={`chat-bubble ${message.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-assistant'}`}
                 >
-                  让机器人回复
-                </Button>
-              )}
-              <Button type="submit" disabled={!input.trim() || connectionState !== 'connected' || isAssistantTyping}>
-                发送
-              </Button>
-            </div>
-          </form>
-          <div className="quick-prompts">
-            <span className="quick-prompts__label">快捷输入</span>
-            <div className="quick-prompts__list">
-              {quickPrompts.map((prompt) => (
-                <Button key={prompt} kind="tertiary" size="sm" type="button" onClick={() => handleQuickPrompt(prompt)}>
-                  {prompt}
-                </Button>
+                  <div className="chat-meta">
+                    <Tag type={message.role === 'user' ? 'blue' : 'purple'} size="sm">
+                      {message.role === 'user' ? '我' : '机器人'}
+                    </Tag>
+                    <span>{formatTime(message.timestamp)}</span>
+                    {message.streaming && message.role === 'assistant' && (
+                      <InlineLoading status="active" description="生成中" />
+                    )}
+                  </div>
+                  <div className="chat-content">{message.content}</div>
+                </div>
               ))}
+              {isAssistantTyping && !messages.some((msg) => msg.streaming) && (
+                <div className="chat-bubble chat-bubble-assistant">
+                  <div className="chat-meta">
+                    <Tag type="purple" size="sm">
+                      机器人
+                    </Tag>
+                    <InlineLoading status="active" description="思考中" />
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
-        </Tile>
+          </Tile>
+          <Tile className="ws-input-panel">
+            <form className="chat-input-form" onSubmit={handleSubmit}>
+              <TextArea
+                id="test-chat-input"
+                labelText="输入测试内容"
+                placeholder="例如：请模拟客户提出异议，并帮我迭代回答。"
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                rows={5}
+                disabled={connectionState !== 'connected'}
+              />
+              <div className="chat-actions">
+                {!autoReply && (
+                  <Button
+                    kind="secondary"
+                    type="button"
+                    onClick={requestAssistantReply}
+                    disabled={connectionState !== 'connected'}
+                  >
+                    让机器人回复
+                  </Button>
+                )}
+                <Button type="submit" disabled={!input.trim() || connectionState !== 'connected' || isAssistantTyping}>
+                  发送
+                </Button>
+              </div>
+            </form>
+            <div className="ws-quick-prompts">
+              <span>快捷提示</span>
+              <div className="ws-quick-prompts__chips">
+                {quickPrompts.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    className="ws-quick-prompts__chip"
+                    onClick={() => handleQuickPrompt(item)}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </Tile>
+        </div>
       </div>
-      <div className="test-console__column">
+      <div className="ws-console__side">
         <Tile className="session-panel">
           <div>
             <h3>会话状态</h3>
-            <p className="session-panel__helper">使用该面板跟踪实时连接、自动回复策略与多轮对话指标。</p>
-            {sessionError && <p className="session-panel__error">{sessionError}</p>}
+            <p className="session-panel__helper">在这里查看实时连接与轮次情况，可随时切换自动回复。</p>
           </div>
           <dl className="session-meta">
             <dt>会话 ID</dt>
             <dd>{sessionMeta?.id ?? '尚未建立'}</dd>
-            <dt>模型</dt>
-            <dd>{activeModel}</dd>
             <dt>连接状态</dt>
             <dd>{connectionSummary.label}</dd>
             <dt>Session 失效</dt>
@@ -611,26 +851,32 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
         </Tile>
         <Tile className="session-panel">
           <div>
-            <h3>模型 & 语音配置</h3>
-            <p className="session-panel__helper">在此选择聊天模型和 TTS 语音，方便测试不同组合。</p>
+            <h3>语音配置</h3>
+            <p className="session-panel__helper">这里仅控制文本转语音，聊天模型始终跟随 Prompt 设置。</p>
           </div>
           <Select
-            id="ws-model-selector"
-            labelText="聊天模型"
-            value={modelOverride || '__prompt__'}
-            onChange={(event) => {
-              const value = event.target.value;
-              setModelOverride(value === '__prompt__' ? '' : value);
-            }}
+            id="tts-provider-selector"
+            labelText="TTS 服务商"
+            value={ttsProvider}
+            onChange={(event) => setTtsProvider(event.target.value as (typeof ttsProviderOptions)[number]['id'])}
           >
-            <SelectItem
-              value="__prompt__"
-              text={`跟随 Prompt · ${prompt?.modelId ?? fallbackModel}`}
-            />
-            {availableConversationModels.map((model) => (
-              <SelectItem key={model.id} value={model.id} text={`${model.name} (${model.id})`} />
+            {ttsProviderOptions.map((provider) => (
+              <SelectItem key={provider.id} value={provider.id} text={provider.label} />
             ))}
           </Select>
+          {ttsProvider === 'google' && (
+            <Select
+              id="tts-language-selector"
+              labelText="语言"
+              value={ttsLanguage}
+              onChange={(event) => setTtsLanguage(event.target.value)}
+              disabled={!ttsEnabled}
+            >
+              {googleLanguageOptions.map((language) => (
+                <SelectItem key={language.code} value={language.code} text={`${language.label} · ${language.code}`} />
+              ))}
+            </Select>
+          )}
           <Toggle
             id="tts-enable-toggle"
             labelText="启用文本转语音"
@@ -646,7 +892,7 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
             onChange={(event) => setTtsModel(event.target.value)}
             disabled={!ttsEnabled}
           >
-            {ttsModelOptions.map((option) => (
+            {providerModelOptions.map((option) => (
               <SelectItem key={option.id} value={option.id} text={option.label} />
             ))}
           </Select>
@@ -657,15 +903,65 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
             onChange={(event) => setTtsVoice(event.target.value)}
             disabled={!ttsEnabled}
           >
-            {ttsVoiceOptions.map((voice) => (
-              <SelectItem key={voice} value={voice} text={voice} />
+            {providerVoiceOptions.map((voice) => (
+              <SelectItem key={voice.id} value={voice.id} text={voice.label} />
             ))}
           </Select>
+          {ttsProvider === 'google' && (
+            <>
+              <NumberInput
+                id="tts-speaking-rate"
+                label="语速（0.25 ~ 4.0）"
+                min={0.25}
+                max={4}
+                step={0.1}
+                value={ttsSpeakingRate}
+                onChange={(_, { value }) => {
+                  const parsed = Number(value);
+                  if (!Number.isNaN(parsed)) {
+                    setTtsSpeakingRate(Math.min(4, Math.max(0.25, parsed)));
+                  }
+                }}
+                disabled={!ttsEnabled}
+              />
+              <NumberInput
+                id="tts-pitch"
+                label="音调（-20 ~ 20 半音）"
+                min={-20}
+                max={20}
+                step={0.5}
+                value={ttsPitch}
+                onChange={(_, { value }) => {
+                  const parsed = Number(value);
+                  if (!Number.isNaN(parsed)) {
+                    setTtsPitch(Math.min(20, Math.max(-20, parsed)));
+                  }
+                }}
+                disabled={!ttsEnabled}
+              />
+            </>
+          )}
           <div className="tts-audio-panel">
             <p className="session-panel__helper">{ttsStatus ?? '关闭后仅输出文本，启用后可试听语音。'}</p>
             <audio ref={ttsAudioRef} controls className="tts-audio-player" />
           </div>
         </Tile>
+        {appointmentEnabled && (
+          <Tile className="session-panel">
+            <div>
+              <h3>预约记录</h3>
+              <p className="session-panel__helper">将当前对话整理成预约摘要并写入后端记录。</p>
+            </div>
+            {appointmentMessage && <p className="session-panel__helper">{appointmentMessage}</p>}
+            <Button
+              kind="primary"
+              onClick={handleCreateAppointment}
+              disabled={!messages.length || savingAppointment || connectionState === 'connecting'}
+            >
+              {savingAppointment ? '生成中...' : '生成预约记录'}
+            </Button>
+          </Tile>
+        )}
       </div>
     </div>
   );

@@ -8,9 +8,11 @@ import { SipConsole } from './components/SipConsole';
 import { useAppState } from '../../state/AppStateContext';
 import { PromptTemplate } from '../../types';
 
+const PROMPT_STORAGE_KEY = 'testHub.selectedPromptId';
+
 export function TestHub() {
   const { prompts } = useAppState();
-  const [selectedPromptId, setSelectedPromptId] = useState<string | null>(() => prompts[0]?.id ?? null);
+  const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
 
   const selectedPrompt = useMemo<PromptTemplate | undefined>(() => {
     if (!prompts.length) {
@@ -20,10 +22,36 @@ export function TestHub() {
   }, [prompts, selectedPromptId]);
 
   useEffect(() => {
-    if (!selectedPrompt && prompts.length) {
-      setSelectedPromptId(prompts[0].id);
+    if (!prompts.length) return;
+    if (typeof window === 'undefined') {
+      setSelectedPromptId((prev) => (prev && prompts.some((prompt) => prompt.id === prev) ? prev : prompts[0]?.id ?? null));
+      return;
     }
-  }, [prompts, selectedPrompt]);
+    setSelectedPromptId((prev) => {
+      if (prev && prompts.some((prompt) => prompt.id === prev)) {
+        return prev;
+      }
+      try {
+        const stored = window.localStorage.getItem(PROMPT_STORAGE_KEY);
+        if (stored && prompts.some((prompt) => prompt.id === stored)) {
+          return stored;
+        }
+      } catch (error) {
+        console.warn('读取 Prompt 选择缓存失败', error);
+      }
+      return prompts[0]?.id ?? null;
+    });
+  }, [prompts]);
+
+  useEffect(() => {
+    if (!selectedPromptId) return;
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(PROMPT_STORAGE_KEY, selectedPromptId);
+    } catch (error) {
+      console.warn('保存 Prompt 选择缓存失败', error);
+    }
+  }, [selectedPromptId]);
 
   return (
     <section className="page-section">

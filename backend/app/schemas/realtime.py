@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -9,6 +9,8 @@ class RealtimeSessionRequest(BaseModel):
     model: str | None = Field(default=None, alias="model_id")
     voice: str | None = None
     instructions: str | None = None
+    channel: Literal["websocket", "webrtc", "sip"] | None = None
+    turn_detection: dict[str, Any] | None = None
     sip: dict[str, Any] | None = None
 
 

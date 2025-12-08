@@ -13,6 +13,8 @@ export type RealtimeSessionParams = {
   model?: string;
   voice?: string;
   instructions?: string;
+  channel?: 'websocket' | 'webrtc' | 'sip';
+  turn_detection?: Record<string, unknown> | null;
   sip?: Record<string, unknown>;
 };
 

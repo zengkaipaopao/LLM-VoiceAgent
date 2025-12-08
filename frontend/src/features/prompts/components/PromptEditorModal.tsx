@@ -12,13 +12,17 @@ import {
   Toggle,
 } from '@carbon/react';
 
-import { ModelInfo, PromptFormValues, PromptTemplate, VoiceConfig } from '../../../types';
+import { ModelInfo, PromptCapabilities, PromptFormValues, PromptTemplate, VoiceConfig } from '../../../types';
 import styles from './PromptEditorModal.module.css';
 
 const defaultVoiceConfig: VoiceConfig = {
   voice: 'alloy',
   speakingRate: 1,
   noiseSuppression: true,
+};
+
+const defaultCapabilities: PromptCapabilities = {
+  appointmentLogging: false,
 };
 
 const voicePresets = [
@@ -54,6 +58,10 @@ const buildDraft = (
     modelId: fallbackModelId,
     systemPrompt: prompt?.systemPrompt ?? '',
     welcomeMessage: prompt?.welcomeMessage ?? '',
+    capabilities: {
+      ...defaultCapabilities,
+      ...(prompt?.capabilities ?? {}),
+    },
     version: prompt?.version ?? 'v1.0.0',
     voiceConfig: { ...defaultVoiceConfig, ...(prompt?.voiceConfig ?? {}) },
   };
@@ -103,6 +111,7 @@ export function PromptEditorModal({ open, mode, prompt, models, onClose, onSave 
         {
           ...draft,
           voiceConfig: activeVoiceConfig,
+          capabilities: draft.capabilities ?? defaultCapabilities,
         },
         prompt?.id,
       );
@@ -174,6 +183,28 @@ export function PromptEditorModal({ open, mode, prompt, models, onClose, onSave 
             rows={4}
             value={draft.welcomeMessage ?? ''}
             onChange={(event) => setDraft({ ...draft, welcomeMessage: event.target.value })}
+          />
+          <div className={styles.sectionHeader}>
+            <h4 className={styles.sectionTitle}>功能配置</h4>
+            <p className={styles.sectionSubtitle}>按业务需求开启特定工具，例如预约记录写入。</p>
+          </div>
+          <Toggle
+            id="modal-enable-appointment"
+            labelText="生成预约记录"
+            labelA="关闭"
+            labelB="开启"
+            toggled={draft.capabilities?.appointmentLogging ?? false}
+            onToggle={() =>
+              setDraft((prev) => ({
+                ...prev,
+                capabilities: {
+                  ...defaultCapabilities,
+                  ...(prev.capabilities ?? {}),
+                  appointmentLogging: !(prev.capabilities?.appointmentLogging ?? false),
+                },
+              }))
+            }
+            helperText="开启后，测试页面会展示“生成预约记录”按钮并允许落盘通话摘要。"
           />
           <div className={styles.voiceConfig}>
             <div className={styles.voiceConfigHeader}>
