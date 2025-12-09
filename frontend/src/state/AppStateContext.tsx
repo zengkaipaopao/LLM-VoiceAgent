@@ -17,6 +17,7 @@ import { useAgentsStore } from './stores/useAgentsStore';
 type AppState = {
   calls: CallLog[];
   reservations: ReservationRecord[];
+  reloadReservations: () => Promise<void>;
   prompts: PromptTemplate[];
   models: ModelInfo[];
   allowedModels: string[];
@@ -54,7 +55,7 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
     createCustomModel,
     deleteCustomModel,
   } = useModelsStore();
-  const { reservations, loadingReservations } = useReservationsStore();
+  const { reservations, loadingReservations, reloadReservations } = useReservationsStore();
   const { calls } = useCallsStore();
   const { agents } = useAgentsStore();
 
@@ -63,6 +64,7 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
       calls,
       prompts,
       reservations,
+      reloadReservations,
       models,
       allowedModels,
       agents,
@@ -84,6 +86,7 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
       models,
       prompts,
       reservations,
+      reloadReservations,
       calls,
       agents,
       createPromptTemplate,

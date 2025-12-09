@@ -4,18 +4,13 @@ import logging
 from typing import Callable
 
 from app.core.config import settings
+from app.core.utils import split_models
 from app.repositories.models import ModelRepositoryError, model_repository
 from app.schemas.models import ModelInfo
 from google import generativeai as genai  # type: ignore
 from openai import OpenAI
 
 logger = logging.getLogger(__name__)
-
-
-def _split_models(config_value: str | None) -> list[str]:
-    if not config_value:
-        return []
-    return [m.strip() for m in config_value.split(",") if m.strip()]
 
 
 class ModelRegistry:
@@ -72,7 +67,7 @@ class ModelRegistry:
         return [ModelInfo(id=i, name=i, provider="openai") for i in ids]
 
     def _fetch_gemini_models(self) -> list[ModelInfo]:
-        allowlist = _split_models(settings.gemini_models or settings.gemini_model)
+        allowlist = split_models(settings.gemini_models or settings.gemini_model)
         try:
             models = genai.list_models()
             ids = [
@@ -90,7 +85,7 @@ class ModelRegistry:
 
     def _fetch_claude_models(self) -> list[ModelInfo]:
         # Anthropic 当前无列表接口，使用配置的模型 ID
-        configured = _split_models(settings.claude_models)
+        configured = split_models(settings.claude_models)
         if not configured:
             raise RuntimeError("未配置 CLAUDE_MODELS，无法列出 Claude 模型。")
         return [ModelInfo(id=i, name=i, provider="anthropic") for i in configured]

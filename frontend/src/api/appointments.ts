@@ -11,6 +11,7 @@ type ApiAppointment = {
   amount: string;
   address: string;
   summary: string;
+  extra_request?: string;
   raw_messages: string;
   operation: 'create' | 'update' | 'delete';
 };
@@ -25,6 +26,7 @@ const mapRecord = (record: ApiAppointment): ReservationRecord => ({
   amount: record.amount,
   address: record.address,
   summary: record.summary,
+  extraRequest: record.extra_request ?? '',
   rawMessages: record.raw_messages,
   operation: record.operation,
 });
@@ -38,6 +40,7 @@ export type AppointmentRecordPayload = {
   amount: string;
   address: string;
   summary: string;
+  extraRequest: string;
   rawMessages: string;
   operation: 'create' | 'update' | 'delete';
 };
@@ -57,6 +60,7 @@ export async function submitAppointmentRecord(payload: AppointmentRecordPayload)
     amount: payload.amount,
     address: payload.address,
     summary: payload.summary,
+    extra_request: payload.extraRequest,
     raw_messages: payload.rawMessages,
     operation: payload.operation,
   });

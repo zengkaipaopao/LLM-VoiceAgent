@@ -4,18 +4,13 @@ from typing import Sequence
 import logging
 from anthropic import AsyncAnthropic
 from app.core.config import settings
+from app.core.utils import split_models
 from app.schemas.chat import ChatRequest, ChatResponse
 from google import generativeai as genai  # type: ignore
 from openai import AsyncOpenAI
 
 
 logger = logging.getLogger(__name__)
-
-
-def _split_models(value: str | None) -> list[str]:
-    if not value:
-        return []
-    return [m.strip() for m in value.split(",") if m.strip()]
 
 
 class ChatService:
@@ -33,11 +28,11 @@ class ChatService:
         model_id = payload.model_id
         messages = payload.messages
         try:
-            if model_id in _split_models(settings.openai_models or "") and self._openai_client:
+            if model_id in split_models(settings.openai_models) and self._openai_client:
                 reply = await self._chat_openai(model_id, messages)
-            elif model_id in _split_models(settings.gemini_models or settings.gemini_model) and settings.gemini_api_key:
+            elif model_id in split_models(settings.gemini_models or settings.gemini_model) and settings.gemini_api_key:
                 reply = await self._chat_gemini(model_id, messages)
-            elif model_id in _split_models(settings.claude_models or "") and self._anthropic_client:
+            elif model_id in split_models(settings.claude_models) and self._anthropic_client:
                 reply = await self._chat_claude(model_id, messages)
             else:
                 reply = "未配置可用的模型或 API Key。"

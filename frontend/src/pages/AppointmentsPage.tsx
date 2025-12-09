@@ -43,6 +43,7 @@ const headers = [
   { key: 'amount', header: '分量' },
   { key: 'address', header: '住所' },
   { key: 'summary', header: '要約' },
+  { key: 'extraRequest', header: '追加要望' },
   { key: 'rawMessages', header: '原文ログ' },
   { key: 'operation', header: '操作' },
 ];
@@ -57,6 +58,7 @@ const detailLabels: Record<keyof ReservationRecord, string> = {
   amount: '分量',
   address: '住所',
   summary: '要約',
+  extraRequest: '追加要望',
   rawMessages: '原文ログ',
   operation: '操作タイプ',
 };
@@ -137,6 +139,11 @@ export function AppointmentsPage() {
                   <TableCell>
                     <span className={styles.tableCell} title={record.summary}>
                       {record.summary}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <span className={styles.tableCell} title={record.extraRequest}>
+                      {record.extraRequest || '（なし）'}
                     </span>
                   </TableCell>
                   <TableCell>

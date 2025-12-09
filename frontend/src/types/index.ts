@@ -76,6 +76,7 @@ export interface ReservationRecord {
   amount: string;
   address: string;
   summary: string;
+  extraRequest: string;
   rawMessages: string;
   operation: 'create' | 'update' | 'delete';
 }

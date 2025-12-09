@@ -8,28 +8,23 @@ from pydantic import BaseModel
 AppointmentOperation = Literal["create", "update", "delete"]
 
 
-class AppointmentRecord(BaseModel):
+class AppointmentBase(BaseModel):
+    timestamp: str
+    caller_name: str
+    company: str
+    appointment: str
+    category: str
+    amount: str
+    address: str
+    summary: str
+    extra_request: str = ""
+    raw_messages: str
+    operation: AppointmentOperation = "create"
+
+
+class AppointmentRecord(AppointmentBase):
     id: str
-    timestamp: str
-    caller_name: str
-    company: str
-    appointment: str
-    category: str
-    amount: str
-    address: str
-    summary: str
-    raw_messages: str
-    operation: AppointmentOperation = "create"
 
 
-class AppointmentCreateRequest(BaseModel):
-    timestamp: str
-    caller_name: str
-    company: str
-    appointment: str
-    category: str
-    amount: str
-    address: str
-    summary: str
-    raw_messages: str
-    operation: AppointmentOperation = "create"
+class AppointmentCreateRequest(AppointmentBase):
+    pass

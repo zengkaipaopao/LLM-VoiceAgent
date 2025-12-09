@@ -1,16 +1,19 @@
 from datetime import datetime
 
-from app.repositories.calls import call_repository
+from app.repositories.calls import CallRepository, call_repository
 from app.schemas.calls import CallCreate, CallLog
 
 
 class CallFlowService:
+    def __init__(self, repository: CallRepository | None = None) -> None:
+        self._repository = repository or call_repository
+
     def list_calls(self) -> list[CallLog]:
-        return list(call_repository.list())
+        return list(self._repository.list())
 
     def create_outbound_call(self, payload: CallCreate) -> CallLog:
         call = CallLog(
-            id=f"call_{len(call_repository.list()) + 1}",
+            id=f"call_{len(self._repository.list()) + 1}",
             direction="outbound",
             counterpart=payload.counterpart,
             started_at=datetime.now(),
@@ -18,7 +21,7 @@ class CallFlowService:
             status="ongoing",
             summary=None,
         )
-        return call_repository.create(call)
+        return self._repository.create(call)
 
 
 call_flow_service = CallFlowService()

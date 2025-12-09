@@ -10,9 +10,10 @@ export type ParsedAppointment = {
   amount: string;
   address: string;
   summary: string;
+  extraRequest: string;
 };
 
-const JSON_BLOCK_REGEX = /```json\s*({[\s\S]+?})\s*```/i;
+const JSON_BLOCK_REGEX = /```(?:json)?\s*({[\s\S]+?})\s*```/i;
 
 const normalizeOperation = (value?: string): ParsedAppointment['operation'] => {
   const normalized = (value ?? '').toLowerCase();
@@ -52,17 +53,31 @@ export const extractAppointmentFromText = (text: string): ParsedAppointment | nu
   if (!jsonString) return null;
   try {
     const parsed = JSON.parse(jsonString);
-    return {
+    const data: ParsedAppointment = {
       operation: normalizeOperation(parsed.operation ?? parsed.action),
       timestamp: pickString(parsed, ['timestamp', 'time'], ''),
-      callerName: pickString(parsed, ['caller_name', 'callerName', 'name'], '未提供'),
-      company: pickString(parsed, ['company', 'company_name', 'companyName'], '未提供'),
-      appointment: pickString(parsed, ['appointment', 'desired_time', 'desiredTime'], '未提供'),
-      category: pickString(parsed, ['category', 'item'], '未提供'),
-      amount: pickString(parsed, ['amount', 'quantity'], '未提供'),
-      address: pickString(parsed, ['address', 'location'], '未提供'),
-      summary: pickString(parsed, ['summary', 'note'], '未提供'),
+      callerName: pickString(parsed, ['caller_name', 'callerName', 'name'], ''),
+      company: pickString(parsed, ['company', 'company_name', 'companyName'], ''),
+      appointment: pickString(parsed, ['appointment', 'desired_time', 'desiredTime'], ''),
+      category: pickString(parsed, ['category', 'item'], ''),
+      amount: pickString(parsed, ['amount', 'quantity'], ''),
+      address: pickString(parsed, ['address', 'location'], ''),
+      summary: pickString(parsed, ['summary', 'note'], ''),
+      extraRequest: pickString(parsed, ['extra_request', 'additional_request', 'additionalRequest'], ''),
     };
+    const required = [
+      data.callerName,
+      data.company,
+      data.appointment,
+      data.category,
+      data.amount,
+      data.address,
+      data.extraRequest,
+    ];
+    if (required.some((value) => !value)) {
+      return null;
+    }
+    return data;
   } catch {
     return null;
   }
@@ -75,9 +90,14 @@ export type TranscriptEntry = {
 };
 
 export const buildRawTranscript = (entries: TranscriptEntry[]): string => {
-  return entries
-    .map((entry) => `[${entry.timestamp ?? '--'}][${entry.role}] ${entry.text}`)
-    .join('\n');
+  const serialized = entries.map((entry) =>
+    JSON.stringify({
+      role: entry.role,
+      text: entry.text,
+      ts: entry.timestamp ?? new Date().toISOString(),
+    }),
+  );
+  return serialized.join(', ');
 };
 
 export const composeAppointmentPayload = (
@@ -92,6 +112,7 @@ export const composeAppointmentPayload = (
   category: parsed.category,
   amount: parsed.amount,
   address: parsed.address,
-  summary: parsed.summary,
+  summary: parsed.summary || '要約未設定',
+  extraRequest: parsed.extraRequest,
   rawMessages,
 });

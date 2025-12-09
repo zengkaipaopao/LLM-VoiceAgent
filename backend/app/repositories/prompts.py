@@ -1,37 +1,20 @@
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from pathlib import Path
-from threading import Lock
 from typing import Any
 from uuid import uuid4
 
+from app.repositories.base import JsonFileRepository
 from app.schemas.prompts import PromptCapabilities, PromptCreate, PromptTemplate, PromptUpdate, VoiceConfig
 
 
-class PromptRepository:
+class PromptRepository(JsonFileRepository):
     def __init__(self, data_file: Path | None = None) -> None:
-        base_dir = Path(__file__).resolve().parents[2]
-        self._data_file = data_file or base_dir / "data" / "prompts.json"
-        self._lock = Lock()
-        self._data_file.parent.mkdir(parents=True, exist_ok=True)
-        if not self._data_file.exists():
-            self._write_file([])
-
-    def _read_file(self) -> list[dict[str, Any]]:
-        if not self._data_file.exists():
-            return []
-        raw = self._data_file.read_text(encoding="utf-8")
-        if not raw.strip():
-            return []
-        return json.loads(raw)
-
-    def _write_file(self, payload: list[dict[str, Any]]) -> None:
-        self._data_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        super().__init__("prompts.json", data_file=data_file)
 
     def list(self) -> list[PromptTemplate]:
-        items = self._read_file()
+        items = self._read_json()
         updated = False
         for item in items:
             if "capabilities" not in item:
@@ -46,12 +29,12 @@ class PromptRepository:
                     item["capabilities"] = normalized
                     updated = True
         if updated:
-            self._write_file(items)
+            self._write_json(items)
         return [PromptTemplate(**item) for item in items]
 
     def create(self, payload: PromptCreate) -> PromptTemplate:
         with self._lock:
-            items = self._read_file()
+            items = self._read_json()
             prompt_id = f"prompt_{uuid4().hex[:8]}"
             now = datetime.utcnow().isoformat()
             if isinstance(payload.capabilities, PromptCapabilities):
@@ -74,12 +57,12 @@ class PromptRepository:
                 "capabilities": capabilities,
             }
             items.append(record)
-            self._write_file(items)
+            self._write_json(items)
         return PromptTemplate(**record)
 
     def update(self, prompt_id: str, payload: PromptUpdate) -> PromptTemplate:
         with self._lock:
-            items = self._read_file()
+            items = self._read_json()
             target = next((item for item in items if item["id"] == prompt_id), None)
             if not target:
                 raise KeyError(prompt_id)
@@ -104,16 +87,16 @@ class PromptRepository:
                 else:
                     target["capabilities"] = PromptCapabilities(**payload.capabilities).model_dump()
             target["updated_at"] = datetime.utcnow().isoformat()
-            self._write_file(items)
+            self._write_json(items)
         return PromptTemplate(**target)
 
     def delete(self, prompt_id: str) -> None:
         with self._lock:
-            items = self._read_file()
+            items = self._read_json()
             filtered = [item for item in items if item["id"] != prompt_id]
             if len(filtered) == len(items):
                 raise KeyError(prompt_id)
-            self._write_file(filtered)
+            self._write_json(filtered)
 
 
 prompt_repository = PromptRepository()
