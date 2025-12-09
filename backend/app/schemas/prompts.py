@@ -24,6 +24,7 @@ class PromptTemplate(BaseModel):
     updated_at: datetime
     version: str
     capabilities: PromptCapabilities = Field(default_factory=PromptCapabilities)
+    instructions: str | None = None
 
 
 class PromptCreate(BaseModel):

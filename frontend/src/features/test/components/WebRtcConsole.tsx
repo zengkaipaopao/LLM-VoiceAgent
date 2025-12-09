@@ -20,19 +20,13 @@ type ConsoleLog = {
 };
 
 const defaultInstructions =
-  '通过 WebRTC 与来电者保持双向语音 + DataChannel，且实时使用中文解释你的推理。';
+  'Use WebRTC to maintain bidirectional audio and data control, narrate your reasoning in real time, and keep the experience professional.';
 const fallbackModel = 'gpt-4o-realtime-preview-2024-12-17';
 
-const AUTO_APPOINTMENT_PHRASES = [
-  'ご利用ありがとうございました',
-  'ご用命ありがとうございました',
-  '承りました',
-  '記録を行います',
-  '記録いたします',
-];
+const FINAL_CONFIRMATION_PHRASES = ['ご予約内容を受付いたしました', 'ご利用ありがとうございます'];
 
-const containsClosingPhrase = (text: string) =>
-  AUTO_APPOINTMENT_PHRASES.some((phrase) => text.includes(phrase));
+const containsClosingPhrase = (text: string | null) =>
+  Boolean(text) && FINAL_CONFIRMATION_PHRASES.every((phrase) => text!.includes(phrase));
 
 const extractRealtimeText = (payload: string): string | null => {
   try {
@@ -88,28 +82,10 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
   const structuredAppointmentRef = useRef<ParsedAppointment | null>(null);
   const voiceConfig = prompt?.voiceConfig;
   const appointmentEnabled = prompt?.capabilities?.appointmentLogging ?? false;
-  const instructions = useMemo(() => {
-    const base = prompt?.systemPrompt ?? defaultInstructions;
-    const welcome = prompt?.welcomeMessage?.trim();
-    const hints: string[] = [];
-    if (welcome) {
-      hints.push(`连接建立后先向用户播报：${welcome}`);
-    }
-    if (voiceConfig?.voice) {
-      hints.push(`合成语音请使用 ${voiceConfig.voice} 声线。`);
-    }
-    if (voiceConfig?.speakingRate) {
-      hints.push(`请将语速控制在 ${voiceConfig.speakingRate} 倍左右。`);
-    }
-    if (appointmentEnabled) {
-      hints.push(
-        `[预约记录输出规则]
-- 信息齐全后，请输出如下 JSON 代码块（使用三个反引号包裹），字段：operation（create/ update/ delete）、timestamp、caller_name、company、appointment、category、amount、address、summary。
-- JSON 输出完毕后，继续以自然语言确认“已记录”。`,
-      );
-    }
-    return hints.length ? `${base}\n\n[语音指引]\n${hints.join('\n')}` : base;
-  }, [appointmentEnabled, prompt?.systemPrompt, prompt?.welcomeMessage, voiceConfig?.speakingRate]);
+  const instructions = useMemo(
+    () => prompt?.instructions || prompt?.systemPrompt || defaultInstructions,
+    [prompt?.instructions, prompt?.systemPrompt],
+  );
   const activeModel = prompt?.modelId ?? fallbackModel;
   const activeVoice = voiceConfig?.voice;
   const noiseSuppressionEnabled = voiceConfig?.noiseSuppression ?? true;
@@ -142,6 +118,19 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
     },
     [appointmentEnabled],
   );
+
+  const cleanupConnection = useCallback(() => {
+    dataChannelRef.current?.close();
+    dataChannelRef.current = null;
+    peerRef.current?.close();
+    peerRef.current = null;
+    localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    localStreamRef.current = null;
+    setRtcState('idle');
+    structuredAppointmentRef.current = null;
+    autoAppointmentTriggeredRef.current = false;
+    hasSavedRef.current = false;
+  }, []);
 
   const handleCreateAppointment = useCallback(
     async (options?: { auto?: boolean }) => {
@@ -190,6 +179,9 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
             ? `通话结束，已完成${structured.operation === 'create' ? '新增预约' : structured.operation === 'update' ? '修改预约' : '取消预约'}。`
             : '预约记录已生成，可在“预约记录”页面查看。',
         );
+        if (options?.auto) {
+          cleanupConnection();
+        }
       } catch (err) {
         console.error('创建预约记录失败', err);
         setAppointmentMessage('生成预约记录失败，请稍后再试。');
@@ -198,21 +190,8 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
         setSavingAppointment(false);
       }
     },
-    [appointmentEnabled, logs],
+    [appointmentEnabled, cleanupConnection, logs],
   );
-
-  const cleanupConnection = useCallback(() => {
-    dataChannelRef.current?.close();
-    dataChannelRef.current = null;
-    peerRef.current?.close();
-    peerRef.current = null;
-    localStreamRef.current?.getTracks().forEach((track) => track.stop());
-    localStreamRef.current = null;
-    setRtcState('idle');
-    structuredAppointmentRef.current = null;
-    autoAppointmentTriggeredRef.current = false;
-    hasSavedRef.current = false;
-  }, []);
 
   const setupRemoteAudio = useCallback((pc: RTCPeerConnection) => {
     const remoteStream = new MediaStream();

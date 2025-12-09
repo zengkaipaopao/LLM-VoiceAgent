@@ -21,24 +21,12 @@ export function SipConsole({ prompt }: SipConsoleProps) {
   const [status, setStatus] = useState<SipState>('idle');
   const [error, setError] = useState<string | null>(null);
   const [sessionInfo, setSessionInfo] = useState<{ id: string; client_secret: string; model: string } | null>(null);
-  const voiceConfig = prompt?.voiceConfig;
-  const instructions = useMemo(() => {
-    const base = prompt?.systemPrompt ?? defaultInstructions;
-    const welcome = prompt?.welcomeMessage?.trim();
-    const hints: string[] = [];
-    if (welcome) {
-      hints.push(`当电话接通后，请首先说：${welcome}`);
-    }
-    if (voiceConfig?.voice) {
-      hints.push(`合成语音请使用 ${voiceConfig.voice} 声线。`);
-    }
-    if (voiceConfig?.speakingRate) {
-      hints.push(`控制语速约为 ${voiceConfig.speakingRate} 倍，保持口吻一致。`);
-    }
-    return hints.length ? `${base}\n\n[语音指引]\n${hints.join('\n')}` : base;
-  }, [prompt?.systemPrompt, prompt?.welcomeMessage, voiceConfig?.speakingRate]);
+  const instructions = useMemo(
+    () => prompt?.instructions || prompt?.systemPrompt || defaultInstructions,
+    [prompt?.instructions, prompt?.systemPrompt],
+  );
   const activeModel = prompt?.modelId ?? fallbackModel;
-  const activeVoice = voiceConfig?.voice;
+  const activeVoice = prompt?.voiceConfig?.voice;
 
   const handleProvision = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

@@ -6,6 +6,7 @@ type ApiPrompt = {
   name: string;
   model_id: string;
   system_prompt: string;
+  instructions?: string;
   welcome_message?: string;
   enable_appointment_logging?: boolean;
   capabilities?: {
@@ -43,6 +44,7 @@ const mapPrompt = (prompt: ApiPrompt): PromptTemplate => ({
   name: prompt.name,
   modelId: prompt.model_id,
   systemPrompt: prompt.system_prompt,
+  instructions: prompt.instructions ?? prompt.system_prompt,
   welcomeMessage: prompt.welcome_message ?? '',
   capabilities: {
     appointmentLogging:

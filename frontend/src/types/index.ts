@@ -16,6 +16,7 @@ export interface PromptTemplate {
   name: string;
   modelId: string;
   systemPrompt: string;
+  instructions: string;
   welcomeMessage: string;
   capabilities: PromptCapabilities;
   voiceConfig?: VoiceConfig;
