@@ -58,7 +58,6 @@ const buildDraft = (
     name: prompt?.name ?? '',
     modelId: fallbackModelId,
     systemPrompt: prompt?.systemPrompt ?? '',
-    welcomeMessage: prompt?.welcomeMessage ?? '',
     capabilities: {
       ...defaultCapabilities,
       ...(prompt?.capabilities ?? {}),
@@ -169,7 +168,7 @@ export function PromptEditorModal({ open, mode, prompt, models, onClose, onSave 
           />
           <div className={styles.sectionHeader}>
             <h4 className={styles.sectionTitle}>对话策略</h4>
-            <p className={styles.sectionSubtitle}>系统 Prompt 控制总体行为，欢迎语决定连接后第一句话。</p>
+            <p className={styles.sectionSubtitle}>系统 Prompt 控制总体行为与欢迎语、结束语、流程引导，请在此处写完整的提示文案。</p>
           </div>
           <TextArea
             id="modal-prompt-system"
@@ -177,14 +176,6 @@ export function PromptEditorModal({ open, mode, prompt, models, onClose, onSave 
             rows={8}
             value={draft.systemPrompt}
             onChange={(event) => setDraft({ ...draft, systemPrompt: event.target.value })}
-          />
-          <TextArea
-            id="modal-prompt-welcome"
-            labelText="欢迎语"
-            helperText="会话连接成功后用于自动播报的第一句话，可引导用户进入正题。"
-            rows={4}
-            value={draft.welcomeMessage ?? ''}
-            onChange={(event) => setDraft({ ...draft, welcomeMessage: event.target.value })}
           />
           <div className={styles.sectionHeader}>
             <h4 className={styles.sectionTitle}>功能配置</h4>

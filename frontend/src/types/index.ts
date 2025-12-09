@@ -17,7 +17,8 @@ export interface PromptTemplate {
   modelId: string;
   systemPrompt: string;
   instructions: string;
-  welcomeMessage: string;
+  welcomeMessage?: string;
+  closingMessage?: string;
   capabilities: PromptCapabilities;
   voiceConfig?: VoiceConfig;
   updatedAt: string;
@@ -28,7 +29,8 @@ export interface PromptFormValues {
   name: string;
   modelId: string;
   systemPrompt: string;
-  welcomeMessage: string;
+  welcomeMessage?: string;
+  closingMessage?: string;
   capabilities: PromptCapabilities;
   version: string;
   voiceConfig?: VoiceConfig;

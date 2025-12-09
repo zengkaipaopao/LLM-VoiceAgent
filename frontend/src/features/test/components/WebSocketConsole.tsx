@@ -18,6 +18,7 @@ import { sanitizeAssistantContent } from '../utils/assistant';
 const quickPrompts = [
   '株式会社EIIのコウです。2025年6月3日午前10時、神田2-4-33で粗大ゴミ4トンの回収をお願いします。追加の要望はありません。',
   'お世話になります。XYZ株式会社のサトウです。2025年7月15日午後2時に渋谷区1-5-10でオフィス家具の回収をお願いしたいです。時間厳守お願いします。',
+  'こんにちは、ABC商事のタナカです。2025年8月20日午前9時に新宿区3-12-5で引っ越しゴミの回収をお願いします。車２台で来てください。',
 ];
 
 const connectionTagMap: Record<ConnectionState, ConnectionSummary> = {

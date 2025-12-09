@@ -20,6 +20,7 @@ class PromptTemplate(BaseModel):
     model_id: str
     system_prompt: str
     welcome_message: str | None = None
+    closing_message: str | None = None
     voice_config: VoiceConfig | None = None
     updated_at: datetime
     version: str
@@ -32,6 +33,7 @@ class PromptCreate(BaseModel):
     model_id: str
     system_prompt: str
     welcome_message: str | None = None
+    closing_message: str | None = None
     voice_config: VoiceConfig | None = None
     version: str
     capabilities: PromptCapabilities | None = None
@@ -42,6 +44,7 @@ class PromptUpdate(BaseModel):
     model_id: str | None = None
     system_prompt: str | None = None
     welcome_message: str | None = None
+    closing_message: str | None = None
     voice_config: VoiceConfig | None = None
     version: str | None = None
     capabilities: PromptCapabilities | None = None

@@ -8,9 +8,11 @@ type ApiPrompt = {
   system_prompt: string;
   instructions?: string;
   welcome_message?: string;
+  closing_message?: string;
   enable_appointment_logging?: boolean;
   capabilities?: {
     appointment_logging?: boolean;
+    tts_enabled?: boolean;
   };
   voice_config?: {
     voice?: string;
@@ -45,7 +47,8 @@ const mapPrompt = (prompt: ApiPrompt): PromptTemplate => ({
   modelId: prompt.model_id,
   systemPrompt: prompt.system_prompt,
   instructions: prompt.instructions ?? prompt.system_prompt,
-  welcomeMessage: prompt.welcome_message ?? '',
+  welcomeMessage: prompt.welcome_message ?? undefined,
+  closingMessage: prompt.closing_message ?? undefined,
   capabilities: {
     appointmentLogging:
       prompt.capabilities?.appointment_logging ?? prompt.enable_appointment_logging ?? false,
@@ -61,6 +64,7 @@ const toApiPayload = (payload: Partial<PromptTemplate> | PromptFormValues) => ({
   model_id: payload.modelId,
   system_prompt: payload.systemPrompt,
   welcome_message: payload.welcomeMessage,
+  closing_message: payload.closingMessage,
   capabilities: payload.capabilities
     ? {
         appointment_logging: payload.capabilities.appointmentLogging,

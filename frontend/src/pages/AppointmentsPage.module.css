@@ -42,3 +42,38 @@
   margin: 0 0 1rem;
   color: var(--cds-text-secondary, #525252);
 }
+
+.metricsRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.metricTile {
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.25rem;
+}
+
+.metricLabel {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--cds-text-secondary, #525252);
+}
+
+.metricValue {
+  margin: 0;
+  font-size: 2.25rem;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--cds-text-primary, #161616);
+}
+
+.metricDesc {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--cds-text-helper, #6f6f6f);
+}

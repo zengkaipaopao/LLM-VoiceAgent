@@ -16,6 +16,7 @@ import {
   TableToolbarContent,
   TableToolbarSearch,
   Tag,
+  Tile,
 } from '@carbon/react';
 
 import { ReservationRecord } from '../types';
@@ -68,6 +69,23 @@ export function AppointmentsPage() {
   const [search, setSearch] = useState('');
   const [selectedRecord, setSelectedRecord] = useState<ReservationRecord | null>(null);
 
+  const metrics = useMemo(() => {
+    const totals = reservations.reduce(
+      (acc, record) => {
+        acc.total += 1;
+        acc[record.operation] += 1;
+        return acc;
+      },
+      {
+        total: 0,
+        create: 0,
+        update: 0,
+        delete: 0,
+      },
+    );
+    return totals;
+  }, [reservations]);
+
   const filteredRecords = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     if (!keyword) return reservations;
@@ -80,6 +98,28 @@ export function AppointmentsPage() {
     <section className="page-section">
       <h1 className="page-title">预约记录</h1>
       <p className="page-subtitle">查看自动接单助手归档的预约信息，点击任意行以查看详细内容。</p>
+      <div className={styles.metricsRow}>
+        <Tile className={styles.metricTile}>
+          <p className={styles.metricLabel}>总预约数</p>
+          <p className={styles.metricValue}>{metrics.total}</p>
+          <p className={styles.metricDesc}>全部历史记录</p>
+        </Tile>
+        <Tile className={styles.metricTile}>
+          <p className={styles.metricLabel}>新预约</p>
+          <p className={styles.metricValue}>{metrics.create}</p>
+          <p className={styles.metricDesc}>operation = create</p>
+        </Tile>
+        <Tile className={styles.metricTile}>
+          <p className={styles.metricLabel}>预约变更</p>
+          <p className={styles.metricValue}>{metrics.update}</p>
+          <p className={styles.metricDesc}>operation = update</p>
+        </Tile>
+        <Tile className={styles.metricTile}>
+          <p className={styles.metricLabel}>预约取消</p>
+          <p className={styles.metricValue}>{metrics.delete}</p>
+          <p className={styles.metricDesc}>operation = delete</p>
+        </Tile>
+      </div>
       <TableContainer title="予約一覧">
         <TableToolbar>
           <TableToolbarContent>
