@@ -5,7 +5,8 @@ import { PromptTemplate } from '../../../types';
 
 type SipState = 'idle' | 'provisioning' | 'ready' | 'error';
 
-const defaultInstructions = '请以稳健、专业的语气服务来电者，并根据 SIP 头信息路由话术。';
+const defaultInstructions =
+  'Handle SIP callers with a steady, professional tone and tailor the script based on SIP header routing cues.';
 const fallbackModel = 'gpt-4o-realtime-preview-2024-12-17';
 
 type SipConsoleProps = {

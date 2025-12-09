@@ -28,7 +28,7 @@ const connectionTagMap: Record<ConnectionState, ConnectionSummary> = {
 };
 
 const defaultInstructions =
-  '你是 LLM Voice Agent 的实时调试助手，请使用自然、专业的中文语气与用户对话，必要时解释你的推理。';
+  'You are the LLM Voice Agent realtime assistant. Converse in a calm professional tone, explain your reasoning when necessary, and keep every reply concise.';
 const fallbackModel = 'gpt-4o-realtime-preview-2024-12-17';
 
 const formatTime = (timestamp?: string | number) => {

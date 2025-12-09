@@ -15,6 +15,22 @@ export type ParsedAppointment = {
 
 const JSON_BLOCK_REGEX = /```(?:json)?\s*({[\s\S]+?})\s*```/i;
 
+const normalizeExtraRequest = (value: string): string => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return 'なし';
+  }
+  const normalized = trimmed.replace(/\s+/g, '').toLowerCase();
+  const synonyms = ['なし', '追加要望なし', '追加要望はありません', '特にありません', '特にない', 'ありません', 'ない'];
+  if (synonyms.some((keyword) => normalized.includes(keyword.replace(/\s+/g, '')))) {
+    return 'なし';
+  }
+  if (normalized === 'no' || normalized === 'none') {
+    return 'なし';
+  }
+  return trimmed;
+};
+
 const normalizeOperation = (value?: string): ParsedAppointment['operation'] => {
   const normalized = (value ?? '').toLowerCase();
   if (normalized.includes('update') || normalized.includes('modify') || normalized.includes('変更')) {
@@ -63,17 +79,11 @@ export const extractAppointmentFromText = (text: string): ParsedAppointment | nu
       amount: pickString(parsed, ['amount', 'quantity'], ''),
       address: pickString(parsed, ['address', 'location'], ''),
       summary: pickString(parsed, ['summary', 'note'], ''),
-      extraRequest: pickString(parsed, ['extra_request', 'additional_request', 'additionalRequest'], ''),
+      extraRequest: normalizeExtraRequest(
+        pickString(parsed, ['extra_request', 'additional_request', 'additionalRequest'], ''),
+      ),
     };
-    const required = [
-      data.callerName,
-      data.company,
-      data.appointment,
-      data.category,
-      data.amount,
-      data.address,
-      data.extraRequest,
-    ];
+    const required = [data.callerName, data.company, data.appointment, data.category, data.amount, data.address];
     if (required.some((value) => !value)) {
       return null;
     }

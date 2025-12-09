@@ -1,85 +1,50 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, InlineLoading, Tag, TextArea, Tile } from '@carbon/react';
+
 import { createRealtimeSession } from '../../../api/realtime';
-import { submitAppointmentRecord } from '../../../api/appointments';
 import { PromptTemplate } from '../../../types';
-import {
-  buildRawTranscript,
-  composeAppointmentPayload,
-  extractAppointmentFromText,
-  ParsedAppointment,
-} from '../utils/appointment';
-
-type RtcState = 'idle' | 'connecting' | 'connected' | 'error';
-
-type ConsoleLog = {
-  id: string;
-  direction: 'in' | 'out' | 'system';
-  message: string;
-  timestamp: string;
-};
+import { useAppState } from '../../../state/AppStateContext';
+import { useAppointmentRecorder } from '../hooks/useAppointmentRecorder';
+import { sanitizeAssistantContent } from '../utils/assistant';
+import { getTextDelta } from '../utils/realtime';
+import { AppointmentPanel } from './websocket/AppointmentPanel';
+import { ChatMessage } from './websocket/types';
+import { RtcControlsPanel } from './webrtc/RtcControlsPanel';
+import { RtcLogsPanel } from './webrtc/RtcLogsPanel';
+import { RtcStatusCard } from './webrtc/RtcStatusCard';
+import { ConsoleLog, RtcState, RtcStateTag } from './webrtc/types';
 
 const defaultInstructions =
   'Use WebRTC to maintain bidirectional audio and data control, narrate your reasoning in real time, and keep the experience professional.';
 const fallbackModel = 'gpt-4o-realtime-preview-2024-12-17';
 
-const FINAL_CONFIRMATION_PHRASES = ['ご予約内容を受付いたしました', 'ご利用ありがとうございます'];
-
-const containsClosingPhrase = (text: string | null) =>
-  Boolean(text) && FINAL_CONFIRMATION_PHRASES.every((phrase) => text!.includes(phrase));
-
-const extractRealtimeText = (payload: string): string | null => {
-  try {
-    const data = JSON.parse(payload);
-    if (typeof data.delta === 'string') return data.delta;
-    if (data.delta && typeof data.delta === 'object') {
-      if (typeof data.delta.text === 'string') return data.delta.text;
-      if (Array.isArray(data.delta.content)) {
-        return data.delta.content
-          .map((item: unknown) => {
-            if (typeof item === 'string') return item;
-            if (item && typeof item === 'object' && 'text' in item && typeof (item as { text?: string }).text === 'string') {
-              return (item as { text: string }).text;
-            }
-            return '';
-          })
-          .join('');
-      }
-    }
-    if (typeof data.text === 'string') return data.text;
-  } catch {
-    return payload;
-  }
-  return null;
-};
-
-const formatTime = (timestamp: string) => {
-  return new Date(timestamp).toLocaleTimeString('zh-CN', {
+const formatTime = (timestamp: string) =>
+  new Date(timestamp).toLocaleTimeString('zh-CN', {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
   });
-};
 
 type WebRtcConsoleProps = {
   prompt?: PromptTemplate;
 };
 
 export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
+  const { reloadReservations } = useAppState();
   const [rtcState, setRtcState] = useState<RtcState>('idle');
   const [error, setError] = useState<string | null>(null);
   const [sessionMeta, setSessionMeta] = useState<{ id: string; model: string } | null>(null);
   const [command, setCommand] = useState('');
   const [logs, setLogs] = useState<ConsoleLog[]>([]);
-  const [savingAppointment, setSavingAppointment] = useState(false);
-  const [appointmentMessage, setAppointmentMessage] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
-  const hasSavedRef = useRef(false);
-  const autoAppointmentTriggeredRef = useRef(false);
-  const structuredAppointmentRef = useRef<ParsedAppointment | null>(null);
+  const appointmentHandlerRef = useRef<((text: string) => void) | null>(null);
+  const autoCleanupRef = useRef<() => void>(() => {});
+  const responseBufferRef = useRef<Record<string, string>>({});
+  const pendingResponseRef = useRef<string | null>(null);
+
   const voiceConfig = prompt?.voiceConfig;
   const appointmentEnabled = prompt?.capabilities?.appointmentLogging ?? false;
   const instructions = useMemo(
@@ -89,12 +54,6 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
   const activeModel = prompt?.modelId ?? fallbackModel;
   const activeVoice = voiceConfig?.voice;
   const noiseSuppressionEnabled = voiceConfig?.noiseSuppression ?? true;
-
-  useEffect(() => {
-    structuredAppointmentRef.current = null;
-    autoAppointmentTriggeredRef.current = false;
-    hasSavedRef.current = false;
-  }, [prompt?.id]);
 
   const appendLog = useCallback((entry: Omit<ConsoleLog, 'id' | 'timestamp'>) => {
     setLogs((prev) => [
@@ -107,17 +66,37 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
     ]);
   }, []);
 
-  const captureStructuredSummary = useCallback(
-    (content: string | null) => {
-      if (!appointmentEnabled || !content) return;
-      const parsed = extractAppointmentFromText(content);
-      if (parsed) {
-        structuredAppointmentRef.current = parsed;
-        setAppointmentMessage('已捕获预约摘要，可生成记录。');
-      }
-    },
-    [appointmentEnabled],
-  );
+  const clearLogs = useCallback(() => {
+    setLogs([]);
+  }, []);
+
+  const recordAssistantMessage = useCallback((content: string) => {
+    const timestamp = new Date().toISOString();
+    setMessages((prev) => [...prev, { id: `assistant-${timestamp}`, role: 'assistant', content, timestamp }]);
+  }, []);
+
+  const recordUserMessage = useCallback((content: string) => {
+    const timestamp = new Date().toISOString();
+    setMessages((prev) => [...prev, { id: `user-${timestamp}`, role: 'user', content, timestamp }]);
+  }, []);
+
+  const {
+    message: appointmentMessage,
+    saving: savingAppointment,
+    handleAssistantMessage,
+    createAppointment,
+    reset: resetAppointment,
+  } = useAppointmentRecorder({
+    enabled: appointmentEnabled,
+    messages,
+    autoFinalizeOnSummary: true,
+    onCreated: reloadReservations,
+    onAutoCreate: () => autoCleanupRef.current(),
+  });
+
+  useEffect(() => {
+    appointmentHandlerRef.current = handleAssistantMessage;
+  }, [handleAssistantMessage]);
 
   const cleanupConnection = useCallback(() => {
     dataChannelRef.current?.close();
@@ -126,71 +105,90 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
     peerRef.current = null;
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
+    responseBufferRef.current = {};
+    pendingResponseRef.current = null;
     setRtcState('idle');
-    structuredAppointmentRef.current = null;
-    autoAppointmentTriggeredRef.current = false;
-    hasSavedRef.current = false;
-  }, []);
+    setMessages([]);
+    resetAppointment();
+  }, [resetAppointment]);
 
-  const handleCreateAppointment = useCallback(
-    async (options?: { auto?: boolean }) => {
-      if (!appointmentEnabled) {
-        if (!options?.auto) {
-          setAppointmentMessage('当前 Prompt 未开启预约记录功能。');
-        }
-        return;
-      }
-      if (!logs.length) {
-        if (!options?.auto) {
-          setAppointmentMessage('暂无可用的对话记录。');
-        }
-        return;
-      }
-      if (hasSavedRef.current) {
-        if (!options?.auto) {
-          setAppointmentMessage('本次会话已生成预约记录。');
-        }
-        return;
-      }
-      const structured = structuredAppointmentRef.current;
-      if (!structured) {
-        if (!options?.auto) {
-          setAppointmentMessage('尚未检测到预约摘要，请确保模型输出 JSON。');
-        }
-        return;
-      }
-      setSavingAppointment(true);
-      setAppointmentMessage(options?.auto ? '通话结束，正在生成预约记录…' : '正在生成预约记录...');
-      const previousAutoFlag = autoAppointmentTriggeredRef.current;
-      autoAppointmentTriggeredRef.current = true;
-      try {
-        const transcript = buildRawTranscript(
-          logs.map((log) => ({
-            role: log.direction === 'in' ? 'assistant' : log.direction === 'out' ? 'user' : 'system',
-            text: log.message,
-            timestamp: log.timestamp,
-          })),
-        );
-        await submitAppointmentRecord(composeAppointmentPayload(structured, transcript));
-        hasSavedRef.current = true;
-        structuredAppointmentRef.current = null;
-        setAppointmentMessage(
-          options?.auto
-            ? `通话结束，已完成${structured.operation === 'create' ? '新增预约' : structured.operation === 'update' ? '修改预约' : '取消预约'}。`
-            : '预约记录已生成，可在“预约记录”页面查看。',
-        );
-        if (options?.auto) {
-          cleanupConnection();
-        }
-      } catch (err) {
-        console.error('创建预约记录失败', err);
-        setAppointmentMessage('生成预约记录失败，请稍后再试。');
-        autoAppointmentTriggeredRef.current = previousAutoFlag;
-      } finally {
-        setSavingAppointment(false);
+  useEffect(() => {
+    autoCleanupRef.current = () => {
+      cleanupConnection();
+      appendLog({ direction: 'system', message: '通话结束，已断开 WebRTC 连接' });
+    };
+  }, [appendLog, cleanupConnection]);
+
+  useEffect(() => {
+    setMessages([]);
+    clearLogs();
+    resetAppointment();
+  }, [prompt?.id, clearLogs, resetAppointment]);
+
+  useEffect(() => () => cleanupConnection(), [cleanupConnection]);
+
+  const handleFinalAssistantText = useCallback(
+    (text: string) => {
+      if (!text.trim()) return;
+      recordAssistantMessage(text);
+      appointmentHandlerRef.current?.(text);
+      const sanitized = sanitizeAssistantContent(text);
+      if (sanitized.trim()) {
+        appendLog({ direction: 'in', message: sanitized });
       }
     },
-    [appointmentEnabled, cleanupConnection, logs],
+    [appendLog, recordAssistantMessage],
+  );
+
+  const processRealtimeFrame = useCallback(
+    (payload: string) => {
+      try {
+        const frame = JSON.parse(payload);
+        switch (frame.type) {
+          case 'response.created': {
+            const responseId = frame.response?.id as string | undefined;
+            if (responseId) {
+              responseBufferRef.current[responseId] = '';
+              pendingResponseRef.current = responseId;
+            }
+            break;
+          }
+          case 'response.output_text.delta':
+          case 'response.text.delta': {
+            const responseId = (frame.response_id as string | undefined) ?? pendingResponseRef.current;
+            const delta = getTextDelta(frame);
+            if (responseId && delta) {
+              responseBufferRef.current[responseId] = (responseBufferRef.current[responseId] ?? '') + delta;
+            }
+            break;
+          }
+          case 'response.output_text.done':
+          case 'response.text.done':
+          case 'response.completed':
+          case 'response.done': {
+            const responseId =
+              (frame.response?.id as string | undefined) ??
+              (frame.response_id as string | undefined) ??
+              pendingResponseRef.current;
+            if (responseId) {
+              const finalText = responseBufferRef.current[responseId];
+              delete responseBufferRef.current[responseId];
+              pendingResponseRef.current = null;
+              if (finalText) {
+                handleFinalAssistantText(finalText);
+              }
+            }
+            break;
+          }
+          default:
+            break;
+        }
+      } catch {
+        const extracted = extractRealtimeText(payload) ?? payload;
+        handleFinalAssistantText(extracted);
+      }
+    },
+    [handleFinalAssistantText],
   );
 
   const setupRemoteAudio = useCallback((pc: RTCPeerConnection) => {
@@ -211,28 +209,20 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
       dataChannelRef.current = channel;
       channel.onopen = () => {
         appendLog({ direction: 'system', message: 'DataChannel 已建立' });
-        // 连接建立后立即请求模型输出，用于触发 Prompt 中配置的开场白
         const payload = JSON.stringify({ type: 'response.create' });
         channel.send(payload);
         appendLog({ direction: 'out', message: payload });
       };
       channel.onerror = (event) => appendLog({ direction: 'system', message: `DataChannel 错误: ${event}` });
       channel.onmessage = (event) => {
-        appendLog({ direction: 'in', message: event.data });
-        if (appointmentEnabled && typeof event.data === 'string') {
-          const text = extractRealtimeText(event.data);
-          captureStructuredSummary(text);
-          if (!autoAppointmentTriggeredRef.current && text && containsClosingPhrase(text)) {
-            if (!structuredAppointmentRef.current) {
-              setAppointmentMessage('检测到结束语，但未解析到预约摘要，请确认 JSON 输出。');
-              return;
-            }
-            void handleCreateAppointment({ auto: true });
-          }
+        if (typeof event.data === 'string') {
+          processRealtimeFrame(event.data);
+        } else {
+          appendLog({ direction: 'in', message: '[binary message]' });
         }
       };
     },
-    [appendLog, appointmentEnabled, captureStructuredSummary, handleCreateAppointment],
+    [appendLog, processRealtimeFrame],
   );
 
   const connectRtc = useCallback(async () => {
@@ -240,7 +230,6 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
     setRtcState('connecting');
     setError(null);
     try {
-      hasSavedRef.current = false;
       const session = await createRealtimeSession({
         instructions,
         model: activeModel,
@@ -302,10 +291,7 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
   const disconnectRtc = useCallback(() => {
     cleanupConnection();
     appendLog({ direction: 'system', message: '已断开 WebRTC 连接' });
-    if (appointmentEnabled) {
-      void handleCreateAppointment({ auto: true });
-    }
-  }, [appendLog, appointmentEnabled, cleanupConnection, handleCreateAppointment]);
+  }, [appendLog, cleanupConnection]);
 
   const sendCommand = useCallback(() => {
     const text = command.trim();
@@ -313,112 +299,80 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
     const payload = JSON.stringify({ type: 'input_text', text });
     dataChannelRef.current.send(payload);
     appendLog({ direction: 'out', message: payload });
+    recordUserMessage(text);
     setCommand('');
-  }, [appendLog, command]);
+  }, [appendLog, command, recordUserMessage]);
 
-  useEffect(() => {
-    return () => {
-      cleanupConnection();
-    };
-  }, [cleanupConnection]);
-
-  const stateTag: Record<RtcState, { label: string; type: string }> = {
+  const stateTagMap: Record<RtcState, RtcStateTag> = {
     idle: { label: '待准备', type: 'cool-gray' },
     connecting: { label: '连接中', type: 'blue' },
     connected: { label: '已连接', type: 'teal' },
     error: { label: '异常', type: 'red' },
   };
 
-  const orderedLogs = useMemo(() => logs.slice(-30), [logs]);
-
   return (
-    <div className="webrtc-console">
-      <Tile className="webrtc-console__header">
-        <div>
-          <h3>WebRTC 音频通道</h3>
-          <p>
-            通过浏览器媒体轨道体验实时语音对话，可搭配 DataChannel 发送控制指令。当前模型：{activeModel} · Prompt：
-            {prompt?.name ?? '默认 Prompt'}
-          </p>
+    <div className="ws-console">
+      <div className="ws-console__main">
+        <RtcStatusCard
+          stateTag={stateTagMap[rtcState]}
+          promptName={prompt?.name}
+          modelName={activeModel}
+          sessionId={sessionMeta?.id}
+          rtcState={rtcState}
+          error={error}
+          logCount={logs.length}
+          onConnect={connectRtc}
+          onDisconnect={disconnectRtc}
+          onClearLogs={clearLogs}
+        />
+        <div className="ws-console__grid">
+          <RtcControlsPanel
+            audioRef={remoteAudioRef}
+            command={command}
+            onCommandChange={setCommand}
+            onSendCommand={sendCommand}
+            commandDisabled={rtcState !== 'connected'}
+            error={error}
+          />
+          <RtcLogsPanel logs={logs} formatTime={formatTime} sessionMeta={sessionMeta} />
         </div>
-        <div className="webrtc-console__actions">
-          <Tag type={stateTag[rtcState].type}>{stateTag[rtcState].label}</Tag>
-          <Button kind="ghost" size="sm" onClick={disconnectRtc} disabled={rtcState !== 'connected'}>
-            断开
-          </Button>
-          <Button kind="primary" size="sm" onClick={connectRtc} disabled={rtcState === 'connecting'}>
-            {rtcState === 'connected' ? '重新连接' : '建立连接'}
-          </Button>
-        </div>
-      </Tile>
-      <Tile>
-        <div className="rtc-audio-preview">
-          <div>
-            <h4>远端 Audio 输出</h4>
-            <p>允许浏览器播放声音即可听到机器人语音。</p>
-          </div>
-          <audio ref={remoteAudioRef} controls autoPlay className="rtc-audio-element" />
-        </div>
-        <div className="rtc-data-channel">
-          <h4>DataChannel 控制</h4>
-          <p>向模型发送 JSON 指令，例如 `input_text` / `response.create`。</p>
-          <div className="rtc-command-row">
-            <TextArea
-              id="rtc-command-input"
-              labelText="指令载荷"
-              value={command}
-              rows={4}
-              onChange={(event) => setCommand(event.target.value)}
-              placeholder='{ "type": "input_text", "text": "请重复上一句" }'
-              disabled={rtcState !== 'connected'}
-            />
-            <Button type="button" onClick={sendCommand} disabled={!command.trim() || rtcState !== 'connected'}>
-              发送指令
-            </Button>
-          </div>
-        </div>
-        {error && (
-          <div className="rtc-error">
-            <InlineLoading status="error" description={error} />
-          </div>
-        )}
-      </Tile>
-      <Tile>
-        <h4>事件日志</h4>
-        <div className="console-log">
-          {orderedLogs.map((entry) => (
-            <div key={entry.id} className={`console-log__item console-log__item--${entry.direction}`}>
-              <span>{formatTime(entry.timestamp)}</span>
-              <p>{entry.message}</p>
-            </div>
-          ))}
-          {orderedLogs.length === 0 && <p className="console-log__empty">暂无事件</p>}
-        </div>
-        {sessionMeta && (
-          <p className="rtc-session-tip">
-            当前会话：{sessionMeta.id} · 模型：{sessionMeta.model}
-          </p>
-        )}
-      </Tile>
-      {appointmentEnabled && (
-        <Tile className="session-panel">
-          <div>
-            <h4>预约记录</h4>
-            <p className="session-panel__helper">将当前日志发送给后端，由模型自动提取预约信息并存档。</p>
-            {appointmentMessage && <p className="session-panel__helper">{appointmentMessage}</p>}
-          </div>
-          <Button
-            kind="primary"
-            size="sm"
-            disabled={savingAppointment || !logs.length}
-            onClick={() => {
-              void handleCreateAppointment();
-            }}
-          >
-            {savingAppointment ? '生成中...' : '生成预约记录'}
-          </Button>
-        </Tile>
-      )}
+      </div>
+      <div className="ws-console__side">
+        <AppointmentPanel
+          enabled={appointmentEnabled}
+          message={appointmentMessage}
+          onCreate={() => {
+            void createAppointment();
+          }}
+          disabled={savingAppointment}
+          saving={savingAppointment}
+        />
+      </div>
     </div>
   );
+}
+
+function extractRealtimeText(payload: string): string | null {
+  try {
+    const data = JSON.parse(payload);
+    if (typeof data.delta === 'string') return data.delta;
+    if (data.delta && typeof data.delta === 'object') {
+      if (typeof data.delta.text === 'string') return data.delta.text;
+      if (Array.isArray(data.delta.content)) {
+        return data.delta.content
+          .map((item: unknown) => {
+            if (typeof item === 'string') return item;
+            if (item && typeof item === 'object' && 'text' in item && typeof (item as { text?: string }).text === 'string') {
+              return (item as { text: string }).text;
+            }
+            return '';
+          })
+          .join('');
+      }
+    }
+    if (typeof data.text === 'string') return data.text;
+  } catch {
+    return payload;
+  }
+  return null;
 }
