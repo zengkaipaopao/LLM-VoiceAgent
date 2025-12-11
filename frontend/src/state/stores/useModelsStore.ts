@@ -25,10 +25,17 @@ export function useModelsStore() {
     data: modelState,
     setData: setModelState,
     loading: loadingModels,
+    reload: reloadModels,
+    loaded: modelsLoaded,
   } = useAsyncResource<ModelState>(loadModelState, {
     initialValue: { models: [], allowedModels: [] },
     onError: (error) => console.error('加载模型列表失败', error),
+    auto: false,
   });
+
+  const loadModels = useCallback(async () => {
+    await reloadModels();
+  }, [reloadModels]);
 
   const updateAllowedModels = useCallback(async (ids: string[]) => {
     const updated = await updateAllowedModelsApi(ids);
@@ -54,6 +61,8 @@ export function useModelsStore() {
     models: modelState.models,
     allowedModels: modelState.allowedModels,
     loadingModels,
+    modelsLoaded,
+    loadModels,
     updateAllowedModels,
     createCustomModel,
     deleteCustomModel,

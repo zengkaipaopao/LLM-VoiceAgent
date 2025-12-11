@@ -14,10 +14,17 @@ export function usePromptsStore() {
     data: prompts,
     setData: setPrompts,
     loading: loadingPrompts,
+    reload: reloadPrompts,
+    loaded: promptsLoaded,
   } = useAsyncResource<PromptTemplate[]>(fetchPrompts, {
     initialValue: [],
     onError: (error) => console.error('加载 Prompt 配置失败', error),
+    auto: false,
   });
+
+  const loadPrompts = useCallback(async () => {
+    await reloadPrompts();
+  }, [reloadPrompts]);
 
   const updatePromptTemplate = useCallback(async (id: string, patch: Partial<PromptTemplate>) => {
     const updated = await updatePromptApi(id, patch);
@@ -39,6 +46,8 @@ export function usePromptsStore() {
   return {
     prompts,
     loadingPrompts,
+    promptsLoaded,
+    loadPrompts,
     updatePromptTemplate,
     createPromptTemplate,
     deletePromptTemplate,

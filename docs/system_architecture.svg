@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
+  <style>
+    text { font-family: 'Helvetica', 'Arial', sans-serif; font-size: 15px; fill: #0f172a; }
+    .title { font-size: 24px; font-weight: bold; }
+    .subtitle { font-size: 17px; font-weight: bold; }
+    .box { fill: #f8fafc; stroke: #0f172a; stroke-width: 2; rx: 10; ry: 10; }
+    .group { fill: #e2e8f0; stroke: #0f172a; stroke-width: 2; rx: 16; ry: 16; }
+    .arrow { stroke: #1d4ed8; stroke-width: 2.5; marker-end: url(#arrowhead); }
+  </style>
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#1d4ed8" />
+    </marker>
+  </defs>
+
+  <text class="title" x="50" y="50">LLM VoiceAgent — System Architecture</text>
+
+  <!-- Clients -->
+  <rect class="group" x="40" y="90" width="260" height="200" />
+  <text class="subtitle" x="65" y="120">Clients</text>
+  <rect class="box" x="70" y="140" width="200" height="60" />
+  <text x="85" y="175">Caller (PSTN / SIP)</text>
+  <rect class="box" x="70" y="215" width="200" height="60" />
+  <text x="85" y="250">Operator Dashboard Users</text>
+
+  <!-- Frontend -->
+  <rect class="group" x="340" y="90" width="320" height="260" />
+  <text class="subtitle" x="360" y="120">React + Vite Frontend</text>
+  <rect class="box" x="360" y="140" width="280" height="70" />
+  <text x="380" y="170">Dashboard (Carbon UI, React Query)</text>
+  <rect class="box" x="360" y="225" width="280" height="110" />
+  <text x="380" y="255">Realtime Test Consoles</text>
+  <text x="380" y="280">• WebSocket &amp; WebRTC consoles</text>
+  <text x="380" y="305">• useAppointmentRecorder hook</text>
+  <text x="380" y="330">• Calls backend REST APIs</text>
+
+  <!-- Backend -->
+  <rect class="group" x="700" y="90" width="450" height="360" />
+  <text class="subtitle" x="725" y="120">FastAPI Backend</text>
+  <rect class="box" x="720" y="140" width="410" height="70" />
+  <text x="740" y="170">API Router (/api/v1)</text>
+  <text x="740" y="190">Health, Calls, Prompts, Models, Realtime, Appointments</text>
+  <rect class="box" x="720" y="225" width="410" height="110" />
+  <text x="740" y="255">Domain Services</text>
+  <text x="740" y="280">• CallFlowService, TelephonyAdapter</text>
+  <text x="740" y="305">• PromptService + prompt_builder instructions</text>
+  <text x="740" y="330">• RealtimeService → OpenAI sessions</text>
+  <text x="740" y="355">• AppointmentService / ModelService</text>
+  <rect class="box" x="720" y="350" width="410" height="80" />
+  <text x="740" y="380">Repositories (JsonFileRepository)</text>
+  <text x="740" y="405">prompts.json · appointments.json · model_allowlist.json</text>
+
+  <!-- Data -->
+  <rect class="group" x="360" y="380" width="280" height="180" />
+  <text class="subtitle" x="380" y="410">Local Data Files</text>
+  <rect class="box" x="380" y="430" width="240" height="40" />
+  <text x="395" y="455">backend/data/prompts.json</text>
+  <rect class="box" x="380" y="480" width="240" height="40" />
+  <text x="395" y="505">backend/data/appointments.json</text>
+  <rect class="box" x="380" y="530" width="240" height="40" />
+  <text x="395" y="555">backend/data/model_allowlist.json</text>
+
+  <!-- Providers -->
+  <rect class="group" x="700" y="480" width="450" height="230" />
+  <text class="subtitle" x="725" y="510">External Providers</text>
+  <rect class="box" x="720" y="530" width="410" height="50" />
+  <text x="740" y="560">OpenAI Realtime / TTS (session + voice streaming)</text>
+  <rect class="box" x="720" y="590" width="410" height="50" />
+  <text x="740" y="620">Telephony Providers (PSTN, SIP, Twilio)</text>
+  <rect class="box" x="720" y="650" width="410" height="50" />
+  <text x="740" y="680">Future Analytics / Storage backends</text>
+
+  <!-- Data Flow Arrows -->
+  <line class="arrow" x1="270" y1="170" x2="700" y2="200" />
+  <line class="arrow" x1="270" y1="245" x2="340" y2="245" />
+  <line class="arrow" x1="620" y1="230" x2="700" y2="230" />
+  <line class="arrow" x1="620" y1="320" x2="700" y2="320" />
+  <line class="arrow" x1="870" y1="435" x2="500" y2="435" />
+  <line class="arrow" x1="870" y1="475" x2="500" y2="515" />
+  <line class="arrow" x1="930" y1="480" x2="930" y2="530" />
+  <line class="arrow" x1="1030" y1="590" x2="1030" y2="520" />
+  <line class="arrow" x1="850" y1="590" x2="850" y2="360" />
+  <line class="arrow" x1="180" y1="170" x2="180" y2="120" />
+  <line class="arrow" x1="180" y1="230" x2="360" y2="230" />
+  <line class="arrow" x1="180" y1="150" x2="1030" y2="620" />
+</svg>

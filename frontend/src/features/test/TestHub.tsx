@@ -11,8 +11,14 @@ import { PromptTemplate } from '../../types';
 const PROMPT_STORAGE_KEY = 'testHub.selectedPromptId';
 
 export function TestHub() {
-  const { prompts } = useAppState();
+  const { prompts, loadPrompts, promptsLoaded, loadingPrompts } = useAppState();
   const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!promptsLoaded && !loadingPrompts) {
+      void loadPrompts();
+    }
+  }, [loadPrompts, loadingPrompts, promptsLoaded]);
 
   const selectedPrompt = useMemo<PromptTemplate | undefined>(() => {
     if (!prompts.length) {
@@ -57,6 +63,7 @@ export function TestHub() {
     <section className="page-section">
       <PageTitle>实时调试实验室</PageTitle>
       <PageSubtitle>在单一界面体验 WebSocket、WebRTC 与 SIP 三种 Realtime 工作流，方便比对链路。</PageSubtitle>
+      {!promptsLoaded && <p>Prompt 列表加载中...</p>}
       <Grid condensed fullWidth>
         <Column sm={4} md={8} lg={12}>
           <Tile className="prompt-selector">

@@ -3,6 +3,7 @@ import { Dispatch, SetStateAction, useCallback, useEffect, useRef, useState } fr
 type UseAsyncResourceOptions<T> = {
   initialValue: T;
   onError?: (error: unknown) => void;
+  auto?: boolean;
 };
 
 type AsyncResourceResult<T> = {
@@ -10,11 +11,12 @@ type AsyncResourceResult<T> = {
   setData: Dispatch<SetStateAction<T>>;
   loading: boolean;
   reload: () => Promise<T>;
+  loaded: boolean;
 };
 
 export function useAsyncResource<T>(
   fetcher: () => Promise<T>,
-  { initialValue, onError }: UseAsyncResourceOptions<T>,
+  { initialValue, onError, auto = true }: UseAsyncResourceOptions<T>,
 ): AsyncResourceResult<T> {
   const initialRef = useRef(initialValue);
   const errorHandlerRef = useRef(onError);
@@ -23,16 +25,22 @@ export function useAsyncResource<T>(
   }, [onError]);
   const [data, setData] = useState<T>(() => initialRef.current);
   const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const loadedRef = useRef(false);
 
   const reload = useCallback(async () => {
     setLoading(true);
     try {
       const result = await fetcher();
       setData(result);
+       loadedRef.current = true;
+       setLoaded(true);
       return result;
     } catch (error) {
       errorHandlerRef.current?.(error);
-      setData(initialRef.current);
+      if (!loadedRef.current) {
+        setData(initialRef.current);
+      }
       throw error;
     } finally {
       setLoading(false);
@@ -40,8 +48,11 @@ export function useAsyncResource<T>(
   }, [fetcher]);
 
   useEffect(() => {
+    if (!auto) {
+      return;
+    }
     void reload();
-  }, [reload]);
+  }, [auto, reload]);
 
-  return { data, setData, loading, reload };
+  return { data, setData, loading, reload, loaded };
 }

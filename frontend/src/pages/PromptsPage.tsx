@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Column, Grid, Tag, Tile } from '@carbon/react';
 
 import { PromptEditorModal } from '../features/prompts/components/PromptEditorModal';
@@ -19,12 +19,18 @@ export function PromptsPage() {
     prompts,
     models,
     allowedModels,
+    loadPrompts,
+    promptsLoaded,
+    loadModels,
+    modelsLoaded,
     updatePromptTemplate,
     createPromptTemplate,
     deletePromptTemplate,
     updateAllowedModels,
     createCustomModel,
     deleteCustomModel,
+    loadingPrompts,
+    loadingModels,
   } = useAppState();
   const [editorState, setEditorState] = useState<EditorState>(null);
   const [modelManagerOpen, setModelManagerOpen] = useState(false);
@@ -61,6 +67,28 @@ export function PromptsPage() {
   );
 
   const handleAllowedModelsSave = useCallback((ids: string[]) => updateAllowedModels(ids), [updateAllowedModels]);
+
+  useEffect(() => {
+    if (!promptsLoaded && !loadingPrompts) {
+      void loadPrompts();
+    }
+  }, [loadPrompts, loadingPrompts, promptsLoaded]);
+
+  useEffect(() => {
+    if (!modelsLoaded && !loadingModels) {
+      void loadModels();
+    }
+  }, [loadModels, loadingModels, modelsLoaded]);
+
+  if (!promptsLoaded || !modelsLoaded) {
+    return (
+      <section className="page-section">
+        <h1 className="page-title">Prompt 管理</h1>
+        <p className="page-subtitle">编辑、版本对比、灰度发布智能体 Prompt 的公共入口。</p>
+        <p>正在加载 Prompt / 模型数据...</p>
+      </section>
+    );
+  }
 
   return (
     <section className="page-section">

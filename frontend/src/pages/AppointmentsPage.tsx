@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button,
   ComposedModal,
@@ -65,9 +65,22 @@ const detailLabels: Record<keyof ReservationRecord, string> = {
 };
 
 export function AppointmentsPage() {
-  const { reservations, loadingReservations } = useAppState();
+  const { reservations, loadingReservations, reloadReservations, reservationsLoaded } = useAppState();
   const [search, setSearch] = useState('');
   const [selectedRecord, setSelectedRecord] = useState<ReservationRecord | null>(null);
+  const initialLoadRequestedRef = useRef(false);
+
+  useEffect(() => {
+    if (reservationsLoaded || loadingReservations || initialLoadRequestedRef.current) {
+      return;
+    }
+    initialLoadRequestedRef.current = true;
+    void reloadReservations().finally(() => {
+      if (!reservationsLoaded) {
+        initialLoadRequestedRef.current = false;
+      }
+    });
+  }, [loadingReservations, reloadReservations, reservationsLoaded]);
 
   const metrics = useMemo(() => {
     const totals = reservations.reduce(

@@ -18,9 +18,14 @@ type AppState = {
   calls: CallLog[];
   reservations: ReservationRecord[];
   reloadReservations: () => Promise<void>;
+  reservationsLoaded: boolean;
   prompts: PromptTemplate[];
+  loadPrompts: () => Promise<void>;
+  promptsLoaded: boolean;
   models: ModelInfo[];
   allowedModels: string[];
+  loadModels: () => Promise<void>;
+  modelsLoaded: boolean;
   agents: AgentProfile[];
   updatePromptTemplate: (id: string, patch: Partial<PromptTemplate>) => Promise<PromptTemplate>;
   createPromptTemplate: (payload: PromptFormValues) => Promise<PromptTemplate>;
@@ -43,6 +48,8 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
   const {
     prompts,
     loadingPrompts,
+    loadPrompts,
+    promptsLoaded,
     updatePromptTemplate,
     createPromptTemplate,
     deletePromptTemplate,
@@ -51,11 +58,13 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
     models,
     allowedModels,
     loadingModels,
+    loadModels,
+    modelsLoaded,
     updateAllowedModels,
     createCustomModel,
     deleteCustomModel,
   } = useModelsStore();
-  const { reservations, loadingReservations, reloadReservations } = useReservationsStore();
+  const { reservations, loadingReservations, reloadReservations, reservationsLoaded } = useReservationsStore();
   const { calls } = useCallsStore();
   const { agents } = useAgentsStore();
 
@@ -65,8 +74,13 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
       prompts,
       reservations,
       reloadReservations,
+      reservationsLoaded,
+      loadPrompts,
+      promptsLoaded,
       models,
       allowedModels,
+      loadModels,
+      modelsLoaded,
       agents,
       updatePromptTemplate,
       createPromptTemplate,
@@ -79,21 +93,26 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
       loadingReservations,
     }),
     [
+      agents,
       allowedModels,
+      calls,
+      createCustomModel,
+      deleteCustomModel,
       loadingModels,
       loadingPrompts,
       loadingReservations,
       models,
+      modelsLoaded,
       prompts,
+      promptsLoaded,
       reservations,
+      reservationsLoaded,
       reloadReservations,
-      calls,
-      agents,
+      loadModels,
+      loadPrompts,
       createPromptTemplate,
       deletePromptTemplate,
       updateAllowedModels,
-      createCustomModel,
-      deleteCustomModel,
       updatePromptTemplate,
     ],
   );
