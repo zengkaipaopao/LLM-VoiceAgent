@@ -21,6 +21,19 @@ class Settings(BaseSettings):
     telephony_provider: str = "twilio"
     google_tts_access_token: str | None = None
     google_tts_credentials_path: str | None = None
+    infobip_base_url: str | None = None
+    infobip_api_key: str | None = None
+    infobip_voice_from: str | None = None
+    twilio_account_sid: str | None = None
+    twilio_auth_token: str | None = None
+    twilio_phone_number: str | None = None
+    twilio_twiml_app_sid: str | None = None
+    twilio_api_key_sid: str | None = None
+    twilio_api_key_secret: str | None = None
+    twilio_prompt_id: str | None = None
+    twilio_say_voice: str | None = None
+    twilio_say_language: str | None = None
+    twilio_chat_model_id: str | None = None
 
 
 settings = Settings()

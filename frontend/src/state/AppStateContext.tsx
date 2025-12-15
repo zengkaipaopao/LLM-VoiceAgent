@@ -19,6 +19,7 @@ type AppState = {
   reservations: ReservationRecord[];
   reloadReservations: () => Promise<void>;
   reservationsLoaded: boolean;
+  appendReservation: (record: ReservationRecord) => void;
   prompts: PromptTemplate[];
   loadPrompts: () => Promise<void>;
   promptsLoaded: boolean;
@@ -64,7 +65,13 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
     createCustomModel,
     deleteCustomModel,
   } = useModelsStore();
-  const { reservations, loadingReservations, reloadReservations, reservationsLoaded } = useReservationsStore();
+  const {
+    reservations,
+    loadingReservations,
+    reloadReservations,
+    reservationsLoaded,
+    appendReservation,
+  } = useReservationsStore();
   const { calls } = useCallsStore();
   const { agents } = useAgentsStore();
 
@@ -75,6 +82,7 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
       reservations,
       reloadReservations,
       reservationsLoaded,
+      appendReservation,
       loadPrompts,
       promptsLoaded,
       models,
@@ -107,6 +115,7 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
       promptsLoaded,
       reservations,
       reservationsLoaded,
+      appendReservation,
       reloadReservations,
       loadModels,
       loadPrompts,

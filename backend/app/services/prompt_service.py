@@ -21,6 +21,13 @@ class PromptService:
     def delete_prompt(self, prompt_id: str) -> None:
         self._repository.delete(prompt_id)
 
+    def get_prompt(self, prompt_id: str) -> PromptTemplate:
+        prompts = self._repository.list()
+        for prompt in prompts:
+            if prompt.id == prompt_id:
+                return self._attach_instructions(prompt)
+        raise KeyError(f"Prompt {prompt_id} not found")
+
     @staticmethod
     def _attach_instructions(prompt: PromptTemplate) -> PromptTemplate:
         instructions = build_prompt_instructions(prompt)

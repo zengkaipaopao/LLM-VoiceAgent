@@ -1,7 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Tile } from '@carbon/react';
 
-import { PromptTemplate } from '../../../types';
+import { PromptTemplate, ReservationRecord } from '../../../types';
 import { useAppState } from '../../../state/AppStateContext';
 import { AppointmentPanel } from './websocket/AppointmentPanel';
 import { ChatHistory } from './websocket/ChatHistory';
@@ -47,7 +47,7 @@ type WebSocketConsoleProps = {
 };
 
 export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
-  const { reloadReservations } = useAppState();
+  const { appendReservation, reloadReservations } = useAppState();
   const [input, setInput] = useState('');
   const [autoReply, setAutoReply] = useState(true);
   const historyRef = useRef<HTMLDivElement | null>(null);
@@ -80,6 +80,18 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
     voice: activeVoice,
     onAssistantMessage: handleAssistantMessage,
   });
+  const handleReservationCreated = useCallback(
+    async (record: ReservationRecord) => {
+      try {
+        appendReservation(record);
+      } catch (error) {
+        console.warn('追加预约记录失败，改为重新加载', error);
+        await reloadReservations();
+      }
+    },
+    [appendReservation, reloadReservations],
+  );
+
   const {
     message: appointmentMessage,
     saving: savingAppointment,
@@ -89,7 +101,7 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
   } = useAppointmentRecorder({
     enabled: appointmentEnabled,
     messages: realtime.messages,
-    onCreated: reloadReservations,
+    onCreated: handleReservationCreated,
     onAutoCreate: () => {
       realtime.disconnect();
     },

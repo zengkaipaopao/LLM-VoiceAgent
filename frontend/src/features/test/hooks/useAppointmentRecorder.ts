@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 
 import { submitAppointmentRecord } from '../../../api/appointments';
+import { ReservationRecord } from '../../../types';
 import { ChatMessage } from '../components/websocket/types';
 import {
   buildRawTranscript,
@@ -25,7 +26,7 @@ type UseAppointmentRecorderParams = {
   enabled: boolean;
   messages: ChatMessage[];
   autoFinalizeOnSummary?: boolean;
-  onCreated?: () => Promise<void> | void;
+  onCreated?: (record: ReservationRecord) => Promise<void> | void;
   onAutoCreate?: () => void;
 };
 
@@ -86,9 +87,9 @@ export function useAppointmentRecorder({
             timestamp: messageItem.timestamp,
           })),
         );
-        await submitAppointmentRecord(composeAppointmentPayload(structured, transcript));
+        const createdRecord = await submitAppointmentRecord(composeAppointmentPayload(structured, transcript));
         structuredAppointmentRef.current = null;
-        await onCreated?.();
+        await onCreated?.(createdRecord);
         if (options?.auto) {
           setMessage(getAutoSuccessMessage(structured.operation, autoReason));
         } else {

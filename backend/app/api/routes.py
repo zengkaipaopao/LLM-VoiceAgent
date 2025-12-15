@@ -1,6 +1,17 @@
 from fastapi import APIRouter
 
-from app.api.v1 import appointments, calls, chat, health, models, prompts, realtime, tts, webhooks
+from app.api.v1 import (
+    appointments,
+    calls,
+    chat,
+    health,
+    models,
+    prompts,
+    realtime,
+    tts,
+    twilio_voice,
+    webhooks,
+)
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
@@ -11,4 +22,5 @@ api_router.include_router(appointments.router, prefix="/appointments", tags=["ap
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
 api_router.include_router(realtime.router, prefix="/realtime", tags=["realtime"])
 api_router.include_router(tts.router, prefix="/tts", tags=["tts"])
+api_router.include_router(twilio_voice.router, prefix="/twilio", tags=["twilio"])
 api_router.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])

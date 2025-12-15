@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { createRealtimeSession } from '../../../api/realtime';
-import { PromptTemplate } from '../../../types';
+import { PromptTemplate, ReservationRecord } from '../../../types';
 import { useAppState } from '../../../state/AppStateContext';
 import { useAppointmentRecorder } from '../hooks/useAppointmentRecorder';
 import { sanitizeAssistantContent } from '../utils/assistant';
@@ -29,7 +29,7 @@ type WebRtcConsoleProps = {
 };
 
 export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
-  const { reloadReservations } = useAppState();
+  const { appendReservation, reloadReservations } = useAppState();
   const [rtcState, setRtcState] = useState<RtcState>('idle');
   const [error, setError] = useState<string | null>(null);
   const [sessionMeta, setSessionMeta] = useState<{ id: string; model: string } | null>(null);
@@ -80,6 +80,18 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
     setMessages((prev) => [...prev, { id: `user-${timestamp}`, role: 'user', content, timestamp }]);
   }, []);
 
+  const handleReservationCreated = useCallback(
+    async (record: ReservationRecord) => {
+      try {
+        appendReservation(record);
+      } catch (error) {
+        console.warn('追加预约记录失败，改为重新加载', error);
+        await reloadReservations();
+      }
+    },
+    [appendReservation, reloadReservations],
+  );
+
   const {
     message: appointmentMessage,
     saving: savingAppointment,
@@ -90,7 +102,7 @@ export function WebRtcConsole({ prompt }: WebRtcConsoleProps) {
     enabled: appointmentEnabled,
     messages,
     autoFinalizeOnSummary: true,
-    onCreated: reloadReservations,
+    onCreated: handleReservationCreated,
     onAutoCreate: () => autoCleanupRef.current(),
   });
 

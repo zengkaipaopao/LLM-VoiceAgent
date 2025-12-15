@@ -7,6 +7,7 @@ import { useAsyncResource } from '../hooks/useAsyncResource';
 export function useReservationsStore() {
   const {
     data: reservations,
+    setData: setReservations,
     loading: loadingReservations,
     reload: reloadReservations,
     loaded: reservationsLoaded,
@@ -20,10 +21,21 @@ export function useReservationsStore() {
     await reloadReservations();
   }, [reloadReservations]);
 
+  const appendReservation = useCallback(
+    (record: ReservationRecord) => {
+      setReservations((prev) => {
+        const filtered = prev.filter((item) => item.id !== record.id);
+        return [record, ...filtered];
+      });
+    },
+    [setReservations],
+  );
+
   return {
     reservations,
     loadingReservations,
     reloadReservations: loadReservations,
     reservationsLoaded,
+    appendReservation,
   };
 }
