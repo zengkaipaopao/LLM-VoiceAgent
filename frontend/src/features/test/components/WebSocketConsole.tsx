@@ -223,30 +223,32 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
           autoReply={autoReply}
           onToggleAutoReply={toggleAutoReply}
         />
-        <TtsPanel
-          capabilityEnabled={ttsCapabilityEnabled}
-          providerOptions={ttsControls.providerOptions}
-          provider={ttsControls.provider}
-          onProviderChange={ttsControls.setProvider}
-          language={ttsControls.language}
-          onLanguageChange={ttsControls.setLanguage}
-          googleLanguages={ttsControls.languageOptions}
-          enabled={ttsControls.enabled}
-          onToggleEnabled={() => ttsControls.setEnabled(!ttsControls.enabled)}
-          model={ttsControls.model}
-          onModelChange={ttsControls.setModel}
-          modelOptions={ttsControls.modelOptions}
-          voice={ttsControls.voice}
-          onVoiceChange={ttsControls.setVoice}
-          voiceOptions={ttsControls.voiceOptions}
-          speakingRate={ttsControls.speakingRate}
-          onSpeakingRateChange={ttsControls.setSpeakingRate}
-          pitch={ttsControls.pitch}
-          onPitchChange={ttsControls.setPitch}
-          status={ttsControls.status}
-          controlsDisabled={ttsControls.controlsDisabled}
-          audioRef={ttsControls.audioRef}
-        />
+        {ttsCapabilityEnabled && (
+          <TtsPanel
+            capabilityEnabled={ttsCapabilityEnabled}
+            providerOptions={ttsControls.providerOptions}
+            provider={ttsControls.provider}
+            onProviderChange={ttsControls.setProvider}
+            language={ttsControls.language}
+            onLanguageChange={ttsControls.setLanguage}
+            googleLanguages={ttsControls.languageOptions}
+            enabled={ttsControls.enabled}
+            onToggleEnabled={() => ttsControls.setEnabled(!ttsControls.enabled)}
+            model={ttsControls.model}
+            onModelChange={ttsControls.setModel}
+            modelOptions={ttsControls.modelOptions}
+            voice={ttsControls.voice}
+            onVoiceChange={ttsControls.setVoice}
+            voiceOptions={ttsControls.voiceOptions}
+            speakingRate={ttsControls.speakingRate}
+            onSpeakingRateChange={ttsControls.setSpeakingRate}
+            pitch={ttsControls.pitch}
+            onPitchChange={ttsControls.setPitch}
+            status={ttsControls.status}
+            controlsDisabled={ttsControls.controlsDisabled}
+            audioRef={ttsControls.audioRef}
+          />
+        )}
         <AppointmentPanel
           enabled={appointmentEnabled}
           message={appointmentMessage}

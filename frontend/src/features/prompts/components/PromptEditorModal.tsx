@@ -6,7 +6,6 @@ import {
   ModalBody,
   ModalFooter,
   ModalHeader,
-  NumberInput,
   TextArea,
   TextInput,
   Toggle,
@@ -25,19 +24,6 @@ const defaultCapabilities: PromptCapabilities = {
   appointmentLogging: false,
   ttsEnabled: true,
 };
-
-const voicePresets = [
-  { id: 'alloy', label: 'Alloy · 中性女声' },
-  { id: 'ash', label: 'Ash · 沉稳低音' },
-  { id: 'ballad', label: 'Ballad · 朗诵语气' },
-  { id: 'coral', label: 'Coral · 年轻女声' },
-  { id: 'echo', label: 'Echo · 清爽中性' },
-  { id: 'sage', label: 'Sage · 专业男声' },
-  { id: 'shimmer', label: 'Shimmer · 友好问候' },
-  { id: 'verse', label: 'Verse · 温柔陪伴' },
-  { id: 'marin', label: 'Marin · 日文气质' },
-  { id: 'cedar', label: 'Cedar · 磁性男声' },
-];
 
 type PromptEditorModalProps = {
   open: boolean;
@@ -80,24 +66,7 @@ export function PromptEditorModal({ open, mode, prompt, models, onClose, onSave 
     }
   }, [mode, models, open, prompt]);
 
-  const activeVoiceConfig = useMemo(
-    () => ({
-      ...defaultVoiceConfig,
-      ...(draft.voiceConfig ?? {}),
-    }),
-    [draft.voiceConfig],
-  );
   const ttsEnabled = draft.capabilities?.ttsEnabled ?? true;
-
-  const handleVoiceConfigChange = (patch: Partial<VoiceConfig>) => {
-    setDraft({
-      ...draft,
-      voiceConfig: {
-        ...activeVoiceConfig,
-        ...patch,
-      },
-    });
-  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -111,7 +80,6 @@ export function PromptEditorModal({ open, mode, prompt, models, onClose, onSave 
       await onSave(
         {
           ...draft,
-          voiceConfig: activeVoiceConfig,
           capabilities: draft.capabilities ?? defaultCapabilities,
         },
         prompt?.id,
@@ -237,60 +205,6 @@ export function PromptEditorModal({ open, mode, prompt, models, onClose, onSave 
                   }))
                 }
               />
-            </div>
-          </div>
-          <div
-            className={`${styles.voiceConfig} ${!ttsEnabled ? styles.voiceConfigDisabled : ''}`}
-            aria-disabled={!ttsEnabled}
-          >
-            <div className={styles.voiceConfigHeader}>
-              <p className={styles.voiceConfigEyebrow}>音频参数</p>
-              <h4>声音与音频控制</h4>
-              <p>
-                {ttsEnabled
-                  ? '选择声线、语速和降噪策略，保持各测试链路体验一致。'
-                  : '当前已关闭语音播报，开启后才能调整声音参数。'}
-              </p>
-            </div>
-            <div className={styles.voiceConfigGrid}>
-              <Dropdown
-                id="modal-voice-preset"
-                titleText="声音类型"
-                label="选择声线"
-                items={voicePresets}
-                selectedItem={voicePresets.find((option) => option.id === activeVoiceConfig.voice) ?? voicePresets[0]}
-                itemToString={(item) => (item ? item.label : '')}
-                onChange={({ selectedItem }) =>
-                  handleVoiceConfigChange({ voice: (selectedItem as (typeof voicePresets)[number]).id })
-                }
-                disabled={!ttsEnabled}
-              />
-              <NumberInput
-                id="modal-voice-rate"
-                label="语速"
-                helperText="0.5 = 慢速 · 1 = 正常 · 1.5 = 稍快"
-                min={0.5}
-                max={1.5}
-                step={0.05}
-                value={activeVoiceConfig.speakingRate ?? 1}
-                onChange={(event, { value }) => {
-                  const numeric = Number(value);
-                  handleVoiceConfigChange({ speakingRate: Number.isNaN(numeric) ? 1 : numeric });
-                }}
-                disabled={!ttsEnabled}
-              />
-              <div className={styles.voiceConfigToggle}>
-                <Toggle
-                  id="modal-voice-noise"
-                  labelText="降噪"
-                  labelA="关闭"
-                  labelB="开启"
-                  toggled={activeVoiceConfig.noiseSuppression ?? true}
-                  onToggle={(state) => handleVoiceConfigChange({ noiseSuppression: state })}
-                  disabled={!ttsEnabled}
-                />
-                <p>开启后将优先启用麦克风噪声抑制，WebRTC 测试最为明显。</p>
-              </div>
             </div>
           </div>
           {errorMessage && <p className={styles.errorMessage}>{errorMessage}</p>}

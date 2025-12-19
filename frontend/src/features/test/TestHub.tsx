@@ -3,8 +3,6 @@ import { Column, Dropdown, Grid, Tab, TabList, TabPanel, TabPanels, Tabs, Tile }
 import { PageSubtitle } from '../../components/atoms/PageSubtitle';
 import { PageTitle } from '../../components/atoms/PageTitle';
 import { WebSocketConsole } from './components/WebSocketConsole';
-import { WebRtcConsole } from './components/WebRtcConsole';
-import { SipConsole } from './components/SipConsole';
 import { TwilioWebCallPanel } from './components/TwilioWebCallPanel';
 import { useAppState } from '../../state/AppStateContext';
 import { PromptTemplate } from '../../types';
@@ -64,7 +62,7 @@ export function TestHub() {
   return (
     <section className="page-section">
       <PageTitle>实时调试实验室</PageTitle>
-      <PageSubtitle>在单一界面体验 WebSocket、WebRTC、SIP 以及 Twilio WebCall 等链路，方便比对。</PageSubtitle>
+      <PageSubtitle>在单一界面体验 WebSocket 以及 Twilio WebCall 等链路，方便比对。</PageSubtitle>
       {!promptsLoaded && <p>Prompt 列表加载中...</p>}
       <Grid condensed fullWidth>
         <Column sm={4} md={8} lg={12}>
@@ -90,8 +88,6 @@ export function TestHub() {
           >
             <TabList aria-label="测试架构选择">
               <Tab>WebSocket</Tab>
-              <Tab>WebRTC</Tab>
-              <Tab>SIP</Tab>
               <Tab>Twilio WebCall</Tab>
             </TabList>
             <TabPanels>
@@ -99,13 +95,7 @@ export function TestHub() {
                 {activeTabIndex === 0 ? <WebSocketConsole prompt={selectedPrompt} /> : null}
               </TabPanel>
               <TabPanel>
-                {activeTabIndex === 1 ? <WebRtcConsole prompt={selectedPrompt} /> : null}
-              </TabPanel>
-              <TabPanel>
-                {activeTabIndex === 2 ? <SipConsole prompt={selectedPrompt} /> : null}
-              </TabPanel>
-              <TabPanel>
-                {activeTabIndex === 3 ? <TwilioWebCallPanel prompt={selectedPrompt} /> : null}
+                {activeTabIndex === 1 ? <TwilioWebCallPanel prompt={selectedPrompt} /> : null}
               </TabPanel>
             </TabPanels>
           </Tabs>
