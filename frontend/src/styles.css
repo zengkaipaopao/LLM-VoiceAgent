@@ -168,6 +168,28 @@ body {
   font-size: 0.875rem;
 }
 
+.pretrain-notice {
+  margin-bottom: 1rem;
+}
+
+.pretrain-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.pretrain-tile__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.pretrain-tile__header h3 {
+  margin: 0;
+}
+
 .session-info-list {
   width: 100%;
 }

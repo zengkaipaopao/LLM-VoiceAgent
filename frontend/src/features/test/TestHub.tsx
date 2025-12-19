@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Column, Dropdown, Grid, Tab, TabList, TabPanel, TabPanels, Tabs, Tile } from '@carbon/react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { PageSubtitle } from '../../components/atoms/PageSubtitle';
 import { PageTitle } from '../../components/atoms/PageTitle';
 import { WebSocketConsole } from './components/WebSocketConsole';
@@ -8,11 +9,19 @@ import { useAppState } from '../../state/AppStateContext';
 import { PromptTemplate } from '../../types';
 
 const PROMPT_STORAGE_KEY = 'testHub.selectedPromptId';
+const getTabIndexFromSearch = (search: string) => {
+  const tab = new URLSearchParams(search).get('tab');
+  if (tab === 'twilio') return 1;
+  return 0;
+};
 
 export function TestHub() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const { prompts, loadPrompts, promptsLoaded, loadingPrompts } = useAppState();
   const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
-  const [activeTabIndex, setActiveTabIndex] = useState(0);
+  const activeTabIndex = useMemo(() => getTabIndexFromSearch(location.search), [location.search]);
+  const rawTabParam = useMemo(() => new URLSearchParams(location.search).get('tab'), [location.search]);
 
   useEffect(() => {
     if (!promptsLoaded && !loadingPrompts) {
@@ -29,35 +38,39 @@ export function TestHub() {
 
   useEffect(() => {
     if (!prompts.length) return;
-    if (typeof window === 'undefined') {
-      setSelectedPromptId((prev) => (prev && prompts.some((prompt) => prompt.id === prev) ? prev : prompts[0]?.id ?? null));
+
+    let nextSelectedId = selectedPromptId;
+    const hasSelected = nextSelectedId && prompts.some((prompt) => prompt.id === nextSelectedId);
+
+    if (!hasSelected) {
+      if (typeof window !== 'undefined') {
+        try {
+          const stored = window.localStorage.getItem(PROMPT_STORAGE_KEY);
+          if (stored && prompts.some((prompt) => prompt.id === stored)) {
+            nextSelectedId = stored;
+          }
+        } catch (error) {
+          console.warn('读取 Prompt 选择缓存失败', error);
+        }
+      }
+
+      if (!nextSelectedId || !prompts.some((prompt) => prompt.id === nextSelectedId)) {
+        nextSelectedId = prompts[0]?.id ?? null;
+      }
+    }
+
+    if (nextSelectedId !== selectedPromptId) {
+      setSelectedPromptId(nextSelectedId);
       return;
     }
-    setSelectedPromptId((prev) => {
-      if (prev && prompts.some((prompt) => prompt.id === prev)) {
-        return prev;
-      }
-      try {
-        const stored = window.localStorage.getItem(PROMPT_STORAGE_KEY);
-        if (stored && prompts.some((prompt) => prompt.id === stored)) {
-          return stored;
-        }
-      } catch (error) {
-        console.warn('读取 Prompt 选择缓存失败', error);
-      }
-      return prompts[0]?.id ?? null;
-    });
-  }, [prompts]);
 
-  useEffect(() => {
-    if (!selectedPromptId) return;
-    if (typeof window === 'undefined') return;
+    if (!nextSelectedId || typeof window === 'undefined') return;
     try {
-      window.localStorage.setItem(PROMPT_STORAGE_KEY, selectedPromptId);
+      window.localStorage.setItem(PROMPT_STORAGE_KEY, nextSelectedId);
     } catch (error) {
       console.warn('保存 Prompt 选择缓存失败', error);
     }
-  }, [selectedPromptId]);
+  }, [prompts, selectedPromptId]);
 
   return (
     <section className="page-section">
@@ -84,7 +97,15 @@ export function TestHub() {
           <Tabs
             className="test-tabs"
             selectedIndex={activeTabIndex}
-            onChange={({ selectedIndex }) => setActiveTabIndex(selectedIndex)}
+            onChange={({ selectedIndex }) => {
+              const nextIndex = selectedIndex ?? 0;
+              const nextTab = nextIndex === 1 ? 'twilio' : 'websocket';
+              if (rawTabParam !== nextTab) {
+                const params = new URLSearchParams(location.search);
+                params.set('tab', nextTab);
+                navigate({ pathname: '/test', search: `?${params.toString()}` });
+              }
+            }}
           >
             <TabList aria-label="测试架构选择">
               <Tab>WebSocket</Tab>

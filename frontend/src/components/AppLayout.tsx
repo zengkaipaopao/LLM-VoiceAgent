@@ -10,6 +10,8 @@ import {
   SideNav,
   SideNavItems,
   SideNavLink,
+  SideNavMenu,
+  SideNavMenuItem,
   SkipToContent,
   Theme,
 } from '@carbon/react';
@@ -22,6 +24,7 @@ import {
   SettingsAdjust,
   UserAvatarFilledAlt,
   WatsonHealthTextAnnotationToggle,
+  ModelBuilder,
 } from '@carbon/icons-react';
 
 // Carbon UIShell navigation items; icons help rail mode remain identifiable when collapsed.
@@ -30,8 +33,13 @@ const navLinks = [
   { to: '/calls', label: '通话记录', icon: Phone },
   { to: '/appointments', label: '预约记录', icon: Calendar },
   { to: '/prompts', label: 'Prompt 管理', icon: WatsonHealthTextAnnotationToggle },
+  { to: '/pretraining', label: '微调', icon: ModelBuilder },
   { to: '/settings', label: '设置', icon: SettingsAdjust },
-  { to: '/test', label: '测试', icon: SailboatCoastal },
+];
+
+const testNavItems = [
+  { tab: 'websocket', label: 'WebSocket' },
+  { tab: 'twilio', label: 'Twilio WebCall' },
 ];
 
 type AppLayoutProps = {
@@ -46,6 +54,10 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   const expandNav = () => setSideNavExpanded(true);
   const collapseNav = () => setSideNavExpanded(false);
+  const activeTestTab =
+    location.pathname === '/test'
+      ? new URLSearchParams(location.search).get('tab') ?? 'websocket'
+      : null;
 
   // 路由切换后默认收起，防止状态滞留
   useEffect(() => {
@@ -126,6 +138,30 @@ export function AppLayout({ children }: AppLayoutProps) {
                 {link.label}
               </SideNavLink>
             ))}
+            <SideNavMenu
+              title="测试"
+              renderIcon={SailboatCoastal}
+              isActive={location.pathname === '/test'}
+              defaultExpanded={location.pathname === '/test'}
+              isSideNavExpanded={isSideNavExpanded}
+            >
+              {testNavItems.map((item) => {
+                const href = `/test?tab=${item.tab}`;
+                return (
+                  <SideNavMenuItem
+                    key={item.tab}
+                    href={href}
+                    isActive={activeTestTab === item.tab}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      goTo(href);
+                    }}
+                  >
+                    {item.label}
+                  </SideNavMenuItem>
+                );
+              })}
+            </SideNavMenu>
           </SideNavItems>
         </SideNav>
         <Content

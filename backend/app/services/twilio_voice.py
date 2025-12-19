@@ -29,8 +29,9 @@ from app.services.prompt_service import prompt_service
 logger = logging.getLogger(__name__)
 
 
-FINAL_CONFIRMATION_PHRASES = ("ご予約内容を受付いたしました", "ご利用ありがとうございます")
-JSON_BLOCK_PATTERN = re.compile(r"```(?:json)?\s*({[\s\S]+?})\s*```", re.IGNORECASE)
+FINAL_CONFIRMATION_PHRASES = ("ご予約内容を受付いたしました,ご利用ありがとうございます")
+JSON_BLOCK_PATTERN = re.compile(
+    r"```(?:json)?\s*({[\s\S]+?})\s*```", re.IGNORECASE)
 EXTRA_REQUEST_NONE_KEYWORDS = [
     "なし",
     "追加要望なし",
@@ -97,7 +98,8 @@ class TwilioVoiceService:
     ) -> None:
         """Validate X-Twilio-Signature header to ensure webhook authenticity."""
         if not self._auth_token:
-            logger.warning("Twilio auth token not configured, skipping signature validation.")
+            logger.warning(
+                "Twilio auth token not configured, skipping signature validation.")
             return
         if not signature:
             raise HTTPException(status_code=403, detail="缺少 Twilio Signature。")
@@ -148,7 +150,8 @@ class TwilioVoiceService:
         elif url:
             payload["Url"] = url
         else:
-            raise HTTPException(status_code=400, detail="未指定 TwiML App 或回调 URL。")
+            raise HTTPException(
+                status_code=400, detail="未指定 TwiML App 或回调 URL。")
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -172,7 +175,8 @@ class TwilioVoiceService:
             and self._account_sid
             and self._twiml_app_sid
         ):
-            raise HTTPException(status_code=503, detail="未配置 Twilio API Key 或 TwiML App。")
+            raise HTTPException(
+                status_code=503, detail="未配置 Twilio API Key 或 TwiML App。")
         token = AccessToken(
             self._account_sid,
             api_key,
@@ -197,7 +201,8 @@ class TwilioVoiceService:
             self._cleanup_session(call_sid)
             return '<?xml version="1.0" encoding="UTF-8"?><Response/>'
 
-        prompt_id = prompt_from_payload or self._session_prompts.get(call_sid) or self._prompt_id
+        prompt_id = prompt_from_payload or self._session_prompts.get(
+            call_sid) or self._prompt_id
         prompt = self._get_prompt(prompt_id)
         self._transcripts.setdefault(call_sid, [])
         with self._session_lock:
@@ -217,7 +222,8 @@ class TwilioVoiceService:
                 self._session_prompts[call_sid] = prompt_id
                 resolved_model = self._resolve_model_id(prompt.model_id)
                 self._session_models[call_sid] = resolved_model
-            session.append(ChatMessage(role="user", content="新しい電話が接続されました。最初の挨拶から会話を開始してください。"))
+            session.append(ChatMessage(
+                role="user", content="新しい電話が接続されました。最初の挨拶から会話を開始してください。"))
             target_model = self._session_models[call_sid]
             reply = await self._generate_reply(target_model, session)
             session.append(ChatMessage(role="assistant", content=reply))
@@ -252,7 +258,8 @@ class TwilioVoiceService:
         try:
             prompt = prompt_service.get_prompt(prompt_id)
         except KeyError as exc:  # noqa: BLE001
-            raise HTTPException(status_code=404, detail=f"未找到 Prompt {prompt_id}") from exc
+            raise HTTPException(
+                status_code=404, detail=f"未找到 Prompt {prompt_id}") from exc
         self._prompt_cache[prompt_id] = prompt
         return prompt
 
@@ -331,7 +338,8 @@ class TwilioVoiceService:
         )
         if not all([caller, company, appointment, category, amount, address]):
             return None
-        operation = self._normalize_operation(payload.get("operation") or payload.get("action"))
+        operation = self._normalize_operation(
+            payload.get("operation") or payload.get("action"))
         return ParsedAppointment(
             operation=operation,
             timestamp=timestamp,
@@ -352,7 +360,7 @@ class TwilioVoiceService:
         start = text.find("{")
         end = text.rfind("}")
         if start != -1 and end > start:
-            return text[start : end + 1]
+            return text[start: end + 1]
         return None
 
     def _normalize_extra_request(self, value: str) -> str:
@@ -403,9 +411,11 @@ class TwilioVoiceService:
         try:
             await appointment_service.create_from_conversation(payload)
             self._finalized_sessions.add(call_sid)
-            logger.info("Appointment record created for call %s via %s", call_sid, reason)
+            logger.info(
+                "Appointment record created for call %s via %s", call_sid, reason)
         except Exception as exc:  # noqa: BLE001
-            logger.exception("Failed to create appointment for call %s: %s", call_sid, exc)
+            logger.exception(
+                "Failed to create appointment for call %s: %s", call_sid, exc)
 
     def _serialize_transcript(self, call_sid: str) -> str:
         entries = self._transcripts.get(call_sid, [])
