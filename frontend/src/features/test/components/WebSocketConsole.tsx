@@ -179,7 +179,7 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
 
   return (
     <div className="ws-console">
-      <div className="ws-console__main">
+      <div className="ws-console__header">
         <SessionStatusCard
           connectionSummary={connectionSummary}
           promptName={prompt?.name}
@@ -192,6 +192,8 @@ export function WebSocketConsole({ prompt }: WebSocketConsoleProps) {
           onDisconnect={handleDisconnect}
           onClear={handleClearConversation}
         />
+      </div>
+      <div className="ws-console__main">
         <div className="ws-console__grid">
           <Tile className="ws-chat-panel">
             <ChatHistory

@@ -140,3 +140,7 @@ vite.config.ts.timestamp-*
 
 # Google service account credentials (never commit)
 backend/gen-lang-client-*.json
+
+# Python bytecode
+__pycache__/
+*.py[cod]

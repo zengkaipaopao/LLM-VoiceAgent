@@ -1,152 +1,27 @@
-import { useEffect, useRef, useState } from 'react';
 import { Button, InlineNotification, TextInput, Tile } from '@carbon/react';
-import { Call, Device } from '@twilio/voice-sdk';
 
 import { PromptTemplate } from '../../../types';
-
-type CallLog = {
-  timestamp: string;
-  message: string;
-};
-
-const DEFAULT_TWILIO_NUMBER =
-  import.meta.env.VITE_TWILIO_DEFAULT_NUMBER ?? '+17753689279';
+import { useTwilioVoice } from '../hooks/useTwilioVoice';
 
 type TwilioWebCallPanelProps = {
   prompt?: PromptTemplate;
 };
 
 export function TwilioWebCallPanel({ prompt }: TwilioWebCallPanelProps) {
-  const [identity, setIdentity] = useState('');
-  const [dialNumber, setDialNumber] = useState('');
-  const [status, setStatus] = useState<'idle' | 'ready' | 'error' | 'calling'>('idle');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [logs, setLogs] = useState<CallLog[]>([]);
-  const deviceRef = useRef<Device | null>(null);
-  const activeCallRef = useRef<Call | null>(null);
-
-  const appendLog = (message: string) => {
-    setLogs((prev) => [...prev, { timestamp: new Date().toLocaleTimeString(), message }]);
-  };
-
-  const initializeDevice = async () => {
-    if (loading) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await fetch('/api/twilio/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identity: identity || undefined }),
-      });
-      if (!response.ok) {
-        throw new Error(`获取 Token 失败：${response.status}`);
-      }
-      const data: { identity: string; token: string } = await response.json();
-      if (!identity) {
-        setIdentity(data.identity);
-      }
-
-      if (deviceRef.current) {
-        await deviceRef.current.unregister().catch(() => {});
-        deviceRef.current.destroy();
-        deviceRef.current = null;
-      }
-
-      const device = new Device(data.token, {
-        logLevel: 'error',
-        codecPreferences: ['opus', 'pcmu'],
-      });
-      device.on('registered', () => {
-        appendLog('Twilio Device registered');
-        setStatus('ready');
-      });
-      device.on('unregistered', () => appendLog('Twilio Device unregistered'));
-      device.on('error', (deviceError) => {
-        appendLog(`Device error: ${deviceError.message}`);
-        setError(deviceError.message);
-      });
-      deviceRef.current = device;
-      await device.register();
-      if (!dialNumber.trim()) {
-        setDialNumber(DEFAULT_TWILIO_NUMBER);
-      }
-      appendLog('Device initialized');
-    } catch (err) {
-      const message = err instanceof Error ? err.message : '初始化失败';
-      setError(message);
-      setStatus('error');
-      appendLog(message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCall = async () => {
-    if (status !== 'ready' || !deviceRef.current) {
-      setError('请先初始化 Twilio Device。');
-      return;
-    }
-    const trimmed = dialNumber.trim();
-    if (!trimmed) {
-      setError('请输入要拨打的号码。');
-      return;
-    }
-    setError(null);
-    setStatus('calling');
-    appendLog(`Dialing ${trimmed} ...`);
-    try {
-      const params: Record<string, string> = { To: trimmed };
-      if (prompt?.id) {
-        params.PromptId = prompt.id;
-      }
-      const call = await deviceRef.current.connect({ params });
-      activeCallRef.current = call;
-      call.on('accept', () => appendLog('Call accepted'));
-      call.on('disconnect', () => {
-        appendLog('Call disconnected');
-        setStatus('ready');
-        activeCallRef.current = null;
-      });
-      call.on('cancel', () => {
-        appendLog('Call canceled');
-        setStatus('ready');
-        activeCallRef.current = null;
-      });
-      call.on('error', (callError) => {
-        appendLog(`Call error: ${callError.message}`);
-        setError(callError.message);
-        setStatus('ready');
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : '呼叫失败';
-      appendLog(message);
-      setError(message);
-      setStatus('ready');
-    }
-  };
-
-  const hangup = () => {
-    if (activeCallRef.current) {
-      activeCallRef.current.disconnect();
-      activeCallRef.current = null;
-      appendLog('Call disconnected by user');
-      setStatus('ready');
-    }
-  };
-
-  useEffect(
-    () => () => {
-      if (activeCallRef.current) {
-        activeCallRef.current.disconnect();
-      }
-      if (deviceRef.current) {
-        deviceRef.current.destroy();
-      }
-    },
-    [],
-  );
+  const {
+    identity,
+    setIdentity,
+    dialNumber,
+    setDialNumber,
+    status,
+    loading,
+    error,
+    logs,
+    initializeDevice,
+    startCall,
+    hangup,
+    clearError,
+  } = useTwilioVoice({ promptId: prompt?.id });
 
   return (
     <div className="twilio-panel">
@@ -178,7 +53,7 @@ export function TwilioWebCallPanel({ prompt }: TwilioWebCallPanelProps) {
           <div className="twilio-panel__buttons">
             <Button
               kind="primary"
-              onClick={handleCall}
+              onClick={startCall}
               disabled={status !== 'ready' || !dialNumber.trim()}
             >
               呼叫
@@ -195,7 +70,7 @@ export function TwilioWebCallPanel({ prompt }: TwilioWebCallPanelProps) {
             lowContrast
             title="Twilio 错误"
             subtitle={error}
-            onClose={() => setError(null)}
+            onClose={clearError}
           />
         )}
       </Tile>

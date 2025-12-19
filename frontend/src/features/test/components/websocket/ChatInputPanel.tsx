@@ -1,5 +1,5 @@
 import { FormEvent } from 'react';
-import { Button, TextArea, Tile } from '@carbon/react';
+import { Button, ContainedList, ContainedListItem, TextArea, Tile } from '@carbon/react';
 
 import { ConnectionState } from './types';
 
@@ -52,21 +52,13 @@ export function ChatInputPanel({
           </Button>
         </div>
       </form>
-      <div className="ws-quick-prompts">
-        <span>快捷提示</span>
-        <div className="ws-quick-prompts__chips">
-          {quickPrompts.map((item) => (
-            <button
-              key={item}
-              type="button"
-              className="ws-quick-prompts__chip"
-              onClick={() => onQuickPromptSelect(item)}
-            >
-              {item}
-            </button>
-          ))}
-        </div>
-      </div>
+      <ContainedList label="快捷提示" kind="on-page" size="sm" className="ws-quick-prompts-list">
+        {quickPrompts.map((item) => (
+          <ContainedListItem key={item} onClick={() => onQuickPromptSelect(item)}>
+            <span className="ws-quick-prompt-text">{item}</span>
+          </ContainedListItem>
+        ))}
+      </ContainedList>
     </Tile>
   );
 }

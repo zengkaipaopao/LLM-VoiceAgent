@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 
 import { createRealtimeSession } from '../../../api/realtime';
 import { ChatMessage, ConnectionState, RealtimeSessionMeta } from '../components/websocket/types';
@@ -26,6 +26,65 @@ export type RealtimeSessionApi = {
   requestAssistantReply: () => void;
 };
 
+type RealtimeState = {
+  messages: ChatMessage[];
+  connectionState: ConnectionState;
+  sessionMeta: RealtimeSessionMeta;
+  sessionError: string | null;
+  isAssistantTyping: boolean;
+};
+
+type RealtimeAction =
+  | { type: 'set'; payload: Partial<RealtimeState> }
+  | { type: 'append_message'; message: ChatMessage }
+  | { type: 'append_message_delta'; id: string; delta: string }
+  | { type: 'finalize_message'; id: string; timestamp: string }
+  | { type: 'clear_messages' }
+  | { type: 'reset_session' };
+
+const initialState: RealtimeState = {
+  messages: [],
+  connectionState: 'idle',
+  sessionMeta: null,
+  sessionError: null,
+  isAssistantTyping: false,
+};
+
+const realtimeReducer = (state: RealtimeState, action: RealtimeAction): RealtimeState => {
+  switch (action.type) {
+    case 'set':
+      return { ...state, ...action.payload };
+    case 'append_message':
+      return { ...state, messages: [...state.messages, action.message] };
+    case 'append_message_delta':
+      return {
+        ...state,
+        messages: state.messages.map((message) =>
+          message.id === action.id ? { ...message, content: message.content + action.delta } : message,
+        ),
+      };
+    case 'finalize_message':
+      return {
+        ...state,
+        messages: state.messages.map((message) =>
+          message.id === action.id
+            ? {
+                ...message,
+                streaming: false,
+                timestamp: action.timestamp,
+              }
+            : message,
+        ),
+      };
+    case 'clear_messages':
+      return { ...state, messages: [], isAssistantTyping: false };
+    case 'reset_session':
+      return { ...initialState };
+    default:
+      return state;
+  }
+};
+
 export function useRealtimeSession({
   instructions,
   model,
@@ -33,16 +92,18 @@ export function useRealtimeSession({
   channel = 'websocket',
   onAssistantMessage,
 }: UseRealtimeSessionParams): RealtimeSessionApi {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [connectionState, setConnectionState] = useState<ConnectionState>('idle');
-  const [sessionMeta, setSessionMeta] = useState<RealtimeSessionMeta>(null);
-  const [sessionError, setSessionError] = useState<string | null>(null);
-  const [isAssistantTyping, setAssistantTyping] = useState(false);
+  const [state, dispatch] = useReducer(realtimeReducer, initialState);
   const wsRef = useRef<WebSocket | null>(null);
   const manualCloseRef = useRef(false);
   const responseMessageMapRef = useRef<Record<string, string>>({});
   const responseContentRef = useRef<Record<string, string>>({});
   const pendingResponseRef = useRef<string | null>(null);
+
+  const resetStreamingState = useCallback(() => {
+    responseMessageMapRef.current = {};
+    responseContentRef.current = {};
+    pendingResponseRef.current = null;
+  }, []);
 
   const recordUserMessage = useCallback((text: string): ChatMessage => {
     const timestamp = new Date().toISOString();
@@ -52,7 +113,7 @@ export function useRealtimeSession({
       content: text,
       timestamp,
     };
-    setMessages((prev) => [...prev, message]);
+    dispatch({ type: 'append_message', message });
     return message;
   }, []);
 
@@ -64,16 +125,16 @@ export function useRealtimeSession({
     const messageId = `assistant-${responseId}`;
     responseMessageMapRef.current[responseId] = messageId;
     const timestamp = new Date().toISOString();
-    setMessages((prev) => [
-      ...prev,
-      {
+    dispatch({
+      type: 'append_message',
+      message: {
         id: messageId,
         role: 'assistant',
         content: '',
         timestamp,
         streaming: true,
       },
-    ]);
+    });
     return messageId;
   }, []);
 
@@ -82,16 +143,7 @@ export function useRealtimeSession({
       if (!delta) return;
       const targetId = ensureAssistantMessage(responseId);
       responseContentRef.current[responseId] = (responseContentRef.current[responseId] ?? '') + delta;
-      setMessages((prev) =>
-        prev.map((message) =>
-          message.id === targetId
-            ? {
-                ...message,
-                content: message.content + delta,
-              }
-            : message,
-        ),
-      );
+      dispatch({ type: 'append_message_delta', id: targetId, delta });
     },
     [ensureAssistantMessage],
   );
@@ -103,19 +155,9 @@ export function useRealtimeSession({
       if (!messageId) return;
       const finalText = responseContentRef.current[responseId];
       delete responseContentRef.current[responseId];
-      setMessages((prev) =>
-        prev.map((message) =>
-          message.id === messageId
-            ? {
-                ...message,
-                streaming: false,
-                timestamp: new Date().toISOString(),
-              }
-            : message,
-        ),
-      );
+      dispatch({ type: 'finalize_message', id: messageId, timestamp: new Date().toISOString() });
       delete responseMessageMapRef.current[responseId];
-      setAssistantTyping(false);
+      dispatch({ type: 'set', payload: { isAssistantTyping: false } });
       if (finalText) {
         onAssistantMessage?.(finalText);
       }
@@ -134,7 +176,7 @@ export function useRealtimeSession({
             if (responseId) {
               pendingResponseRef.current = responseId;
               ensureAssistantMessage(responseId);
-              setAssistantTyping(true);
+              dispatch({ type: 'set', payload: { isAssistantTyping: true } });
             }
             break;
           }
@@ -163,8 +205,7 @@ export function useRealtimeSession({
           }
           case 'response.error': {
             const detail = (message.error?.message as string | undefined) ?? 'Realtime 响应错误';
-            setSessionError(detail);
-            setAssistantTyping(false);
+            dispatch({ type: 'set', payload: { sessionError: detail, isAssistantTyping: false } });
             pendingResponseRef.current = null;
             break;
           }
@@ -179,8 +220,7 @@ export function useRealtimeSession({
   );
 
   const connect = useCallback(async () => {
-    setConnectionState('connecting');
-    setSessionError(null);
+    dispatch({ type: 'set', payload: { connectionState: 'connecting', sessionError: null } });
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
@@ -196,7 +236,12 @@ export function useRealtimeSession({
       if (!secret) {
         throw new Error('Realtime 服务返回的临时密钥为空');
       }
-      setSessionMeta({ id: session.session_id, model: session.model, expires_at: session.expires_at });
+      dispatch({
+        type: 'set',
+        payload: {
+          sessionMeta: { id: session.session_id, model: session.model, expires_at: session.expires_at },
+        },
+      });
       const websocketUrl =
         session.websocket_url ?? `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(session.model)}`;
       const ws = new WebSocket(websocketUrl, [
@@ -206,7 +251,7 @@ export function useRealtimeSession({
       ]);
 
       ws.onopen = () => {
-        setConnectionState('connected');
+        dispatch({ type: 'set', payload: { connectionState: 'connected' } });
       };
       ws.onclose = (event) => {
         if (wsRef.current === ws) {
@@ -214,18 +259,23 @@ export function useRealtimeSession({
         }
         if (manualCloseRef.current) {
           manualCloseRef.current = false;
-          setConnectionState('idle');
-          setSessionError(null);
-          setSessionMeta(null);
+          dispatch({
+            type: 'set',
+            payload: { connectionState: 'idle', sessionError: null, sessionMeta: null },
+          });
         } else {
-          setConnectionState('error');
-          setSessionError(event.reason || 'Realtime 会话已断开');
+          dispatch({
+            type: 'set',
+            payload: { connectionState: 'error', sessionError: event.reason || 'Realtime 会话已断开' },
+          });
         }
       };
       ws.onerror = (event) => {
         console.error('Realtime WS error', event);
-        setConnectionState('error');
-        setSessionError('Realtime 通道异常，请稍后重试');
+        dispatch({
+          type: 'set',
+          payload: { connectionState: 'error', sessionError: 'Realtime 通道异常，请稍后重试' },
+        });
       };
       ws.onmessage = (event) => {
         if (typeof event.data === 'string') {
@@ -241,8 +291,10 @@ export function useRealtimeSession({
       wsRef.current = ws;
     } catch (error) {
       console.error('初始化 Realtime 失败', error);
-      setConnectionState('error');
-      setSessionError(error instanceof Error ? error.message : '无法连接 Realtime 服务');
+      dispatch({
+        type: 'set',
+        payload: { connectionState: 'error', sessionError: error instanceof Error ? error.message : '无法连接 Realtime 服务' },
+      });
     }
   }, [channel, handleRealtimeFrame, instructions, model, voice]);
 
@@ -252,28 +304,19 @@ export function useRealtimeSession({
       wsRef.current.close();
       wsRef.current = null;
     }
-    responseMessageMapRef.current = {};
-    responseContentRef.current = {};
-    pendingResponseRef.current = null;
-    setMessages([]);
-    setAssistantTyping(false);
-    setSessionMeta(null);
-    setSessionError(null);
-    setConnectionState('idle');
-  }, []);
+    resetStreamingState();
+    dispatch({ type: 'reset_session' });
+  }, [resetStreamingState]);
 
   const clearConversation = useCallback(() => {
-    responseMessageMapRef.current = {};
-    responseContentRef.current = {};
-    pendingResponseRef.current = null;
-    setMessages([]);
-    setAssistantTyping(false);
-  }, []);
+    resetStreamingState();
+    dispatch({ type: 'clear_messages' });
+  }, [resetStreamingState]);
 
   const sendUserMessage = useCallback((text: string) => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) {
-      setSessionError('Realtime 通道未连接，无法发送消息');
+      dispatch({ type: 'set', payload: { sessionError: 'Realtime 通道未连接，无法发送消息' } });
       return false;
     }
     ws.send(
@@ -297,7 +340,7 @@ export function useRealtimeSession({
   const requestAssistantReply = useCallback(() => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) {
-      setSessionError('Realtime 通道未连接，无法发送消息');
+      dispatch({ type: 'set', payload: { sessionError: 'Realtime 通道未连接，无法发送消息' } });
       return;
     }
     ws.send(
@@ -308,7 +351,7 @@ export function useRealtimeSession({
         },
       }),
     );
-    setAssistantTyping(true);
+    dispatch({ type: 'set', payload: { isAssistantTyping: true } });
   }, []);
 
   useEffect(() => {
@@ -322,11 +365,11 @@ export function useRealtimeSession({
 
   return useMemo(
     () => ({
-      messages,
-      connectionState,
-      sessionMeta,
-      sessionError,
-      isAssistantTyping,
+      messages: state.messages,
+      connectionState: state.connectionState,
+      sessionMeta: state.sessionMeta,
+      sessionError: state.sessionError,
+      isAssistantTyping: state.isAssistantTyping,
       connect,
       disconnect,
       clearConversation,
@@ -335,11 +378,11 @@ export function useRealtimeSession({
       requestAssistantReply,
     }),
     [
-      messages,
-      connectionState,
-      sessionMeta,
-      sessionError,
-      isAssistantTyping,
+      state.messages,
+      state.connectionState,
+      state.sessionMeta,
+      state.sessionError,
+      state.isAssistantTyping,
       connect,
       disconnect,
       clearConversation,
