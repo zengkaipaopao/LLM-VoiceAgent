@@ -1,4 +1,5 @@
 import {
+  DataTableSkeleton,
   Table,
   TableBody,
   TableCell,
@@ -10,10 +11,11 @@ import {
   TableToolbarContent,
   TableToolbarSearch,
 } from '@carbon/react';
-import { useAppState } from '../state/AppStateContext';
+import { useCallsQuery } from '../api/hooks';
 
 export function CallsPage() {
-  const { calls } = useAppState();
+  const { data, isLoading } = useCallsQuery();
+  const calls = data?.data ?? [];
 
   const headers = [
     { key: 'id', header: 'ID' },
@@ -43,27 +45,31 @@ export function CallsPage() {
             <TableToolbarSearch persistent size="lg" placeholder="搜索号码或状态" />
           </TableToolbarContent>
         </TableToolbar>
-        <Table aria-label="通话记录">
-          <TableHead>
-            <TableRow>
-              {headers.map((header) => (
-                <TableHeader key={header.key}>{header.header}</TableHeader>
-              ))}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {rows.map((row) => (
-              <TableRow key={row.id}>
-                <TableCell>{row.id}</TableCell>
-                <TableCell>{row.direction}</TableCell>
-                <TableCell>{row.counterpart}</TableCell>
-                <TableCell>{row.startedAt}</TableCell>
-                <TableCell>{row.durationSeconds}</TableCell>
-                <TableCell>{row.status}</TableCell>
+        {isLoading ? (
+          <DataTableSkeleton columnCount={headers.length} rowCount={5} />
+        ) : (
+          <Table aria-label="通话记录">
+            <TableHead>
+              <TableRow>
+                {headers.map((header) => (
+                  <TableHeader key={header.key}>{header.header}</TableHeader>
+                ))}
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHead>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow key={row.id}>
+                  <TableCell>{row.id}</TableCell>
+                  <TableCell>{row.direction}</TableCell>
+                  <TableCell>{row.counterpart}</TableCell>
+                  <TableCell>{row.startedAt}</TableCell>
+                  <TableCell>{row.durationSeconds}</TableCell>
+                  <TableCell>{row.status}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </TableContainer>
     </section>
   );

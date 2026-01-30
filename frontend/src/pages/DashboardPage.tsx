@@ -1,9 +1,13 @@
 import { useMemo } from 'react';
-import { Column, Grid, Tag, Tile } from '@carbon/react';
-import { useAppState } from '../state/AppStateContext';
+import { Column, Grid, SkeletonText, Tag, TagSkeleton, Tile } from '@carbon/react';
+import { useAgentsQuery, useCallsQuery } from '../api/hooks';
+import styles from './DashboardPage.module.css';
 
 export function DashboardPage() {
-  const { calls, agents } = useAppState();
+  const { data: callsData, isLoading: callsLoading } = useCallsQuery();
+  const { data: agents = [], isLoading: agentsLoading } = useAgentsQuery();
+  const calls = callsData?.data ?? [];
+  const loading = callsLoading || agentsLoading;
 
   const stats = useMemo(() => {
     const completed = calls.filter((call) => call.status === 'completed').length;
@@ -31,15 +35,25 @@ export function DashboardPage() {
       <h1 className="page-title">仪表盘</h1>
       <p className="page-subtitle">概览当前的呼叫量、成功率和正在运行的智能体。</p>
       <Grid condensed fullWidth>
-        {statCards.map((card) => (
-          <Column key={card.label} sm={4} md={4} lg={3}>
-            <Tile className="stat-tile">
-              <span className="stat-label">{card.label}</span>
-              <span className="stat-value">{card.value}</span>
-              <Tag type="cool-gray">{card.helper}</Tag>
-            </Tile>
-          </Column>
-        ))}
+        {loading
+          ? Array.from({ length: 5 }).map((_, index) => (
+              <Column key={`stat-skeleton-${index}`} sm={4} md={4} lg={3}>
+                <Tile className={styles['stat-tile']}>
+                  <SkeletonText width="60%" />
+                  <SkeletonText heading width="40%" />
+                  <TagSkeleton size="sm" />
+                </Tile>
+              </Column>
+            ))
+          : statCards.map((card) => (
+              <Column key={card.label} sm={4} md={4} lg={3}>
+                <Tile className={styles['stat-tile']}>
+                  <span className={styles['stat-label']}>{card.label}</span>
+                  <span className={styles['stat-value']}>{card.value}</span>
+                  <Tag type="cool-gray">{card.helper}</Tag>
+                </Tile>
+              </Column>
+            ))}
       </Grid>
     </section>
   );

@@ -16,31 +16,12 @@ import {
   Theme,
 } from '@carbon/react';
 import {
-  Calendar,
-  Dashboard,
   Notification,
-  Phone,
   SailboatCoastal,
-  SettingsAdjust,
   UserAvatarFilledAlt,
-  WatsonHealthTextAnnotationToggle,
-  ModelBuilder,
 } from '@carbon/icons-react';
-
-// Carbon UIShell navigation items; icons help rail mode remain identifiable when collapsed.
-const navLinks = [
-  { to: '/', label: '仪表盘', icon: Dashboard },
-  { to: '/calls', label: '通话记录', icon: Phone },
-  { to: '/appointments', label: '预约记录', icon: Calendar },
-  { to: '/prompts', label: 'Prompt 管理', icon: WatsonHealthTextAnnotationToggle },
-  { to: '/pretraining', label: '微调', icon: ModelBuilder },
-  { to: '/settings', label: '设置', icon: SettingsAdjust },
-];
-
-const testNavItems = [
-  { tab: 'websocket', label: 'WebSocket' },
-  { tab: 'twilio', label: 'Twilio WebCall' },
-];
+import styles from './AppLayout.module.css';
+import { navLinks, testNavItems } from '../config/navigation';
 
 type AppLayoutProps = {
   children: ReactNode;
@@ -87,7 +68,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   return (
     // Use Carbon g10 theme to match UIShell tokens and consistent spacing/colors.
     <Theme theme="g10">
-      <div className="app-shell" onMouseMove={handleShellMouseMove}>
+      <div className={styles['app-shell']} onMouseMove={handleShellMouseMove}>
         <SkipToContent />
         <Header aria-label="LLM Voice Agent">
           <HeaderMenuButton
@@ -166,7 +147,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         </SideNav>
         <Content
           id="main-content"
-          className="page-content"
+          className={styles['page-content']}
           onMouseEnter={collapseNav}
         >
           {children}

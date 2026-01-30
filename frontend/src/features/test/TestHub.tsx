@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Column, Dropdown, Grid, Tab, TabList, TabPanel, TabPanels, Tabs, Tile } from '@carbon/react';
+import { Column, Dropdown, DropdownSkeleton, Grid, Tab, TabList, TabPanel, TabPanels, Tabs, Tile } from '@carbon/react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { PageSubtitle } from '../../components/atoms/PageSubtitle';
 import { PageTitle } from '../../components/atoms/PageTitle';
 import { WebSocketConsole } from './components/WebSocketConsole';
 import { TwilioWebCallPanel } from './components/TwilioWebCallPanel';
-import { useAppState } from '../../state/AppStateContext';
+import { usePromptsQuery } from '../../api/hooks';
 import { PromptTemplate } from '../../types';
 
 const PROMPT_STORAGE_KEY = 'testHub.selectedPromptId';
@@ -18,16 +18,10 @@ const getTabIndexFromSearch = (search: string) => {
 export function TestHub() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { prompts, loadPrompts, promptsLoaded, loadingPrompts } = useAppState();
+  const { data: prompts = [], isLoading: loadingPrompts } = usePromptsQuery();
   const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
   const activeTabIndex = useMemo(() => getTabIndexFromSearch(location.search), [location.search]);
   const rawTabParam = useMemo(() => new URLSearchParams(location.search).get('tab'), [location.search]);
-
-  useEffect(() => {
-    if (!promptsLoaded && !loadingPrompts) {
-      void loadPrompts();
-    }
-  }, [loadPrompts, loadingPrompts, promptsLoaded]);
 
   const selectedPrompt = useMemo<PromptTemplate | undefined>(() => {
     if (!prompts.length) {
@@ -76,21 +70,24 @@ export function TestHub() {
     <section className="page-section">
       <PageTitle>实时调试实验室</PageTitle>
       <PageSubtitle>在单一界面体验 WebSocket 以及 Twilio WebCall 等链路，方便比对。</PageSubtitle>
-      {!promptsLoaded && <p>Prompt 列表加载中...</p>}
       <Grid condensed fullWidth>
         <Column sm={4} md={8} lg={12}>
           <Tile className="prompt-selector">
-            <Dropdown
-              id="prompt-selector"
-              titleText="测试 Prompt"
-              label="选择 Prompt"
-              items={prompts}
-              itemToString={(item) => (item ? `${item.name} · ${item.modelId}` : '')}
-              selectedItem={selectedPrompt ?? null}
-              onChange={({ selectedItem }) =>
-                setSelectedPromptId((selectedItem as PromptTemplate | null)?.id ?? null)
-              }
-            />
+            {loadingPrompts ? (
+              <DropdownSkeleton />
+            ) : (
+              <Dropdown
+                id="prompt-selector"
+                titleText="测试 Prompt"
+                label="选择 Prompt"
+                items={prompts}
+                itemToString={(item) => (item ? `${item.name} · ${item.modelId}` : '')}
+                selectedItem={selectedPrompt ?? null}
+                onChange={({ selectedItem }) =>
+                  setSelectedPromptId((selectedItem as PromptTemplate | null)?.id ?? null)
+                }
+              />
+            )}
           </Tile>
         </Column>
         <Column sm={4} md={8} lg={12}>

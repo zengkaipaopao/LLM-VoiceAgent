@@ -1,10 +1,12 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import {
   Button,
   ComposedModal,
+  DataTableSkeleton,
   ModalBody,
   ModalFooter,
   ModalHeader,
+  SkeletonText,
   Table,
   TableBody,
   TableCell,
@@ -20,7 +22,7 @@ import {
 } from '@carbon/react';
 
 import { ReservationRecord } from '../types';
-import { useAppState } from '../state/AppStateContext';
+import { useAppointmentsQuery } from '../api/hooks';
 import styles from './AppointmentsPage.module.css';
 
 const operationLabel: Record<ReservationRecord['operation'], string> = {
@@ -65,22 +67,9 @@ const detailLabels: Record<keyof ReservationRecord, string> = {
 };
 
 export function AppointmentsPage() {
-  const { reservations, loadingReservations, reloadReservations, reservationsLoaded } = useAppState();
+  const { data: reservations = [], isLoading } = useAppointmentsQuery();
   const [search, setSearch] = useState('');
   const [selectedRecord, setSelectedRecord] = useState<ReservationRecord | null>(null);
-  const initialLoadRequestedRef = useRef(false);
-
-  useEffect(() => {
-    if (reservationsLoaded || loadingReservations || initialLoadRequestedRef.current) {
-      return;
-    }
-    initialLoadRequestedRef.current = true;
-    void reloadReservations().finally(() => {
-      if (!reservationsLoaded) {
-        initialLoadRequestedRef.current = false;
-      }
-    });
-  }, [loadingReservations, reloadReservations, reservationsLoaded]);
 
   const metrics = useMemo(() => {
     const totals = reservations.reduce(
@@ -112,26 +101,38 @@ export function AppointmentsPage() {
       <h1 className="page-title">预约记录</h1>
       <p className="page-subtitle">查看自动接单助手归档的预约信息，点击任意行以查看详细内容。</p>
       <div className={styles.metricsRow}>
-        <Tile className={styles.metricTile}>
-          <p className={styles.metricLabel}>总预约数</p>
-          <p className={styles.metricValue}>{metrics.total}</p>
-          <p className={styles.metricDesc}>全部历史记录</p>
-        </Tile>
-        <Tile className={styles.metricTile}>
-          <p className={styles.metricLabel}>新预约</p>
-          <p className={styles.metricValue}>{metrics.create}</p>
-          <p className={styles.metricDesc}>operation = create</p>
-        </Tile>
-        <Tile className={styles.metricTile}>
-          <p className={styles.metricLabel}>预约变更</p>
-          <p className={styles.metricValue}>{metrics.update}</p>
-          <p className={styles.metricDesc}>operation = update</p>
-        </Tile>
-        <Tile className={styles.metricTile}>
-          <p className={styles.metricLabel}>预约取消</p>
-          <p className={styles.metricValue}>{metrics.delete}</p>
-          <p className={styles.metricDesc}>operation = delete</p>
-        </Tile>
+        {isLoading ? (
+          Array.from({ length: 4 }).map((_, index) => (
+            <Tile key={`metric-skeleton-${index}`} className={styles.metricTile}>
+              <SkeletonText width="50%" />
+              <SkeletonText heading width="30%" />
+              <SkeletonText width="70%" />
+            </Tile>
+          ))
+        ) : (
+          <>
+            <Tile className={styles.metricTile}>
+              <p className={styles.metricLabel}>总预约数</p>
+              <p className={styles.metricValue}>{metrics.total}</p>
+              <p className={styles.metricDesc}>全部历史记录</p>
+            </Tile>
+            <Tile className={styles.metricTile}>
+              <p className={styles.metricLabel}>新预约</p>
+              <p className={styles.metricValue}>{metrics.create}</p>
+              <p className={styles.metricDesc}>operation = create</p>
+            </Tile>
+            <Tile className={styles.metricTile}>
+              <p className={styles.metricLabel}>预约变更</p>
+              <p className={styles.metricValue}>{metrics.update}</p>
+              <p className={styles.metricDesc}>operation = update</p>
+            </Tile>
+            <Tile className={styles.metricTile}>
+              <p className={styles.metricLabel}>预约取消</p>
+              <p className={styles.metricValue}>{metrics.delete}</p>
+              <p className={styles.metricDesc}>operation = delete</p>
+            </Tile>
+          </>
+        )}
       </div>
       <TableContainer title="予約一覧">
         <TableToolbar>
@@ -145,8 +146,8 @@ export function AppointmentsPage() {
             />
           </TableToolbarContent>
         </TableToolbar>
-        {loadingReservations ? (
-          <p>予約データを取得中...</p>
+        {isLoading ? (
+          <DataTableSkeleton columnCount={headers.length} rowCount={6} />
         ) : (
           <Table aria-label="予約記録">
             <TableHead>

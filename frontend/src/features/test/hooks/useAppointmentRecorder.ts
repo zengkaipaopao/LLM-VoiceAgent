@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 
-import { submitAppointmentRecord } from '../../../api/appointments';
+import { AppointmentRecordPayload } from '../../../api/appointments';
 import { ReservationRecord } from '../../../types';
 import { ChatMessage } from '../components/websocket/types';
 import {
@@ -26,6 +26,7 @@ type UseAppointmentRecorderParams = {
   enabled: boolean;
   messages: ChatMessage[];
   autoFinalizeOnSummary?: boolean;
+  createAppointmentRecord: (payload: AppointmentRecordPayload) => Promise<ReservationRecord>;
   onCreated?: (record: ReservationRecord) => Promise<void> | void;
   onAutoCreate?: () => void;
 };
@@ -47,6 +48,7 @@ export function useAppointmentRecorder({
   enabled,
   messages,
   autoFinalizeOnSummary = false,
+  createAppointmentRecord,
   onCreated,
   onAutoCreate,
 }: UseAppointmentRecorderParams): AppointmentRecorder {
@@ -87,7 +89,9 @@ export function useAppointmentRecorder({
             timestamp: messageItem.timestamp,
           })),
         );
-        const createdRecord = await submitAppointmentRecord(composeAppointmentPayload(structured, transcript));
+        const createdRecord = await createAppointmentRecord(
+          composeAppointmentPayload(structured, transcript),
+        );
         structuredAppointmentRef.current = null;
         await onCreated?.(createdRecord);
         if (options?.auto) {
@@ -106,7 +110,7 @@ export function useAppointmentRecorder({
         setSaving(false);
       }
     },
-    [enabled, messages, onAutoCreate, onCreated],
+    [createAppointmentRecord, enabled, messages, onAutoCreate, onCreated],
   );
 
   const handleAssistantMessage = useCallback(

@@ -1,12 +1,30 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Column, Grid, Tag, Tile } from '@carbon/react';
+import { useCallback, useMemo, useState } from 'react';
+import {
+  Button,
+  ButtonSkeleton,
+  Column,
+  DataTableSkeleton,
+  Grid,
+  SkeletonText,
+  Tag,
+  TagSkeleton,
+  Tile,
+} from '@carbon/react';
 
 import { PromptEditorModal } from '../features/prompts/components/PromptEditorModal';
 import { ModelManagerModal } from '../features/prompts/components/ModelManagerModal';
 import { PromptTable } from '../features/prompts/components/PromptTable';
 import { PromptDeleteModal } from '../features/prompts/components/PromptDeleteModal';
-import { useAppState } from '../state/AppStateContext';
-import { ModelInfo, PromptFormValues, PromptTemplate } from '../types';
+import {
+  useAllowedModelsQuery,
+  useCreatePromptMutation,
+  useDeletePromptMutation,
+  useModelsQuery,
+  usePromptsQuery,
+  useUpdateAllowedModelsMutation,
+  useUpdatePromptMutation,
+} from '../api/hooks';
+import { PromptFormValues, PromptTemplate } from '../types';
 import styles from './PromptsPage.module.css';
 
 type EditorState = {
@@ -15,29 +33,19 @@ type EditorState = {
 } | null;
 
 export function PromptsPage() {
-  const {
-    prompts,
-    models,
-    allowedModels,
-    loadPrompts,
-    promptsLoaded,
-    loadModels,
-    modelsLoaded,
-    updatePromptTemplate,
-    createPromptTemplate,
-    deletePromptTemplate,
-    updateAllowedModels,
-    createCustomModel,
-    deleteCustomModel,
-    loadingPrompts,
-    loadingModels,
-  } = useAppState();
+  const { data: prompts = [], isLoading: promptsLoading } = usePromptsQuery();
+  const { data: models = [], isLoading: modelsLoading } = useModelsQuery();
+  const { data: allowedModels = [], isLoading: allowedLoading } = useAllowedModelsQuery();
+  const createPromptMutation = useCreatePromptMutation();
+  const updatePromptMutation = useUpdatePromptMutation();
+  const deletePromptMutation = useDeletePromptMutation();
+  const updateAllowedModelsMutation = useUpdateAllowedModelsMutation();
   const [editorState, setEditorState] = useState<EditorState>(null);
   const [modelManagerOpen, setModelManagerOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<PromptTemplate | null>(null);
 
   const allowedSet = useMemo(() => new Set(allowedModels), [allowedModels]);
-  const allowedModelItems = useMemo<ModelInfo[]>(
+  const allowedModelItems = useMemo(
     () => models.filter((model) => allowedSet.has(model.id)),
     [allowedSet, models],
   );
@@ -50,42 +58,57 @@ export function PromptsPage() {
   const handlePromptSave = useCallback(
     async (payload: PromptFormValues, promptId?: string) => {
       if (editorState?.mode === 'edit' && promptId) {
-        await updatePromptTemplate(promptId, {
-          name: payload.name,
-          modelId: payload.modelId,
-          systemPrompt: payload.systemPrompt,
-          welcomeMessage: payload.welcomeMessage,
-          capabilities: payload.capabilities,
-          voiceConfig: payload.voiceConfig,
-          version: payload.version,
+        await updatePromptMutation.mutateAsync({
+          id: promptId,
+          payload: {
+            name: payload.name,
+            modelId: payload.modelId,
+            systemPrompt: payload.systemPrompt,
+            welcomeMessage: payload.welcomeMessage,
+            capabilities: payload.capabilities,
+            voiceConfig: payload.voiceConfig,
+            version: payload.version,
+          },
         });
       } else {
-        await createPromptTemplate(payload);
+        await createPromptMutation.mutateAsync(payload);
       }
     },
-    [createPromptTemplate, editorState?.mode, updatePromptTemplate],
+    [createPromptMutation, editorState?.mode, updatePromptMutation],
   );
 
-  const handleAllowedModelsSave = useCallback((ids: string[]) => updateAllowedModels(ids), [updateAllowedModels]);
+  const handleAllowedModelsSave = useCallback(
+    async (ids: string[]) => {
+      await updateAllowedModelsMutation.mutateAsync(ids);
+    },
+    [updateAllowedModelsMutation],
+  );
 
-  useEffect(() => {
-    if (!promptsLoaded && !loadingPrompts) {
-      void loadPrompts();
-    }
-  }, [loadPrompts, loadingPrompts, promptsLoaded]);
+  const loading = promptsLoading || modelsLoading || allowedLoading;
 
-  useEffect(() => {
-    if (!modelsLoaded && !loadingModels) {
-      void loadModels();
-    }
-  }, [loadModels, loadingModels, modelsLoaded]);
-
-  if (!promptsLoaded || !modelsLoaded) {
+  if (loading) {
     return (
       <section className="page-section">
         <h1 className="page-title">Prompt 管理</h1>
         <p className="page-subtitle">编辑、版本对比、灰度发布智能体 Prompt 的公共入口。</p>
-        <p>正在加载 Prompt / 模型数据...</p>
+        <Grid condensed fullWidth>
+          <Column sm={4} md={8} lg={12}>
+            <Tile>
+              <div className={styles.promptHeader}>
+                <div>
+                  <SkeletonText width="40%" />
+                  <SkeletonText width="60%" />
+                </div>
+                <div className={styles.promptHeaderActions}>
+                  <TagSkeleton size="sm" />
+                  <ButtonSkeleton size="sm" />
+                  <ButtonSkeleton size="sm" />
+                </div>
+              </div>
+              <DataTableSkeleton columnCount={6} rowCount={6} />
+            </Tile>
+          </Column>
+        </Grid>
       </section>
     );
   }
@@ -135,8 +158,6 @@ export function PromptsPage() {
         allowedModels={allowedModels}
         onClose={() => setModelManagerOpen(false)}
         onSave={handleAllowedModelsSave}
-        onCreateModel={createCustomModel}
-        onDeleteModel={deleteCustomModel}
       />
       <PromptDeleteModal
         prompt={deleteTarget}
@@ -144,7 +165,7 @@ export function PromptsPage() {
         requiredPassword="admin"
         onCancel={() => setDeleteTarget(null)}
         onConfirm={async (prompt) => {
-          await deletePromptTemplate(prompt.id);
+          await deletePromptMutation.mutateAsync(prompt.id);
           setDeleteTarget(null);
         }}
       />

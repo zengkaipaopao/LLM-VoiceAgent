@@ -1,8 +1,6 @@
-import { useMemo } from 'react';
+import { AgentProfile } from '../types';
 
-import { AgentProfile } from '../../types';
-
-const defaultAgents: AgentProfile[] = [
+const agents: AgentProfile[] = [
   {
     id: 'agent_1',
     name: 'Global Sales Bot',
@@ -19,7 +17,6 @@ const defaultAgents: AgentProfile[] = [
   },
 ];
 
-export function useAgentsStore() {
-  const agents = useMemo(() => defaultAgents, []);
-  return { agents };
+export async function fetchAgents() {
+  return agents;
 }

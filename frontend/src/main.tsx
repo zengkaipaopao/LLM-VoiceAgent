@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import App from './App';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import '@carbon/styles/css/styles.css';
 import './styles.css';
 
@@ -18,7 +19,8 @@ const router = createBrowserRouter([
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
       <RouterProvider
         router={router}
         future={{
@@ -26,6 +28,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           v7_relativeSplatPath: true,
         }}
       />
-    </QueryClientProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   </React.StrictMode>,
 );

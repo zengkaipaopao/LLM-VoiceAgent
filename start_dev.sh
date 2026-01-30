@@ -3,6 +3,45 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+RUN_BACK=true
+RUN_FRONT=true
+
+usage() {
+  cat <<'USAGE'
+用法:
+  ./start_dev.sh [--back|--front]
+
+参数:
+  --back   仅启动后端
+  --front  仅启动前端
+USAGE
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --back)
+      RUN_FRONT=false
+      ;;
+    --front)
+      RUN_BACK=false
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "未知参数: $arg" >&2
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+if [ "$RUN_BACK" = false ] && [ "$RUN_FRONT" = false ]; then
+  echo "参数冲突: 不能同时指定 --back 和 --front" >&2
+  usage
+  exit 1
+fi
 
 ensure_poetry() {
   POETRY_BIN="$(command -v poetry || true)"
@@ -23,19 +62,23 @@ ensure_poetry() {
 }
 
 ensure_node_modules() {
-  if [ ! -d "$ROOT_DIR/frontend/node_modules" ]; then
-    echo "前端依赖未安装，执行 npm install..."
-    (cd "$ROOT_DIR/frontend" && npm install)
+  if [ "$RUN_FRONT" = true ]; then
+    if [ ! -d "$ROOT_DIR/frontend/node_modules" ]; then
+      echo "前端依赖未安装，执行 npm install..."
+      (cd "$ROOT_DIR/frontend" && npm install)
+    fi
   fi
-  if [ ! -d "$ROOT_DIR/backend/.venv" ] && [ -n "$POETRY_BIN" ]; then
-    echo "后端依赖未安装，执行 poetry install..."
-    (cd "$ROOT_DIR/backend" && "$POETRY_BIN" install)
+  if [ "$RUN_BACK" = true ]; then
+    if [ ! -d "$ROOT_DIR/backend/.venv" ] && [ -n "$POETRY_BIN" ]; then
+      echo "后端依赖未安装，执行 poetry install..."
+      (cd "$ROOT_DIR/backend" && "$POETRY_BIN" install)
+    fi
   fi
 }
 
 ensure_llm_sdks() {
   # 在 poetry 环境中保证 LLM SDK 存在（OpenAI 已在依赖中，补充 Gemini/Claude）
-  if [ -n "$POETRY_BIN" ]; then
+  if [ "$RUN_BACK" = true ] && [ -n "$POETRY_BIN" ]; then
     (
       cd "$ROOT_DIR/backend" && \
       "$POETRY_BIN" run python - <<'PY'
@@ -66,29 +109,40 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-echo "启动后端: $BACKEND_CMD"
-/bin/bash -c "$BACKEND_CMD" &
-BACK_PID=$!
+if [ "$RUN_BACK" = true ]; then
+  echo "启动后端: $BACKEND_CMD"
+  /bin/bash -c "$BACKEND_CMD" &
+  BACK_PID=$!
+else
+  BACK_PID=""
+fi
 
-echo "启动前端: $FRONTEND_CMD"
-/bin/bash -c "$FRONTEND_CMD" &
-FRONT_PID=$!
+if [ "$RUN_FRONT" = true ]; then
+  echo "启动前端: $FRONTEND_CMD"
+  /bin/bash -c "$FRONTEND_CMD" &
+  FRONT_PID=$!
+else
+  FRONT_PID=""
+fi
 
 # 轮询监控任一子进程退出（macOS 的 bash 无 wait -n）
 while true; do
-  if ! kill -0 $BACK_PID 2>/dev/null; then
+  if [ -n "$BACK_PID" ] && ! kill -0 $BACK_PID 2>/dev/null; then
     echo "后端进程已退出，停止前端..."
-    kill $FRONT_PID 2>/dev/null || true
+    [ -n "$FRONT_PID" ] && kill $FRONT_PID 2>/dev/null || true
     break
   fi
-  if ! kill -0 $FRONT_PID 2>/dev/null; then
+  if [ -n "$FRONT_PID" ] && ! kill -0 $FRONT_PID 2>/dev/null; then
     echo "前端进程已退出，停止后端..."
-    kill $BACK_PID 2>/dev/null || true
+    [ -n "$BACK_PID" ] && kill $BACK_PID 2>/dev/null || true
+    break
+  fi
+  if [ -z "$BACK_PID" ] && [ -z "$FRONT_PID" ]; then
     break
   fi
   sleep 1
 done
 
 # 等待清理
-wait $BACK_PID 2>/dev/null || true
-wait $FRONT_PID 2>/dev/null || true
+[ -n "$BACK_PID" ] && wait $BACK_PID 2>/dev/null || true
+[ -n "$FRONT_PID" ] && wait $FRONT_PID 2>/dev/null || true

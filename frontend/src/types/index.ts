@@ -62,13 +62,6 @@ export interface ModelInfo {
   description?: string;
 }
 
-export interface CreateModelPayload {
-  id: string;
-  name: string;
-  provider: string;
-  description?: string;
-}
-
 export interface ReservationRecord {
   id: string;
   timestamp: string;

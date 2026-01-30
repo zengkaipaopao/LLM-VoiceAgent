@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Column, Grid, Tile, Toggle, UnorderedList, ListItem } from '@carbon/react';
-import { useAppState } from '../state/AppStateContext';
+import { Column, Grid, SkeletonText, Tile, Toggle, ToggleSkeleton, UnorderedList, ListItem } from '@carbon/react';
+import { useAgentsQuery } from '../api/hooks';
 
 export function SettingsPage() {
-  const { agents } = useAppState();
+  const { data: agents = [], isLoading } = useAgentsQuery();
   const [featureFlags, setFeatureFlags] = useState({
     callRecording: true,
     realtimeTranscription: false,
@@ -22,39 +22,57 @@ export function SettingsPage() {
         <Column sm={4} md={4} lg={6}>
           <Tile>
             <h3>智能体配置</h3>
-            <UnorderedList className="settings-list">
-              {agents.map((agent) => (
-                <ListItem key={agent.id}>
-                  {agent.name} · {agent.llmProvider} · voice={agent.voice} · temp={agent.temperature}
-                </ListItem>
-              ))}
-            </UnorderedList>
+            {isLoading ? (
+              <>
+                <SkeletonText width="70%" />
+                <SkeletonText width="60%" />
+                <SkeletonText width="65%" />
+              </>
+            ) : (
+              <UnorderedList className="settings-list">
+                {agents.map((agent) => (
+                  <ListItem key={agent.id}>
+                    {agent.name} · {agent.llmProvider} · voice={agent.voice} · temp={agent.temperature}
+                  </ListItem>
+                ))}
+              </UnorderedList>
+            )}
           </Tile>
         </Column>
         <Column sm={4} md={4} lg={6}>
           <Tile>
             <h3>Feature Flags</h3>
-            <Toggle
-              id="flag-recording"
-              size="sm"
-              labelText="启用通话录音"
-              toggled={featureFlags.callRecording}
-              onToggle={handleToggle('callRecording')}
-            />
-            <Toggle
-              id="flag-realtime"
-              size="sm"
-              labelText="实时转写（预览）"
-              toggled={featureFlags.realtimeTranscription}
-              onToggle={handleToggle('realtimeTranscription')}
-            />
-            <Toggle
-              id="flag-prompt"
-              size="sm"
-              labelText="Prompt 编辑器 Beta"
-              toggled={featureFlags.betaPromptEditor}
-              onToggle={handleToggle('betaPromptEditor')}
-            />
+            {isLoading ? (
+              <>
+                <ToggleSkeleton />
+                <ToggleSkeleton />
+                <ToggleSkeleton />
+              </>
+            ) : (
+              <>
+                <Toggle
+                  id="flag-recording"
+                  size="sm"
+                  labelText="启用通话录音"
+                  toggled={featureFlags.callRecording}
+                  onToggle={handleToggle('callRecording')}
+                />
+                <Toggle
+                  id="flag-realtime"
+                  size="sm"
+                  labelText="实时转写（预览）"
+                  toggled={featureFlags.realtimeTranscription}
+                  onToggle={handleToggle('realtimeTranscription')}
+                />
+                <Toggle
+                  id="flag-prompt"
+                  size="sm"
+                  labelText="Prompt 编辑器 Beta"
+                  toggled={featureFlags.betaPromptEditor}
+                  onToggle={handleToggle('betaPromptEditor')}
+                />
+              </>
+            )}
           </Tile>
         </Column>
       </Grid>

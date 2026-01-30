@@ -1,0 +1,11 @@
+.app-shell {
+  min-height: 100vh;
+  background-color: var(--cds-ui-background, #f4f4f4);
+}
+
+.page-content {
+  padding: 2rem 2.5rem;
+  min-height: calc(100vh - 3rem);
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+}
