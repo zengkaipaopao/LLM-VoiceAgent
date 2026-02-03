@@ -53,6 +53,7 @@ def simulate_incoming_call(
 @router.post("/batch", response_model=ResponseBase[List[CallResponse]])
 def simulate_batch_calls(
     count: int = Query(10, ge=1, le=100, description="Number of calls to simulate"),
+    enable_reviewer: bool = Query(True, description="Enable AI Reviewer (generate confidence score)"),
     db: Session = Depends(get_db)
 ):
     """
@@ -63,6 +64,10 @@ def simulate_batch_calls(
     - 25% Transferred to human
     - 10% No answer
     - 5% Failed
+    
+    **Reviewer Mode**:
+    - If `enable_reviewer=True`: Generates random confidence scores (85-100 for AI, 60-80 for Transfer)
+    - If `enable_reviewer=False`: `ai_confidence` will be null
     
     **Use Case**:
     - Populate database with test data
@@ -75,11 +80,11 @@ def simulate_batch_calls(
     ```
     """
     service = CallSimulationService(db)
-    calls = service.simulate_batch_calls(count)
+    calls = service.simulate_batch_calls(count, enable_reviewer)
     
     return ResponseBase(
         success=True,
-        message=f"Simulated {count} calls successfully",
+        message=f"Simulated {count} calls successfully (Reviewer: {'ON' if enable_reviewer else 'OFF'})",
         data=[CallResponse.model_validate(call) for call in calls]
     )
 

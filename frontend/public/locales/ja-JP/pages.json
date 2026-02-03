@@ -7,7 +7,52 @@
   "calls": {
     "title": "通話記録",
     "subtitle": "すべての通話記録を表示・管理",
-    "emptyState": "このページは開発中です"
+    "emptyState": "このページは開発中です",
+    "table": {
+      "headers": {
+        "callId": "通話ID",
+        "caller": "発信者",
+        "status": "ステータス",
+        "handler": "処理方法",
+        "time": "日時",
+        "duration": "通話時間",
+        "confidence": "AI信頼度",
+        "actions": ""
+      },
+      "status": {
+        "completed": "完了",
+        "ongoing": "通話中",
+        "failed": "失敗",
+        "no_answer": "不在",
+        "ringing": "呼出中",
+        "busy": "話し中"
+      },
+      "handler": {
+        "ai": "AI",
+        "human": "オペレーター",
+        "transferred": "転送"
+      },
+      "actions": {
+        "viewDetails": "詳細を表示"
+      },
+      "toolbar": {
+        "searchPlaceholder": "発信者名または電話番号",
+        "filter": "フィルター",
+        "filterAll": "すべてのステータス"
+      }
+    },
+    "detailModal": {
+      "title": "通話詳細",
+      "basicInfo": "基本情報",
+      "caller": "発信者",
+      "number": "電話番号",
+      "status": "ステータス",
+      "handler": "処理方法",
+      "duration": "通話時間",
+      "confidence": "AI信頼度",
+      "summary": "通話概要",
+      "transcript": "対話ログ"
+    }
   },
   "appointments": {
     "title": "予約管理",

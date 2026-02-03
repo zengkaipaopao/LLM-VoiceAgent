@@ -7,7 +7,52 @@
   "calls": {
     "title": "Call Records",
     "subtitle": "View and manage all call records",
-    "emptyState": "This page is under development"
+    "emptyState": "This page is under development",
+    "table": {
+      "headers": {
+        "callId": "Call ID",
+        "caller": "Caller",
+        "status": "Status",
+        "handler": "Handler",
+        "time": "Time",
+        "duration": "Duration",
+        "confidence": "AI Confidence",
+        "actions": ""
+      },
+      "status": {
+        "completed": "Completed",
+        "ongoing": "Ongoing",
+        "failed": "Failed",
+        "no_answer": "No Answer",
+        "ringing": "Ringing",
+        "busy": "Busy"
+      },
+      "handler": {
+        "ai": "AI",
+        "human": "Human",
+        "transferred": "Transferred"
+      },
+      "actions": {
+        "viewDetails": "View Details"
+      },
+      "toolbar": {
+        "searchPlaceholder": "Search caller or number",
+        "filter": "Filter",
+        "filterAll": "All Status"
+      }
+    },
+    "detailModal": {
+      "title": "Call Details",
+      "basicInfo": "Basic Info",
+      "caller": "Caller",
+      "number": "Number",
+      "status": "Status",
+      "handler": "Handler",
+      "duration": "Duration",
+      "confidence": "AI Confidence",
+      "summary": "Call Summary",
+      "transcript": "Transcript"
+    }
   },
   "appointments": {
     "title": "Appointments",

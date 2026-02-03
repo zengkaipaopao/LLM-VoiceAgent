@@ -20,19 +20,13 @@ class CallSimulationService:
         self.repo = CallRepository(db)
         self.db = db
     
-    def simulate_incoming_call(self, scenario: str = "ai_handled") -> Call:
+    def simulate_incoming_call(self, scenario: str = "ai_handled", enable_reviewer: bool = True) -> Call:
         """
         Simulate an incoming call with different scenarios.
         
         Args:
             scenario: Type of scenario to simulate
-                - "ai_handled": AI successfully handles the call
-                - "transferred": AI transfers to human
-                - "no_answer": Call not answered
-                - "failed": Call failed
-                
-        Returns:
-            Simulated call record
+            enable_reviewer: Whether to enable AI reviewer mode (generate confidence score)
         """
         # Generate realistic test data
         phone_numbers = [
@@ -74,15 +68,15 @@ class CallSimulationService:
         
         # Simulate different scenarios
         if scenario == "ai_handled":
-            self._simulate_ai_handled(call, now)
+            self._simulate_ai_handled(call, now, enable_reviewer)
         elif scenario == "transferred":
-            self._simulate_transferred(call, now)
+            self._simulate_transferred(call, now, enable_reviewer)
         elif scenario == "no_answer":
             self._simulate_no_answer(call, now)
         elif scenario == "failed":
             self._simulate_failed(call, now)
         else:
-            self._simulate_ai_handled(call, now)
+            self._simulate_ai_handled(call, now, enable_reviewer)
         
         # Save to database
         self.db.add(call)
@@ -91,7 +85,7 @@ class CallSimulationService:
         
         return call
     
-    def _simulate_ai_handled(self, call: Call, start_time: datetime):
+    def _simulate_ai_handled(self, call: Call, start_time: datetime, enable_reviewer: bool = True):
         """Simulate AI successfully handling the call."""
         # Answer after 3-8 seconds
         wait_seconds = random.randint(3, 8)
@@ -106,7 +100,11 @@ class CallSimulationService:
         
         # AI handled successfully
         call.handler_type = HandlerType.AI
-        call.ai_confidence = random.randint(85, 100)
+        
+        if enable_reviewer:
+            call.ai_confidence = random.randint(85, 100)
+        else:
+            call.ai_confidence = None
         
         # Generate realistic transcript
         call.transcript = """客户: 你好,我想咨询一下你们的产品价格。
@@ -120,7 +118,7 @@ AI: 不客气!如果您还有其他问题,随时欢迎咨询。祝您生活愉�
         
         call.summary = "客户咨询智能手表价格和功能差异,AI成功解答客户疑问。"
     
-    def _simulate_transferred(self, call: Call, start_time: datetime):
+    def _simulate_transferred(self, call: Call, start_time: datetime, enable_reviewer: bool = True):
         """Simulate call transferred to human."""
         # AI answers first
         wait_seconds = random.randint(3, 8)
@@ -139,7 +137,11 @@ AI: 不客气!如果您还有其他问题,随时欢迎咨询。祝您生活愉�
             "复杂问题需要专业解答",
             "客户情绪激动,需要人工安抚"
         ])
-        call.ai_confidence = random.randint(60, 80)
+        
+        if enable_reviewer:
+            call.ai_confidence = random.randint(60, 80)
+        else:
+            call.ai_confidence = None
         
         # Human handles for 2-5 minutes
         human_duration = random.randint(120, 300)
@@ -185,12 +187,13 @@ AI: 为了更准确地为您服务,我为您转接人工客服。请稍候...
             "号码不存在"
         ])
     
-    def simulate_batch_calls(self, count: int = 10) -> list[Call]:
+    def simulate_batch_calls(self, count: int = 10, enable_reviewer: bool = True) -> list[Call]:
         """
         Simulate multiple calls for testing.
         
         Args:
             count: Number of calls to simulate
+            enable_reviewer: Whether to enable AI reviewer mode
             
         Returns:
             List of simulated calls
@@ -201,7 +204,7 @@ AI: 为了更准确地为您服务,我为您转接人工客服。请稍候...
         calls = []
         for _ in range(count):
             scenario = random.choices(scenarios, weights=weights)[0]
-            call = self.simulate_incoming_call(scenario)
+            call = self.simulate_incoming_call(scenario, enable_reviewer=enable_reviewer)
             calls.append(call)
         
         return calls

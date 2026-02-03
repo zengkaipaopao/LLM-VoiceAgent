@@ -10,6 +10,7 @@ import {
   Grid,
   Column,
   Stack,
+
 } from '@carbon/react';
 import {
   CheckmarkFilled,
@@ -21,6 +22,7 @@ import {
   UserMultiple,
   PhoneOff,
   CloseFilled,
+  WatsonHealthAiStatus,
 } from '@carbon/icons-react';
 
 /**
@@ -35,10 +37,15 @@ import {
  * 
  * 将来替换为真实的SIP事件触发
  */
-export const CallSimulationTest: React.FC = () => {
+interface CallSimulationTestProps {
+  enableReviewer: boolean;
+}
+
+export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableReviewer }) => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  // Removed local enableReviewer state as it is now passed via props
 
   const API_BASE = 'http://localhost:8000/api/v1';
 
@@ -54,7 +61,12 @@ export const CallSimulationTest: React.FC = () => {
       const response = await axios.post(
         `${API_BASE}/calls/simulate/incoming`,
         null,
-        { params: { scenario } }
+        { 
+          params: { 
+            scenario,
+            enable_reviewer: enableReviewer
+          } 
+        }
       );
       
       setResult(response.data);
@@ -79,7 +91,12 @@ export const CallSimulationTest: React.FC = () => {
       const response = await axios.post(
         `${API_BASE}/calls/simulate/batch`,
         null,
-        { params: { count } }
+        { 
+          params: { 
+            count,
+            enable_reviewer: enableReviewer
+          } 
+        }
       );
       
       setResult(response.data);
@@ -151,95 +168,97 @@ export const CallSimulationTest: React.FC = () => {
 
   return (
     <Stack gap={6}>
-      {/* 场景选择卡片 */}
-      <div>
-        <h4 className="cds--label" style={{ marginBottom: '1rem' }}>
-          选择测试场景
-        </h4>
-        <Grid narrow>
-          {scenarios.map((scenario) => (
-            <Column key={scenario.id} lg={4} md={4} sm={2}>
-              <ClickableTile
-                onClick={() => simulateCall(scenario.id)}
-                disabled={loading}
-                style={{ height: '100%' }}
-              >
-                <div style={{ 
-                  display: 'flex', 
-                  flexDirection: 'column', 
-                  gap: '0.5rem',
-                  height: '100%',
-                }}>
-                  <scenario.icon 
-                    size={32} 
-                    style={{ color: scenario.iconColor }} 
-                  />
-                  <div>
-                    <h5 className="cds--type-heading-compact-01" style={{ marginBottom: '0.25rem' }}>
-                      {scenario.title}
-                    </h5>
-                    <p className="cds--label-description">
-                      {scenario.description}
-                    </p>
-                  </div>
-                </div>
-              </ClickableTile>
-            </Column>
-          ))}
-        </Grid>
-      </div>
-
-      {/* 批量操作 */}
-      <Tile>
-        <Stack gap={4}>
-          <div>
-            <h4 className="cds--label">批量测试</h4>
-            <p className="cds--label-description">
-              快速生成多条测试数据用于开发调试
-            </p>
-          </div>
-          
+      <Stack gap={6}>
+        {/* 场景选择卡片 */}
+        <div>
+          <h4 className="cds--label" style={{ marginBottom: '1rem' }}>
+            选择测试场景
+          </h4>
           <Grid narrow>
-            <Column lg={8} md={4} sm={2}>
-              <Stack gap={3}>
-                <Button
-                  kind="secondary"
-                  onClick={() => simulateBatch(10)}
+            {scenarios.map((scenario) => (
+              <Column key={scenario.id} lg={4} md={4} sm={2}>
+                <ClickableTile
+                  onClick={() => simulateCall(scenario.id)}
                   disabled={loading}
-                  renderIcon={Renew}
-                  style={{ width: '100%', maxWidth: '100%' }}
+                  style={{ height: '100%', marginBottom: '1rem' }}
                 >
-                  生成 10 条测试数据
-                </Button>
-                
-                <Button
-                  kind="secondary"
-                  onClick={() => simulateBatch(50)}
-                  disabled={loading}
-                  renderIcon={Renew}
-                  style={{ width: '100%', maxWidth: '100%' }}
-                >
-                  生成 50 条测试数据
-                </Button>
-              </Stack>
-            </Column>
-            
-            <Column lg={8} md={4} sm={2}>
-              <Stack gap={3}>
-                <Button
-                  kind="danger"
-                  onClick={clearTestData}
-                  disabled={loading}
-                  renderIcon={TrashCan}
-                  style={{ width: '100%', maxWidth: '100%' }}
-                >
-                  清除所有测试数据
-                </Button>
-              </Stack>
-            </Column>
+                  <div style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    gap: '0.5rem',
+                    height: '100%',
+                  }}>
+                    <scenario.icon 
+                      size={32} 
+                      style={{ color: scenario.iconColor }} 
+                    />
+                    <div>
+                      <h5 className="cds--type-heading-compact-01" style={{ marginBottom: '0.25rem' }}>
+                        {scenario.title}
+                      </h5>
+                      <p className="cds--label-description">
+                        {scenario.description}
+                      </p>
+                    </div>
+                  </div>
+                </ClickableTile>
+              </Column>
+            ))}
           </Grid>
-        </Stack>
-      </Tile>
+        </div>
+
+        {/* 批量操作 */}
+        <Tile>
+          <Stack gap={4}>
+            <div>
+              <h4 className="cds--label">批量测试</h4>
+              <p className="cds--label-description">
+                快速生成多条测试数据用于开发调试 (审查员模式: {enableReviewer ? '开启' : '关闭'})
+              </p>
+            </div>
+            
+            <Grid narrow>
+              <Column lg={8} md={4} sm={2}>
+                <Stack gap={3}>
+                  <Button
+                    kind="secondary"
+                    onClick={() => simulateBatch(10)}
+                    disabled={loading}
+                    renderIcon={Renew}
+                    style={{ width: '100%', maxWidth: '100%' }}
+                  >
+                    生成 10 条
+                  </Button>
+                  
+                  <Button
+                    kind="secondary"
+                    onClick={() => simulateBatch(50)}
+                    disabled={loading}
+                    renderIcon={Renew}
+                    style={{ width: '100%', maxWidth: '100%' }}
+                  >
+                    生成 50 条
+                  </Button>
+                </Stack>
+              </Column>
+              
+              <Column lg={8} md={4} sm={2}>
+                <Stack gap={3}>
+                  <Button
+                    kind="danger"
+                    onClick={clearTestData}
+                    disabled={loading}
+                    renderIcon={TrashCan}
+                    style={{ width: '100%', maxWidth: '100%' }}
+                  >
+                    清除所有数据
+                  </Button>
+                </Stack>
+              </Column>
+            </Grid>
+          </Stack>
+        </Tile>
+      </Stack>
 
       {/* Loading状态 */}
       {loading && <Loading description="处理中..." withOverlay={false} />}
@@ -281,29 +300,10 @@ export const CallSimulationTest: React.FC = () => {
           </Stack>
         </Tile>
       )}
-
-      {/* 使用说明 */}
-      <InlineNotification
-        kind="info"
-        title="开发说明"
-        subtitle=""
-        lowContrast
-        hideCloseButton
-      >
-        <Stack gap={3} style={{ marginTop: '0.5rem' }}>
-          <p className="cds--body-compact-01">
-            <strong>当前阶段:</strong> 点击卡片模拟通话,测试后端API
-          </p>
-          <p className="cds--body-compact-01">
-            <strong>生产环境:</strong> 将替换为真实SIP事件触发 (INVITE, BYE等)
-          </p>
-          <p className="cds--body-compact-01">
-            <strong>测试数据:</strong> 所有模拟数据标记为 <code>extra_data.simulation = true</code>,可随时清除
-          </p>
-        </Stack>
-      </InlineNotification>
     </Stack>
   );
+
+
 };
 
 export default CallSimulationTest;

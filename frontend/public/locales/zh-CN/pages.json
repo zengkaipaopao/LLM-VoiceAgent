@@ -7,7 +7,52 @@
   "calls": {
     "title": "通话记录",
     "subtitle": "查看和管理所有通话记录",
-    "emptyState": "此页面正在开发中"
+    "emptyState": "此页面正在开发中",
+    "table": {
+      "headers": {
+        "callId": "通话ID",
+        "caller": "来电者",
+        "status": "状态",
+        "handler": "处理",
+        "time": "时间",
+        "duration": "时长",
+        "confidence": "AI置信度",
+        "actions": ""
+      },
+      "status": {
+        "completed": "已完成",
+        "ongoing": "进行中",
+        "failed": "失败",
+        "no_answer": "未接听",
+        "ringing": "响铃中",
+        "busy": "忙线"
+      },
+      "handler": {
+        "ai": "AI",
+        "human": "人工",
+        "transferred": "转接"
+      },
+      "actions": {
+        "viewDetails": "查看详情"
+      },
+      "toolbar": {
+        "searchPlaceholder": "搜索来电者或号码",
+        "filter": "筛选",
+        "filterAll": "全部状态"
+      }
+    },
+    "detailModal": {
+      "title": "通话详情",
+      "basicInfo": "基本信息",
+      "caller": "来电者",
+      "number": "号码",
+      "status": "状态",
+      "handler": "处理方式",
+      "duration": "时长",
+      "confidence": "AI置信度",
+      "summary": "通话摘要",
+      "transcript": "对话记录"
+    }
   },
   "appointments": {
     "title": "预约管理",

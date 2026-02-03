@@ -1,6 +1,23 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Tabs, TabList, Tab, TabPanels, TabPanel } from '@carbon/react';
-import { Phone, Network_3, PhoneVoice } from '@carbon/icons-react';
+import { 
+  Tabs, 
+  TabList, 
+  Tab, 
+  TabPanels, 
+  TabPanel, 
+  Tile,
+  Stack,
+  Toggle,
+  Grid,
+  Column
+} from '@carbon/react';
+import { 
+  Phone, 
+  Network_3, 
+  PhoneVoice,
+  WatsonHealthAiStatus 
+} from '@carbon/icons-react';
 import { PageTemplate } from '../components/templates/PageTemplate';
 import { EmptyState } from '../components/organisms/EmptyState';
 import { CallSimulationTest } from '../components/CallSimulationTest';
@@ -17,6 +34,7 @@ import { CallSimulationTest } from '../components/CallSimulationTest';
  */
 export function TestPage() {
   const { t } = useTranslation(['pages', 'common']);
+  const [enableReviewer, setEnableReviewer] = useState(true);
   
   return (
     <PageTemplate
@@ -31,6 +49,9 @@ export function TestPage() {
           <Tab renderIcon={Phone}>
             Call Simulation
           </Tab>
+          <Tab renderIcon={WatsonHealthAiStatus}>
+            Reviewer Mode
+          </Tab>
           <Tab renderIcon={Network_3}>
             WebSocket
           </Tab>
@@ -43,10 +64,54 @@ export function TestPage() {
           {/* Call模拟测试 */}
           <TabPanel>
             <div style={{ paddingTop: '1rem' }}>
-              <CallSimulationTest />
+              <CallSimulationTest enableReviewer={enableReviewer} />
             </div>
           </TabPanel>
           
+          {/* Reviewer模式设置 */}
+          <TabPanel>
+             <div style={{ paddingTop: '1rem', maxWidth: '800px' }}>
+                <Tile>
+                  <Stack gap={5}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <WatsonHealthAiStatus size={24} />
+                        <h4 className="cds--heading-02">AI 审查员模式 (Reviewer Mode)</h4>
+                    </div>
+                    
+                    <p className="cds--body-01">
+                      开启审查员模式后，系统会在通话结束后自动调用 LLM 对通话质量、用户情绪和解决率进行评估。
+                      这将生成"信赖度"分数和详细的通话摘要。此设置将应用于"Call Simulation"中的所有测试用例。
+                    </p>
+
+                    <div style={{ 
+                      padding: '1rem', 
+                      backgroundColor: enableReviewer ? 'var(--cds-layer-01)' : 'transparent',
+                      border: enableReviewer ? '1px solid var(--cds-border-subtle)' : 'none'
+                    }}>
+                      <Toggle
+                        id="reviewer-toggle"
+                        labelA="已关闭"
+                        labelB="已开启"
+                        labelText="启用自动评估"
+                        toggled={enableReviewer}
+                        onToggle={(checked) => setEnableReviewer(checked)}
+                        style={{ marginBottom: '1rem' }}
+                      />
+
+                      {enableReviewer && (
+                        <div className="cds--label-description">
+                           <h5 className="cds--label">模拟评分逻辑</h5>
+                          <ul style={{ listStyleType: 'disc', paddingLeft: '1rem', marginTop: '0.5rem' }}>
+                            <li><strong>AI处理:</strong> 随机生成 85-100 分</li>
+                            <li><strong>人工转接:</strong> 随机生成 60-80 分</li>
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </Stack>
+                </Tile>
+             </div>
+          </TabPanel>
           {/* WebSocket测试 */}
           <TabPanel>
             <div style={{ paddingTop: '1rem' }}>

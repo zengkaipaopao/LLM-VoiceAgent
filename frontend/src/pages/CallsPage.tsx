@@ -140,12 +140,12 @@ export function CallsPage() {
   // Get status tag
   const getStatusTag = (status: string) => {
     const statusMap: Record<string, { type: any; label: string }> = {
-      completed: { type: 'green', label: '已完成' },
-      ongoing: { type: 'blue', label: '进行中' },
-      failed: { type: 'red', label: '失败' },
-      no_answer: { type: 'gray', label: '未接听' },
-      ringing: { type: 'cyan', label: '响铃中' },
-      busy: { type: 'magenta', label: '忙线' },
+      completed: { type: 'green', label: t('calls.table.status.completed') },
+      ongoing: { type: 'blue', label: t('calls.table.status.ongoing') },
+      failed: { type: 'red', label: t('calls.table.status.failed') },
+      no_answer: { type: 'gray', label: t('calls.table.status.no_answer') },
+      ringing: { type: 'cyan', label: t('calls.table.status.ringing') },
+      busy: { type: 'magenta', label: t('calls.table.status.busy') },
     };
 
     const config = statusMap[status] || { type: 'gray', label: status };
@@ -155,9 +155,9 @@ export function CallsPage() {
   // Get handler display
   const getHandlerDisplay = (handlerType?: string) => {
     const handlerMap: Record<string, { icon: any; label: string }> = {
-      ai: { icon: Bot, label: 'AI' },
-      human: { icon: User, label: '人工' },
-      transferred: { icon: ArrowsHorizontal, label: '转接' },
+      ai: { icon: Bot, label: t('calls.table.handler.ai') },
+      human: { icon: User, label: t('calls.table.handler.human') },
+      transferred: { icon: ArrowsHorizontal, label: t('calls.table.handler.transferred') },
     };
 
     if (!handlerType) return '-';
@@ -176,14 +176,14 @@ export function CallsPage() {
 
   // Table headers
   const headers = [
-    { key: 'call_id', header: '通话ID' },
-    { key: 'caller', header: '来电者' },
-    { key: 'status', header: '状态' },
-    { key: 'handler', header: '处理' },
-    { key: 'started_at', header: '时间' },
-    { key: 'duration', header: '时长' },
-    { key: 'confidence', header: 'AI置信度' },  // 保留此列,如果你想删除,告诉我
-    { key: 'actions', header: '' },
+    { key: 'call_id', header: t('calls.table.headers.callId') },
+    { key: 'caller', header: t('calls.table.headers.caller') },
+    { key: 'status', header: t('calls.table.headers.status') },
+    { key: 'handler', header: t('calls.table.headers.handler') },
+    { key: 'started_at', header: t('calls.table.headers.time') },
+    { key: 'duration', header: t('calls.table.headers.duration') },
+    { key: 'confidence', header: t('calls.table.headers.confidence') },
+    { key: 'actions', header: t('calls.table.headers.actions') },
   ];
 
   // Table rows
@@ -201,8 +201,8 @@ export function CallsPage() {
 
   return (
     <PageTemplate
-      title="通话记录"
-      subtitle="查看和管理所有通话记录"
+      title={t('calls.title')}
+      subtitle={t('calls.subtitle')}
     >
       <div style={{ backgroundColor: 'var(--cds-layer-00)', padding: '1rem' }}>
         <DataTable rows={rows} headers={headers} isSortable>
@@ -225,7 +225,7 @@ export function CallsPage() {
                   {/* 搜索框 - 默认收起 */}
                   <TableToolbarSearch
                     persistent={false}
-                    placeholder="搜索来电者或号码"
+                    placeholder={t('calls.table.toolbar.searchPlaceholder')}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       setSearchQuery(e.target.value);
                       setPage(1); // Reset to first page on search
@@ -239,26 +239,26 @@ export function CallsPage() {
                   {/* 筛选菜单 */}
                   <TableToolbarMenu
                     renderIcon={Filter}
-                    iconDescription="筛选"
+                    iconDescription={t('calls.table.toolbar.filter')}
                   >
                     <OverflowMenuItem
-                      itemText="全部状态"
+                      itemText={t('calls.table.toolbar.filterAll')}
                       onClick={() => setStatusFilter('')}
                     />
                     <OverflowMenuItem
-                      itemText="已完成"
+                      itemText={t('calls.table.status.completed')}
                       onClick={() => setStatusFilter('completed')}
                     />
                     <OverflowMenuItem
-                      itemText="进行中"
+                      itemText={t('calls.table.status.ongoing')}
                       onClick={() => setStatusFilter('ongoing')}
                     />
                     <OverflowMenuItem
-                      itemText="失败"
+                      itemText={t('calls.table.status.failed')}
                       onClick={() => setStatusFilter('failed')}
                     />
                     <OverflowMenuItem
-                      itemText="未接听"
+                      itemText={t('calls.table.status.no_answer')}
                       onClick={() => setStatusFilter('no_answer')}
                     />
                   </TableToolbarMenu>
@@ -327,7 +327,7 @@ export function CallsPage() {
                                 kind="ghost"
                                 size="sm"
                                 renderIcon={View}
-                                iconDescription="查看详情"
+                                iconDescription={t('calls.table.actions.viewDetails')}
                                 hasIconOnly
                                 onClick={() => {
                                   setSelectedCall(call);
@@ -362,34 +362,34 @@ export function CallsPage() {
       <Modal
         open={detailModalOpen}
         onRequestClose={() => setDetailModalOpen(false)}
-        modalHeading="通话详情"
+        modalHeading={t('calls.detailModal.title')}
         passiveModal
         size="lg"
       >
         {selectedCall && (
           <div style={{ padding: '1rem' }}>
-            <h4>基本信息</h4>
+            <h4>{t('calls.detailModal.basicInfo')}</h4>
             <div style={{ marginBottom: '1rem' }}>
-              <p><strong>来电者:</strong> {selectedCall.caller_name || '未知'}</p>
-              <p><strong>号码:</strong> {selectedCall.counterpart}</p>
-              <p><strong>状态:</strong> {getStatusTag(selectedCall.status)}</p>
-              <p><strong>处理方式:</strong> {getHandlerDisplay(selectedCall.handler_type)}</p>
-              <p><strong>时长:</strong> {formatDuration(selectedCall.duration_seconds)}</p>
+              <p><strong>{t('calls.detailModal.caller')}:</strong> {selectedCall.caller_name || '未知'}</p>
+              <p><strong>{t('calls.detailModal.number')}:</strong> {selectedCall.counterpart}</p>
+              <p><strong>{t('calls.detailModal.status')}:</strong> {getStatusTag(selectedCall.status)}</p>
+              <p><strong>{t('calls.detailModal.handler')}:</strong> {getHandlerDisplay(selectedCall.handler_type)}</p>
+              <p><strong>{t('calls.detailModal.duration')}:</strong> {formatDuration(selectedCall.duration_seconds)}</p>
               {selectedCall.ai_confidence && (
-                <p><strong>AI置信度:</strong> {selectedCall.ai_confidence}%</p>
+                <p><strong>{t('calls.detailModal.confidence')}:</strong> {selectedCall.ai_confidence}%</p>
               )}
             </div>
 
             {selectedCall.summary && (
               <>
-                <h4>通话摘要</h4>
+                <h4>{t('calls.detailModal.summary')}</h4>
                 <p style={{ marginBottom: '1rem' }}>{selectedCall.summary}</p>
               </>
             )}
 
             {selectedCall.transcript && (
               <>
-                <h4>对话记录</h4>
+                <h4>{t('calls.detailModal.transcript')}</h4>
                 <pre style={{
                   whiteSpace: 'pre-wrap',
                   backgroundColor: 'var(--cds-layer-01)',
