@@ -78,6 +78,51 @@
     "title": "实时调试实验室",
     "subtitle": "在单一界面体验 WebSocket 以及 Twilio WebCall 等链路,方便比对。",
     "emptyState": "测试功能开发中",
-    "emptyDescription": "此页面将提供WebSocket和Twilio WebCall的实时调试功能。"
+    "emptyDescription": "此页面将提供WebSocket和Twilio WebCall的实时调试功能。",
+    "tabs": {
+      "simulation": "Call 模拟",
+      "reviewer": "Reviewer 模式",
+      "websocket": "WebSocket",
+      "twilio": "Twilio WebCall"
+    },
+    "simulation": {
+      "scenarios": {
+        "title": "选择测试场景",
+        "ai_handled": { "title": "AI成功处理", "description": "模拟AI完整处理来电" },
+        "transferred": { "title": "转人工", "description": "模拟AI转接人工客服" },
+        "no_answer": { "title": "未接听", "description": "模拟来电无人接听" },
+        "failed": { "title": "呼叫失败", "description": "模拟通话失败场景" }
+      },
+      "batch": {
+        "title": "批量测试",
+        "description": "快速生成多条测试数据用于开发调试 (审查员模式: {{status}})",
+        "on": "开启",
+        "off": "关闭",
+        "generate10": "生成 10 条",
+        "generate50": "生成 50 条",
+        "clear": "清除所有数据",
+        "confirmClear": "确定要清除所有测试数据吗?"
+      },
+      "status": {
+        "loading": "处理中...",
+        "success": "操作成功",
+        "error": "操作失败"
+      },
+      "response": "响应详情"
+    },
+    "reviewer": {
+      "title": "AI 审查员模式 (Reviewer Mode)",
+      "description": "开启审查员模式后，系统会在通话结束后自动调用 LLM 对通话质量、用户情绪和解决率进行评估。这将生成'信赖度'分数和详细的通话摘要。此设置将应用于'Call Simulation'中的所有测试用例。",
+      "toggle": {
+        "label": "启用自动评估",
+        "on": "已开启",
+        "off": "已关闭"
+      },
+      "logic": {
+        "title": "模拟评分逻辑",
+        "ai": "AI处理: 随机生成 85-100 分",
+        "transfer": "人工转接: 随机生成 60-80 分"
+      }
+    }
   }
 }

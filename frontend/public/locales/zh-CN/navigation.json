@@ -14,5 +14,11 @@
     "menuExpand": "展开菜单",
     "menuCollapse": "收起菜单",
     "mainNav": "主要导航"
+  },
+  "test": {
+    "simulation": "Call Simulation",
+    "reviewer": "Reviewer Mode",
+    "websocket": "WebSocket",
+    "twilio": "Twilio WebCall"
   }
 }

@@ -1,0 +1,36 @@
+.tabPanelContent {
+  padding-top: 1rem;
+}
+
+.reviewerPanel {
+  padding-top: 1rem;
+  max-width: 800px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.reviewerSettings {
+  padding: 1rem;
+  background-color: transparent;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.reviewerSettingsActive {
+  background-color: var(--cds-layer-01);
+  border: 1px solid var(--cds-border-subtle);
+}
+
+.toggle {
+  margin-bottom: 1rem;
+}
+
+.logicList {
+  list-style-type: disc;
+  padding-left: 1rem;
+  margin-top: 0.5rem;
+}

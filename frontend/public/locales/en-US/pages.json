@@ -78,6 +78,51 @@
     "title": "Real-time Debug Lab",
     "subtitle": "Experience WebSocket and Twilio WebCall in a single interface for easy comparison.",
     "emptyState": "Test features under development",
-    "emptyDescription": "This page will provide real-time debugging for WebSocket and Twilio WebCall."
+    "emptyDescription": "This page will provide real-time debugging for WebSocket and Twilio WebCall.",
+    "tabs": {
+      "simulation": "Call Simulation",
+      "reviewer": "Reviewer Mode",
+      "websocket": "WebSocket",
+      "twilio": "Twilio WebCall"
+    },
+    "simulation": {
+      "scenarios": {
+        "title": "Select Test Scenario",
+        "ai_handled": { "title": "AI Handled", "description": "Simulate AI handling call completely" },
+        "transferred": { "title": "Transferred", "description": "Simulate AI transferring to human" },
+        "no_answer": { "title": "No Answer", "description": "Simulate no answer" },
+        "failed": { "title": "Call Failed", "description": "Simulate call failure" }
+      },
+      "batch": {
+        "title": "Batch Test",
+        "description": "Generate batch test data (Reviewer Mode: {{status}})",
+        "on": "On",
+        "off": "Off",
+        "generate10": "Generate 10",
+        "generate50": "Generate 50",
+        "clear": "Clear All Data",
+        "confirmClear": "Are you sure you want to clear all test data?"
+      },
+      "status": {
+        "loading": "Processing...",
+        "success": "Success",
+        "error": "Error"
+      },
+      "response": "Response Details"
+    },
+    "reviewer": {
+      "title": "AI Reviewer Mode",
+      "description": "When enabled, the system will automatically evaluate call quality using LLM after each call. This generates a 'Confidence Score' and detailed call summary. This setting applies to all test cases in 'Call Simulation'.",
+      "toggle": {
+        "label": "Enable Auto-Evaluation",
+        "on": "On",
+        "off": "Off"
+      },
+      "logic": {
+        "title": "Simulation Scoring Logic",
+        "ai": "AI Handled: Random 85-100 score",
+        "transfer": "Transferred: Random 60-80 score"
+      }
+    }
   }
 }

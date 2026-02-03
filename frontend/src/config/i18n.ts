@@ -53,7 +53,7 @@ i18n
     // HTTP后端配置
     backend: {
       // 翻译文件路径模板
-      loadPath: '/locales/{{lng}}/{{ns}}.json',
+      loadPath: `/locales/{{lng}}/{{ns}}.json?v=${new Date().getTime()}`,
       
       // 请求超时
       requestOptions: {

@@ -142,7 +142,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                       goTo(href);
                     }}
                   >
-                    {item.label}
+                    {t(`navigation:test.${item.label}`)}
                   </SideNavMenuItem>
                 );
               })}

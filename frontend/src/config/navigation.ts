@@ -17,7 +17,8 @@ export const navLinks = [
 ];
 
 export const testNavItems = [
-  { tab: 'call-simulation', label: 'Call Simulation' },
-  { tab: 'websocket', label: 'WebSocket' },
-  { tab: 'twilio', label: 'Twilio WebCall' },
+  { tab: 'call-simulation', label: 'simulation' },
+  { tab: 'reviewer', label: 'reviewer' },
+  { tab: 'websocket', label: 'websocket' },
+  { tab: 'twilio', label: 'twilio' },
 ];

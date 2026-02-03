@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { 
   Tabs, 
@@ -21,6 +22,7 @@ import {
 import { PageTemplate } from '../components/templates/PageTemplate';
 import { EmptyState } from '../components/organisms/EmptyState';
 import { CallSimulationTest } from '../components/CallSimulationTest';
+import styles from './TestPage.module.css';
 
 /**
  * TestPage - 实时调试实验室页面
@@ -34,76 +36,83 @@ import { CallSimulationTest } from '../components/CallSimulationTest';
  */
 export function TestPage() {
   const { t } = useTranslation(['pages', 'common']);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [enableReviewer, setEnableReviewer] = useState(true);
+
+  // Define tab mapping to sync with SideNav
+  const tabMap = ['call-simulation', 'reviewer', 'websocket', 'twilio'];
+  const currentTab = searchParams.get('tab') || 'call-simulation';
+  const selectedIndex = tabMap.indexOf(currentTab);
+  const safeIndex = selectedIndex >= 0 ? selectedIndex : 0;
+
+  const handleTabChange = (event: { selectedIndex: number }) => {
+    const newTab = tabMap[event.selectedIndex];
+    setSearchParams({ tab: newTab });
+  };
   
   return (
     <PageTemplate
       title={t('pages:test.title')}
       subtitle={t('pages:test.subtitle')}
     >
-      <Tabs>
+      <Tabs selectedIndex={safeIndex} onChange={handleTabChange}>
         <TabList 
-          aria-label="测试功能选项卡"
+          aria-label={t('pages:test.tabs.ariaLabel', 'Test Options')}
           contained={false}  // Line tabs - 适合页面级导航
         >
           <Tab renderIcon={Phone}>
-            Call Simulation
+            {t('pages:test.tabs.simulation')}
           </Tab>
           <Tab renderIcon={WatsonHealthAiStatus}>
-            Reviewer Mode
+            {t('pages:test.tabs.reviewer')}
           </Tab>
           <Tab renderIcon={Network_3}>
-            WebSocket
+            {t('pages:test.tabs.websocket')}
           </Tab>
           <Tab renderIcon={PhoneVoice}>
-            Twilio WebCall
+            {t('pages:test.tabs.twilio')}
           </Tab>
         </TabList>
         
         <TabPanels>
           {/* Call模拟测试 */}
           <TabPanel>
-            <div style={{ paddingTop: '1rem' }}>
+            <div className={styles.tabPanelContent}>
               <CallSimulationTest enableReviewer={enableReviewer} />
             </div>
           </TabPanel>
           
           {/* Reviewer模式设置 */}
           <TabPanel>
-             <div style={{ paddingTop: '1rem', maxWidth: '800px' }}>
+             <div className={styles.reviewerPanel}>
                 <Tile>
                   <Stack gap={5}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <div className={styles.header}>
                         <WatsonHealthAiStatus size={24} />
-                        <h4 className="cds--heading-02">AI 审查员模式 (Reviewer Mode)</h4>
+                        <h4 className="cds--heading-02">{t('pages:test.reviewer.title')}</h4>
                     </div>
                     
                     <p className="cds--body-01">
-                      开启审查员模式后，系统会在通话结束后自动调用 LLM 对通话质量、用户情绪和解决率进行评估。
-                      这将生成"信赖度"分数和详细的通话摘要。此设置将应用于"Call Simulation"中的所有测试用例。
+                      {t('pages:test.reviewer.description')}
                     </p>
 
-                    <div style={{ 
-                      padding: '1rem', 
-                      backgroundColor: enableReviewer ? 'var(--cds-layer-01)' : 'transparent',
-                      border: enableReviewer ? '1px solid var(--cds-border-subtle)' : 'none'
-                    }}>
+                    <div className={`${styles.reviewerSettings} ${enableReviewer ? styles.reviewerSettingsActive : ''}`}>
                       <Toggle
                         id="reviewer-toggle"
-                        labelA="已关闭"
-                        labelB="已开启"
-                        labelText="启用自动评估"
+                        labelA={t('pages:test.reviewer.toggle.off')}
+                        labelB={t('pages:test.reviewer.toggle.on')}
+                        labelText={t('pages:test.reviewer.toggle.label')}
                         toggled={enableReviewer}
                         onToggle={(checked) => setEnableReviewer(checked)}
-                        style={{ marginBottom: '1rem' }}
+                        className={styles.toggle}
                       />
 
                       {enableReviewer && (
                         <div className="cds--label-description">
-                           <h5 className="cds--label">模拟评分逻辑</h5>
-                          <ul style={{ listStyleType: 'disc', paddingLeft: '1rem', marginTop: '0.5rem' }}>
-                            <li><strong>AI处理:</strong> 随机生成 85-100 分</li>
-                            <li><strong>人工转接:</strong> 随机生成 60-80 分</li>
+                           <h5 className="cds--label">{t('pages:test.reviewer.logic.title')}</h5>
+                          <ul className={styles.logicList}>
+                            <li><strong>{t('pages:test.simulation.scenarios.ai_handled.title')}:</strong> {t('pages:test.reviewer.logic.ai')}</li>
+                            <li><strong>{t('pages:test.simulation.scenarios.transferred.title')}:</strong> {t('pages:test.reviewer.logic.transfer')}</li>
                           </ul>
                         </div>
                       )}
@@ -114,7 +123,7 @@ export function TestPage() {
           </TabPanel>
           {/* WebSocket测试 */}
           <TabPanel>
-            <div style={{ paddingTop: '1rem' }}>
+            <div className={styles.tabPanelContent}>
               <EmptyState
                 title="WebSocket Test"
                 description="WebSocket测试功能开发中..."
@@ -125,7 +134,7 @@ export function TestPage() {
           
           {/* Twilio测试 */}
           <TabPanel>
-            <div style={{ paddingTop: '1rem' }}>
+            <div className={styles.tabPanelContent}>
               <EmptyState
                 title="Twilio WebCall Test"
                 description="Twilio WebCall测试功能开发中..."

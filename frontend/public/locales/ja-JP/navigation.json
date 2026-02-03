@@ -14,5 +14,11 @@
     "menuExpand": "メニューを展開",
     "menuCollapse": "メニューを折りたたむ",
     "mainNav": "メインナビゲーション"
+  },
+  "test": {
+    "simulation": "通話シミュレーション",
+    "reviewer": "レビュアーモード",
+    "websocket": "WebSocket",
+    "twilio": "Twilio WebCall"
   }
 }

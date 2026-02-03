@@ -78,6 +78,51 @@
     "title": "リアルタイムデバッグラボ",
     "subtitle": "WebSocketとTwilio WebCallを1つのインターフェースで体験し、簡単に比較できます。",
     "emptyState": "テスト機能は開発中",
-    "emptyDescription": "このページでは、WebSocketとTwilio WebCallのリアルタイムデバッグ機能を提供します。"
+    "emptyDescription": "このページでは、WebSocketとTwilio WebCallのリアルタイムデバッグ機能を提供します。",
+    "tabs": {
+      "simulation": "Call Simulation",
+      "reviewer": "Reviewer Mode",
+      "websocket": "WebSocket",
+      "twilio": "Twilio WebCall"
+    },
+    "simulation": {
+      "scenarios": {
+        "title": "テストシナリオを選択",
+        "ai_handled": { "title": "AI成功処理", "description": "AIが完全対応した通話をシミュレート" },
+        "transferred": { "title": "有人転送", "description": "AIからオペレーターへの転送をシミュレート" },
+        "no_answer": { "title": "未応答", "description": "不在着信をシミュレート" },
+        "failed": { "title": "通話失敗", "description": "通話失敗をシミュレート" }
+      },
+      "batch": {
+        "title": "一括テスト",
+        "description": "開発デバッグ用のテストデータを高速生成 (審査員モード: {{status}})",
+        "on": "ON",
+        "off": "OFF",
+        "generate10": "10件生成",
+        "generate50": "50件生成",
+        "clear": "全データ消去",
+        "confirmClear": "すべてのテストデータを消去してもよろしいですか？"
+      },
+      "status": {
+        "loading": "処理中...",
+        "success": "操作成功",
+        "error": "操作失敗"
+      },
+      "response": "レスポンス詳細"
+    },
+    "reviewer": {
+      "title": "AI審査員モード (Reviewer Mode)",
+      "description": "審査員モードを有効にすると、通話終了後にシステムが自動的にLLMを呼び出し、通話品質、ユーザー感情、解決率を評価します。これにより「信頼度スコア」と詳細な通話要約が生成されます。",
+      "toggle": {
+        "label": "自動評価を有効化",
+        "on": "有効",
+        "off": "無効"
+      },
+      "logic": {
+        "title": "シミュレーション採点ロジック",
+        "ai": "AI処理: 85-100点のランダムスコア",
+        "transfer": "有人転送: 60-80点のランダムスコア"
+      }
+    }
   }
 }

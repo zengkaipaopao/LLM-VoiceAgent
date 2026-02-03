@@ -14,5 +14,11 @@
     "menuExpand": "Expand menu",
     "menuCollapse": "Collapse menu",
     "mainNav": "Main navigation"
+  },
+  "test": {
+    "simulation": "Call Simulation",
+    "reviewer": "Reviewer Mode",
+    "websocket": "WebSocket",
+    "twilio": "Twilio WebCall"
   }
 }

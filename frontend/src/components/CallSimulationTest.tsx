@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import axios from 'axios';
 import {
   Button,
@@ -24,6 +25,7 @@ import {
   CloseFilled,
   WatsonHealthAiStatus,
 } from '@carbon/icons-react';
+import styles from './CallSimulationTest.module.css';
 
 /**
  * Call Simulation Test Component
@@ -42,6 +44,7 @@ interface CallSimulationTestProps {
 }
 
 export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableReviewer }) => {
+  const { t } = useTranslation(['pages']);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
@@ -72,7 +75,7 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
       setResult(response.data);
       console.log('✅ 模拟通话成功:', response.data);
     } catch (err: any) {
-      setError(err.response?.data?.message || '模拟失败');
+      setError(err.response?.data?.message || t('pages:test.simulation.status.error', '模拟失败'));
       console.error('❌ 模拟失败:', err);
     } finally {
       setLoading(false);
@@ -102,7 +105,7 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
       setResult(response.data);
       console.log(`✅ 批量模拟${count}个通话成功:`, response.data);
     } catch (err: any) {
-      setError(err.response?.data?.message || '批量模拟失败');
+      setError(err.response?.data?.message || t('pages:test.simulation.status.error', '批量模拟失败'));
       console.error('❌ 批量模拟失败:', err);
     } finally {
       setLoading(false);
@@ -113,7 +116,7 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
    * 清除测试数据
    */
   const clearTestData = async () => {
-    if (!confirm('确定要清除所有测试数据吗?')) return;
+    if (!confirm(t('pages:test.simulation.batch.confirmClear', '确定要清除所有测试数据吗?'))) return;
     
     setLoading(true);
     setError(null);
@@ -127,7 +130,7 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
       setResult(response.data);
       console.log('✅ 清除测试数据成功:', response.data);
     } catch (err: any) {
-      setError(err.response?.data?.message || '清除失败');
+      setError(err.response?.data?.message || t('pages:test.simulation.status.error', '清除失败'));
       console.error('❌ 清除失败:', err);
     } finally {
       setLoading(false);
@@ -138,29 +141,29 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
   const scenarios = [
     {
       id: 'ai_handled',
-      title: 'AI成功处理',
-      description: '模拟AI完整处理来电',
+      title: t('pages:test.simulation.scenarios.ai_handled.title'),
+      description: t('pages:test.simulation.scenarios.ai_handled.description'),
       icon: CheckmarkFilled,
       iconColor: '#24a148',
     },
     {
       id: 'transferred',
-      title: '转人工',
-      description: '模拟AI转接人工客服',
+      title: t('pages:test.simulation.scenarios.transferred.title'),
+      description: t('pages:test.simulation.scenarios.transferred.description'),
       icon: UserMultiple,
       iconColor: '#f1c21b',
     },
     {
       id: 'no_answer',
-      title: '未接听',
-      description: '模拟来电无人接听',
+      title: t('pages:test.simulation.scenarios.no_answer.title'),
+      description: t('pages:test.simulation.scenarios.no_answer.description'),
       icon: PhoneOff,
       iconColor: '#8d8d8d',
     },
     {
       id: 'failed',
-      title: '呼叫失败',
-      description: '模拟通话失败场景',
+      title: t('pages:test.simulation.scenarios.failed.title'),
+      description: t('pages:test.simulation.scenarios.failed.description'),
       icon: CloseFilled,
       iconColor: '#da1e28',
     },
@@ -170,9 +173,9 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
     <Stack gap={6}>
       <Stack gap={6}>
         {/* 场景选择卡片 */}
-        <div>
-          <h4 className="cds--label" style={{ marginBottom: '1rem' }}>
-            选择测试场景
+        <Tile>
+          <h4 className={`cds--label ${styles.label}`}>
+            {t('pages:test.simulation.scenarios.title')}
           </h4>
           <Grid narrow>
             {scenarios.map((scenario) => (
@@ -180,20 +183,15 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
                 <ClickableTile
                   onClick={() => simulateCall(scenario.id)}
                   disabled={loading}
-                  style={{ height: '100%', marginBottom: '1rem' }}
+                  className={styles.tile}
                 >
-                  <div style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    gap: '0.5rem',
-                    height: '100%',
-                  }}>
+                  <div className={styles.tileContent}>
                     <scenario.icon 
                       size={32} 
                       style={{ color: scenario.iconColor }} 
                     />
                     <div>
-                      <h5 className="cds--type-heading-compact-01" style={{ marginBottom: '0.25rem' }}>
+                      <h5 className={`cds--type-heading-compact-01 ${styles.iconWithTitle}`}>
                         {scenario.title}
                       </h5>
                       <p className="cds--label-description">
@@ -205,15 +203,19 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
               </Column>
             ))}
           </Grid>
-        </div>
+        </Tile>
 
         {/* 批量操作 */}
         <Tile>
           <Stack gap={4}>
             <div>
-              <h4 className="cds--label">批量测试</h4>
+              <h4 className="cds--label">{t('pages:test.simulation.batch.title')}</h4>
               <p className="cds--label-description">
-                快速生成多条测试数据用于开发调试 (审查员模式: {enableReviewer ? '开启' : '关闭'})
+                {t('pages:test.simulation.batch.description', { 
+                  status: enableReviewer 
+                    ? t('pages:test.simulation.batch.on') 
+                    : t('pages:test.simulation.batch.off') 
+                })}
               </p>
             </div>
             
@@ -225,9 +227,9 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
                     onClick={() => simulateBatch(10)}
                     disabled={loading}
                     renderIcon={Renew}
-                    style={{ width: '100%', maxWidth: '100%' }}
+                    className={styles.actionButton}
                   >
-                    生成 10 条
+                    {t('pages:test.simulation.batch.generate10')}
                   </Button>
                   
                   <Button
@@ -235,9 +237,9 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
                     onClick={() => simulateBatch(50)}
                     disabled={loading}
                     renderIcon={Renew}
-                    style={{ width: '100%', maxWidth: '100%' }}
+                    className={styles.actionButton}
                   >
-                    生成 50 条
+                    {t('pages:test.simulation.batch.generate50')}
                   </Button>
                 </Stack>
               </Column>
@@ -249,9 +251,9 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
                     onClick={clearTestData}
                     disabled={loading}
                     renderIcon={TrashCan}
-                    style={{ width: '100%', maxWidth: '100%' }}
+                    className={styles.actionButton}
                   >
-                    清除所有数据
+                   {t('pages:test.simulation.batch.clear')}
                   </Button>
                 </Stack>
               </Column>
@@ -261,13 +263,13 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
       </Stack>
 
       {/* Loading状态 */}
-      {loading && <Loading description="处理中..." withOverlay={false} />}
+      {loading && <Loading description={t('pages:test.simulation.status.loading')} withOverlay={false} />}
 
       {/* 错误提示 */}
       {error && (
         <InlineNotification
           kind="error"
-          title="操作失败"
+          title={t('pages:test.simulation.status.error')}
           subtitle={error}
           onCloseButtonClick={() => setError(null)}
           lowContrast
@@ -278,7 +280,7 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
       {result && !error && (
         <InlineNotification
           kind="success"
-          title="操作成功"
+          title={t('pages:test.simulation.status.success')}
           subtitle={result.message}
           onCloseButtonClick={() => setResult(null)}
           lowContrast
@@ -289,7 +291,7 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
       {result && (
         <Tile>
           <Stack gap={4}>
-            <h4 className="cds--label">响应详情</h4>
+            <h4 className="cds--label">{t('pages:test.simulation.response')}</h4>
             <CodeSnippet 
               type="multi" 
               feedback="已复制"

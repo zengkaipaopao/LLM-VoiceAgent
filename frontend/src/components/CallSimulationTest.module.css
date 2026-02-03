@@ -1,0 +1,24 @@
+.label {
+  margin-bottom: 1rem;
+}
+
+.tile {
+  height: 100%;
+  margin-bottom: 1rem;
+}
+
+.tileContent {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  height: 100%;
+}
+
+.iconWithTitle {
+  margin-bottom: 0.25rem;
+}
+
+.actionButton {
+  width: 100%;
+  max-width: 100%;
+}
