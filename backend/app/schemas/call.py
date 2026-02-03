@@ -1,8 +1,8 @@
 """
 Call schemas for request/response validation.
 """
-from pydantic import BaseModel, Field, ConfigDict
-from datetime import datetime
+from pydantic import BaseModel, Field, ConfigDict, field_validator
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 from enum import Enum
@@ -77,6 +77,13 @@ class CallResponse(CallBase):
     updated_at: datetime
     
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("started_at", "answered_at", "ended_at", "transferred_at", "created_at", "updated_at")
+    @classmethod
+    def ensure_utc(cls, v: Optional[datetime]) -> Optional[datetime]:
+        if v and v.tzinfo is None:
+            return v.replace(tzinfo=timezone.utc)
+        return v
 
 
 class CallListResponse(BaseModel):

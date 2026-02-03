@@ -5,7 +5,7 @@ This service simulates real call scenarios for testing purposes.
 In production, these will be triggered by SIP events.
 """
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 from sqlalchemy.orm import Session
 
@@ -44,7 +44,7 @@ class CallSimulationService:
         ]
         
         # Create base call
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         caller_phone = random.choice(phone_numbers)
         receiver_phone = "+1-800-COMPANY"
         
@@ -62,7 +62,7 @@ class CallSimulationService:
             extra_data={
                 "simulation": True,
                 "scenario": scenario,
-                "simulated_at": datetime.utcnow().isoformat()
+                "simulated_at": datetime.now(timezone.utc).isoformat()
             }
         )
         
