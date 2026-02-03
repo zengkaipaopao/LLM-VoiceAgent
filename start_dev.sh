@@ -1,19 +1,51 @@
 #!/usr/bin/env bash
-# 一键启动后端 (FastAPI) 与前端 (Vite)，并在退出时清理子进程。
+# 一键启动完整开发环境: PostgreSQL + Redis + 后端 (FastAPI) + 前端 (Vite)
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 RUN_BACK=true
 RUN_FRONT=true
+RUN_DB=true
+
+# 颜色输出
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+print_header() {
+  echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  echo -e "${BLUE}$1${NC}"
+  echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+}
+
+print_success() {
+  echo -e "${GREEN}✓${NC} $1"
+}
+
+print_info() {
+  echo -e "${BLUE}ℹ${NC} $1"
+}
+
+print_warning() {
+  echo -e "${YELLOW}⚠${NC} $1"
+}
+
+print_error() {
+  echo -e "${RED}✗${NC} $1"
+}
 
 usage() {
   cat <<'USAGE'
 用法:
-  ./start_dev.sh [--back|--front]
+  ./start_dev.sh [--back|--front|--no-db]
 
 参数:
-  --back   仅启动后端
-  --front  仅启动前端
+  --back    仅启动后端
+  --front   仅启动前端
+  --no-db   跳过数据库检查和启动
+  -h, --help 显示帮助信息
 USAGE
 }
 
@@ -24,6 +56,10 @@ for arg in "$@"; do
       ;;
     --front)
       RUN_BACK=false
+      RUN_DB=false
+      ;;
+    --no-db)
+      RUN_DB=false
       ;;
     -h|--help)
       usage
@@ -37,80 +73,231 @@ for arg in "$@"; do
   esac
 done
 
-if [ "$RUN_BACK" = false ] && [ "$RUN_FRONT" = false ]; then
-  echo "参数冲突: 不能同时指定 --back 和 --front" >&2
-  usage
-  exit 1
-fi
+print_header "🚀 LLM-VoiceAgent 开发环境启动"
 
+# ============================================
+# 检查并启动 PostgreSQL
+# ============================================
+check_and_start_postgres() {
+  print_info "检查 PostgreSQL 状态..."
+  
+  # 检查 PostgreSQL 是否运行
+  if pg_isready -h localhost -p 5432 >/dev/null 2>&1; then
+    print_success "PostgreSQL 已运行"
+    return 0
+  fi
+  
+  print_warning "PostgreSQL 未运行,尝试启动..."
+  
+  # 尝试使用 Homebrew 启动
+  if command -v brew >/dev/null 2>&1; then
+    if brew services list | grep -q "postgresql.*started"; then
+      print_success "PostgreSQL 服务已启动"
+      return 0
+    fi
+    
+    # 尝试启动 PostgreSQL
+    if brew services start postgresql@14 >/dev/null 2>&1 || brew services start postgresql >/dev/null 2>&1; then
+      print_info "等待 PostgreSQL 启动..."
+      sleep 3
+      if pg_isready -h localhost -p 5432 >/dev/null 2>&1; then
+        print_success "PostgreSQL 启动成功"
+        return 0
+      fi
+    fi
+  fi
+  
+  # 检查 Docker
+  if command -v docker >/dev/null 2>&1; then
+    if docker ps | grep -q postgres; then
+      print_success "PostgreSQL (Docker) 已运行"
+      return 0
+    fi
+    
+    print_info "尝试使用 Docker 启动 PostgreSQL..."
+    if [ -f "$ROOT_DIR/docker-compose.yml" ]; then
+      # 支持新版 docker compose 和旧版 docker-compose
+      if docker compose version >/dev/null 2>&1; then
+        docker compose up -d postgres >/dev/null 2>&1 || true
+      elif command -v docker-compose >/dev/null 2>&1; then
+        docker-compose up -d postgres >/dev/null 2>&1 || true
+      fi
+      sleep 3
+      if pg_isready -h localhost -p 5432 >/dev/null 2>&1; then
+        print_success "PostgreSQL (Docker) 启动成功"
+        return 0
+      fi
+    fi
+  fi
+  
+  print_error "PostgreSQL 启动失败,请手动启动"
+  print_info "提示: brew services start postgresql 或 docker-compose up -d postgres"
+  return 1
+}
+
+# ============================================
+# 检查并启动 Redis
+# ============================================
+check_and_start_redis() {
+  print_info "检查 Redis 状态..."
+  
+  # 检查 Redis 是否运行
+  if redis-cli ping >/dev/null 2>&1; then
+    print_success "Redis 已运行"
+    return 0
+  fi
+  
+  print_warning "Redis 未运行,尝试启动..."
+  
+  # 尝试使用 Homebrew 启动
+  if command -v brew >/dev/null 2>&1; then
+    if brew services list | grep -q "redis.*started"; then
+      print_success "Redis 服务已启动"
+      return 0
+    fi
+    
+    if brew services start redis >/dev/null 2>&1; then
+      sleep 2
+      if redis-cli ping >/dev/null 2>&1; then
+        print_success "Redis 启动成功"
+        return 0
+      fi
+    fi
+  fi
+  
+  # 检查 Docker
+  if command -v docker >/dev/null 2>&1; then
+    if docker ps | grep -q redis; then
+      print_success "Redis (Docker) 已运行"
+      return 0
+    fi
+    
+    print_info "尝试使用 Docker 启动 Redis..."
+    if [ -f "$ROOT_DIR/docker-compose.yml" ]; then
+      # 支持新版 docker compose 和旧版 docker-compose
+      if docker compose version >/dev/null 2>&1; then
+        docker compose up -d redis >/dev/null 2>&1 || true
+      elif command -v docker-compose >/dev/null 2>&1; then
+        docker-compose up -d redis >/dev/null 2>&1 || true
+      fi
+      sleep 2
+      if redis-cli ping >/dev/null 2>&1; then
+        print_success "Redis (Docker) 启动成功"
+        return 0
+      fi
+    fi
+  fi
+  
+  print_warning "Redis 启动失败 (可选服务,可继续)"
+  return 0
+}
+
+# ============================================
+# 确保 Poetry 已安装
+# ============================================
 ensure_poetry() {
+  print_info "检查 Poetry..."
   POETRY_BIN="$(command -v poetry || true)"
   if [ -n "$POETRY_BIN" ]; then
-    echo "检测到 poetry: $POETRY_BIN"
+    print_success "Poetry 已安装: $POETRY_BIN"
     return
   fi
-  echo "poetry 未找到，尝试自动安装 (pip --user)..."
+  
+  print_warning "Poetry 未找到,尝试自动安装..."
   if command -v pip3 >/dev/null 2>&1; then
     pip3 install --user poetry && POETRY_BIN="$(command -v poetry || true)"
   elif command -v pip >/dev/null 2>&1; then
     pip install --user poetry && POETRY_BIN="$(command -v poetry || true)"
   fi
+  
   if [ -z "$POETRY_BIN" ]; then
-    echo "poetry 安装失败，请手动安装后重试" >&2
+    print_error "Poetry 安装失败,请手动安装"
     exit 1
   fi
+  print_success "Poetry 安装成功"
 }
 
-ensure_node_modules() {
+# ============================================
+# 安装依赖
+# ============================================
+ensure_dependencies() {
   if [ "$RUN_FRONT" = true ]; then
+    print_info "检查前端依赖..."
     if [ ! -d "$ROOT_DIR/frontend/node_modules" ]; then
-      echo "前端依赖未安装，执行 npm install..."
+      print_warning "前端依赖未安装,执行 npm install..."
       (cd "$ROOT_DIR/frontend" && npm install)
+      print_success "前端依赖安装完成"
+    else
+      print_success "前端依赖已安装"
     fi
   fi
+  
   if [ "$RUN_BACK" = true ]; then
+    print_info "检查后端依赖..."
     if [ ! -d "$ROOT_DIR/backend/.venv" ] && [ -n "$POETRY_BIN" ]; then
-      echo "后端依赖未安装，执行 poetry install..."
+      print_warning "后端依赖未安装,执行 poetry install..."
       (cd "$ROOT_DIR/backend" && "$POETRY_BIN" install)
+      print_success "后端依赖安装完成"
+    else
+      print_success "后端依赖已安装"
     fi
   fi
 }
 
-ensure_llm_sdks() {
-  # 在 poetry 环境中保证 LLM SDK 存在（OpenAI 已在依赖中，补充 Gemini/Claude）
-  if [ "$RUN_BACK" = true ] && [ -n "$POETRY_BIN" ]; then
-    (
-      cd "$ROOT_DIR/backend" && \
-      "$POETRY_BIN" run python - <<'PY'
-try:
-    import google.generativeai  # type: ignore
-    import anthropic  # type: ignore
-    print("LLM SDK 已就绪")
-except Exception:
-    raise SystemExit(1)
-PY
-    ) || (
-      cd "$ROOT_DIR/backend" && "$POETRY_BIN" run pip install google-generativeai anthropic
-    )
+# ============================================
+# 运行数据库迁移
+# ============================================
+run_migrations() {
+  if [ "$RUN_BACK" = true ] && [ "$RUN_DB" = true ]; then
+    print_info "检查数据库迁移..."
+    if [ -n "$POETRY_BIN" ]; then
+      (cd "$ROOT_DIR/backend" && "$POETRY_BIN" run alembic upgrade head 2>/dev/null) && \
+        print_success "数据库迁移完成" || \
+        print_warning "数据库迁移跳过 (可能未配置)"
+    fi
   fi
 }
 
-ensure_poetry
-ensure_node_modules
-ensure_llm_sdks
+# ============================================
+# 主流程
+# ============================================
+
+# 数据库检查
+if [ "$RUN_DB" = true ]; then
+  print_header "📦 数据库服务"
+  check_and_start_postgres
+  check_and_start_redis
+fi
+
+# 依赖检查
+print_header "🔧 依赖检查"
+if [ "$RUN_BACK" = true ]; then
+  ensure_poetry
+fi
+ensure_dependencies
+
+# 数据库迁移
+if [ "$RUN_DB" = true ]; then
+  run_migrations
+fi
+
+# 启动服务
+print_header "🎯 启动服务"
 
 BACKEND_CMD="cd \"$ROOT_DIR/backend\" && $POETRY_BIN run uvicorn app.main:app --reload --port 8000"
 FRONTEND_CMD="cd \"$ROOT_DIR/frontend\" && npm run dev"
 
-# 捕获退出信号，清理子进程
+# 捕获退出信号,清理子进程
 cleanup() {
-  echo "\n停止前后端进程..."
+  echo ""
+  print_warning "停止服务..."
   pkill -P $$ 2>/dev/null || true
+  print_success "服务已停止"
 }
 trap cleanup EXIT INT TERM
 
 if [ "$RUN_BACK" = true ]; then
-  echo "启动后端: $BACKEND_CMD"
+  print_info "启动后端: http://localhost:8000"
   /bin/bash -c "$BACKEND_CMD" &
   BACK_PID=$!
 else
@@ -118,22 +305,32 @@ else
 fi
 
 if [ "$RUN_FRONT" = true ]; then
-  echo "启动前端: $FRONTEND_CMD"
+  print_info "启动前端: http://localhost:5173"
   /bin/bash -c "$FRONTEND_CMD" &
   FRONT_PID=$!
 else
   FRONT_PID=""
 fi
 
-# 轮询监控任一子进程退出（macOS 的 bash 无 wait -n）
+sleep 2
+print_header "✅ 开发环境已启动"
+echo ""
+print_success "后端: http://localhost:8000"
+print_success "前端: http://localhost:5173"
+print_success "API文档: http://localhost:8000/docs"
+echo ""
+print_info "按 Ctrl+C 停止所有服务"
+echo ""
+
+# 轮询监控任一子进程退出
 while true; do
   if [ -n "$BACK_PID" ] && ! kill -0 $BACK_PID 2>/dev/null; then
-    echo "后端进程已退出，停止前端..."
+    print_error "后端进程已退出"
     [ -n "$FRONT_PID" ] && kill $FRONT_PID 2>/dev/null || true
     break
   fi
   if [ -n "$FRONT_PID" ] && ! kill -0 $FRONT_PID 2>/dev/null; then
-    echo "前端进程已退出，停止后端..."
+    print_error "前端进程已退出"
     [ -n "$BACK_PID" ] && kill $BACK_PID 2>/dev/null || true
     break
   fi

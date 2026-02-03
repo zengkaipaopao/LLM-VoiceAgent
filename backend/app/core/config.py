@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "LLM Voice Agent"
-    api_prefix: str = "/api"
+    api_prefix: str = "/api/v1"
     environment: str = "local"
     openai_api_key: str | None = None
     openai_models: str | None = None  # comma-separated model ids

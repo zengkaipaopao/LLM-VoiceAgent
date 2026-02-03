@@ -18,6 +18,9 @@ pydantic-settings = "^2.2.1"
 google-auth = "^2.35.0"
 python-multipart = "^0.0.9"
 twilio = "^9.3.2"
+sqlalchemy = "^2.0.46"
+psycopg2-binary = "^2.9.11"
+alembic = "^1.18.3"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2.0"

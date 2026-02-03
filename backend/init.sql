@@ -6,18 +6,69 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ========================================
+-- 枚举类型定义
+-- ========================================
+DO $$ BEGIN
+    CREATE TYPE call_direction AS ENUM ('inbound', 'outbound');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE call_status AS ENUM ('ringing', 'ongoing', 'completed', 'failed', 'no_answer', 'busy');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE handler_type AS ENUM ('ai', 'human', 'transferred');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+-- ========================================
 -- 通话记录表
 -- ========================================
 CREATE TABLE IF NOT EXISTS calls (
+    -- 基础信息
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    direction VARCHAR(10) NOT NULL CHECK (direction IN ('inbound', 'outbound')),
+    direction call_direction NOT NULL,
     counterpart VARCHAR(50) NOT NULL,
+    caller_name VARCHAR(100),
+    
+    -- 时间信息
     started_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    answered_at TIMESTAMP,
+    ended_at TIMESTAMP,
     duration_seconds INTEGER NOT NULL DEFAULT 0,
-    status VARCHAR(20) NOT NULL CHECK (status IN ('ongoing', 'completed', 'failed')),
+    
+    -- 状态信息
+    status call_status NOT NULL DEFAULT 'ringing',
+    handler_type handler_type DEFAULT 'ai',
+    is_answered BOOLEAN DEFAULT FALSE,
+    
+    -- 内容信息
     summary TEXT,
     transcript TEXT,
+    ai_confidence INTEGER CHECK (ai_confidence >= 0 AND ai_confidence <= 100),
+    
+    -- 转接信息
+    transferred_at TIMESTAMP,
+    transfer_reason VARCHAR(200),
+    
+    -- SIP信息
+    sip_call_id VARCHAR(100),
+    sip_from VARCHAR(100),
+    sip_to VARCHAR(100),
+    
+    -- 关联信息
     prompt_id UUID,
+    agent_id UUID,
+    
+    -- 元数据
+    extra_data JSONB,
+    
+    -- 时间戳
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
@@ -25,8 +76,10 @@ CREATE TABLE IF NOT EXISTS calls (
 -- 索引
 CREATE INDEX IF NOT EXISTS idx_calls_started_at ON calls(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_calls_status ON calls(status);
+CREATE INDEX IF NOT EXISTS idx_calls_handler_type ON calls(handler_type);
 CREATE INDEX IF NOT EXISTS idx_calls_counterpart ON calls(counterpart);
 CREATE INDEX IF NOT EXISTS idx_calls_prompt_id ON calls(prompt_id);
+CREATE INDEX IF NOT EXISTS idx_calls_sip_call_id ON calls(sip_call_id);
 
 -- ========================================
 -- Prompt模板表
