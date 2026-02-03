@@ -1,7 +1,19 @@
-type PageTitleProps = {
-  children: React.ReactNode;
-};
+import { ReactNode } from 'react';
 
-export function PageTitle({ children }: PageTitleProps) {
-  return <h1 className="page-title">{children}</h1>;
+interface PageTitleProps {
+  children: ReactNode;
+  className?: string;
+}
+
+/**
+ * PageTitle 原子组件
+ * 
+ * 用于显示页面主标题,遵循 Carbon Design System 的排版规范
+ */
+export function PageTitle({ children, className = '' }: PageTitleProps) {
+  return (
+    <h1 className={`page-title ${className}`.trim()}>
+      {children}
+    </h1>
+  );
 }

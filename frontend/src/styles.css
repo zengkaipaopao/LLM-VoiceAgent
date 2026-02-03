@@ -10,7 +10,10 @@ body {
   background-color: var(--cds-ui-background, #f4f4f4);
 }
 
-
+/* 页面基础样式 */
+.page-section {
+  padding: 0;
+}
 
 .page-section + .page-section {
   margin-top: 2rem;
@@ -18,11 +21,79 @@ body {
 
 .page-title {
   margin: 0 0 0.25rem;
+  font-size: 2rem;
+  font-weight: 400;
+  color: var(--cds-text-primary, #161616);
 }
 
 .page-subtitle {
-  margin: 0 0 1rem;
+  margin: 0 0 1.5rem;
   color: var(--cds-text-secondary, #525252);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.page-content {
+  margin-top: 1rem;
+}
+
+/* PageHeader 组件样式 */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.page-header__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.page-header__actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* EmptyState 组件样式 */
+.empty-state {
+  min-height: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 2rem;
+}
+
+.empty-state__content {
+  text-align: center;
+  max-width: 480px;
+}
+
+.empty-state__icon {
+  margin-bottom: 1.5rem;
+  color: var(--cds-text-secondary, #525252);
+}
+
+.empty-state__title {
+  margin: 0 0 0.75rem;
+  font-size: 1.25rem;
+  font-weight: 400;
+  color: var(--cds-text-primary, #161616);
+}
+
+.empty-state__description {
+  margin: 0 0 1.5rem;
+  color: var(--cds-text-secondary, #525252);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.empty-state__action {
+  margin-top: 1.5rem;
 }
 
 

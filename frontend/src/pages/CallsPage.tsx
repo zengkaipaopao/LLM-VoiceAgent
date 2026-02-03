@@ -1,76 +1,22 @@
-import {
-  DataTableSkeleton,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableToolbar,
-  TableToolbarContent,
-  TableToolbarSearch,
-} from '@carbon/react';
-import { useCallsQuery } from '../api/hooks';
+import { PageTemplate } from '../components/templates/PageTemplate';
+import { EmptyState } from '../components/organisms/EmptyState';
 
+/**
+ * CallsPage - 通话记录页面
+ * 
+ * 显示所有呼入和呼出的通话记录,支持搜索和过滤
+ * 当前为空状态骨架,等待后续业务逻辑实现
+ */
 export function CallsPage() {
-  const { data, isLoading } = useCallsQuery();
-  const calls = data?.data ?? [];
-
-  const headers = [
-    { key: 'id', header: 'ID' },
-    { key: 'direction', header: '方向' },
-    { key: 'counterpart', header: '对端号码' },
-    { key: 'startedAt', header: '开始时间' },
-    { key: 'durationSeconds', header: '时长 (秒)' },
-    { key: 'status', header: '状态' },
-  ];
-
-  const rows = calls.map((call) => ({
-    id: call.id,
-    direction: call.direction === 'inbound' ? '呼入' : '呼出',
-    counterpart: call.counterpart,
-    startedAt: new Date(call.startedAt).toLocaleString(),
-    durationSeconds: call.durationSeconds.toString(),
-    status: call.status,
-  }));
-
   return (
-    <section className="page-section">
-      <h1 className="page-title">通话记录</h1>
-      <p className="page-subtitle">查看每一次呼入或呼出的细节，并准备接入录音、搜索与过滤。</p>
-      <TableContainer title="通话列表">
-        <TableToolbar>
-          <TableToolbarContent>
-            <TableToolbarSearch persistent size="lg" placeholder="搜索号码或状态" />
-          </TableToolbarContent>
-        </TableToolbar>
-        {isLoading ? (
-          <DataTableSkeleton columnCount={headers.length} rowCount={5} />
-        ) : (
-          <Table aria-label="通话记录">
-            <TableHead>
-              <TableRow>
-                {headers.map((header) => (
-                  <TableHeader key={header.key}>{header.header}</TableHeader>
-                ))}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {rows.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell>{row.id}</TableCell>
-                  <TableCell>{row.direction}</TableCell>
-                  <TableCell>{row.counterpart}</TableCell>
-                  <TableCell>{row.startedAt}</TableCell>
-                  <TableCell>{row.durationSeconds}</TableCell>
-                  <TableCell>{row.status}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </TableContainer>
-    </section>
+    <PageTemplate
+      title="通话记录"
+      subtitle="查看每一次呼入或呼出的细节,并准备接入录音、搜索与过滤。"
+    >
+      <EmptyState
+        title="通话记录开发中"
+        description="此页面将显示通话历史记录,包括通话时长、状态、对端号码等信息,并支持搜索和导出功能。"
+      />
+    </PageTemplate>
   );
 }

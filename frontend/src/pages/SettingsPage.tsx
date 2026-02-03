@@ -1,81 +1,22 @@
-import { useState } from 'react';
-import { Column, Grid, SkeletonText, Tile, Toggle, ToggleSkeleton, UnorderedList, ListItem } from '@carbon/react';
-import { useAgentsQuery } from '../api/hooks';
+import { PageTemplate } from '../components/templates/PageTemplate';
+import { EmptyState } from '../components/organisms/EmptyState';
 
+/**
+ * SettingsPage - 系统设置页面
+ * 
+ * 配置语音渠道、LLM Provider 凭证以及实验性 Feature Flags
+ * 当前为空状态骨架,等待后续业务逻辑实现
+ */
 export function SettingsPage() {
-  const { data: agents = [], isLoading } = useAgentsQuery();
-  const [featureFlags, setFeatureFlags] = useState({
-    callRecording: true,
-    realtimeTranscription: false,
-    betaPromptEditor: true,
-  });
-
-  const handleToggle = (flag: keyof typeof featureFlags) => (checked: boolean) => {
-    setFeatureFlags((prev) => ({ ...prev, [flag]: checked }));
-  };
-
   return (
-    <section className="page-section">
-      <h1 className="page-title">系统设置</h1>
-      <p className="page-subtitle">配置语音渠道、LLM Provider 凭证以及实验性 Feature Flags。</p>
-      <Grid condensed fullWidth>
-        <Column sm={4} md={4} lg={6}>
-          <Tile>
-            <h3>智能体配置</h3>
-            {isLoading ? (
-              <>
-                <SkeletonText width="70%" />
-                <SkeletonText width="60%" />
-                <SkeletonText width="65%" />
-              </>
-            ) : (
-              <UnorderedList className="settings-list">
-                {agents.map((agent) => (
-                  <ListItem key={agent.id}>
-                    {agent.name} · {agent.llmProvider} · voice={agent.voice} · temp={agent.temperature}
-                  </ListItem>
-                ))}
-              </UnorderedList>
-            )}
-          </Tile>
-        </Column>
-        <Column sm={4} md={4} lg={6}>
-          <Tile>
-            <h3>Feature Flags</h3>
-            {isLoading ? (
-              <>
-                <ToggleSkeleton />
-                <ToggleSkeleton />
-                <ToggleSkeleton />
-              </>
-            ) : (
-              <>
-                <Toggle
-                  id="flag-recording"
-                  size="sm"
-                  labelText="启用通话录音"
-                  toggled={featureFlags.callRecording}
-                  onToggle={handleToggle('callRecording')}
-                />
-                <Toggle
-                  id="flag-realtime"
-                  size="sm"
-                  labelText="实时转写（预览）"
-                  toggled={featureFlags.realtimeTranscription}
-                  onToggle={handleToggle('realtimeTranscription')}
-                />
-                <Toggle
-                  id="flag-prompt"
-                  size="sm"
-                  labelText="Prompt 编辑器 Beta"
-                  toggled={featureFlags.betaPromptEditor}
-                  onToggle={handleToggle('betaPromptEditor')}
-                />
-              </>
-            )}
-          </Tile>
-        </Column>
-      </Grid>
-    </section>
+    <PageTemplate
+      title="系统设置"
+      subtitle="配置语音渠道、LLM Provider 凭证以及实验性 Feature Flags。"
+    >
+      <EmptyState
+        title="系统设置开发中"
+        description="此页面将提供智能体配置、Feature Flags 开关和系统参数设置功能。"
+      />
+    </PageTemplate>
   );
 }
