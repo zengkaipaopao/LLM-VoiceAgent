@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { PageTemplate } from '../components/templates/PageTemplate';
 import { EmptyState } from '../components/organisms/EmptyState';
 
@@ -8,14 +9,16 @@ import { EmptyState } from '../components/organisms/EmptyState';
  * 当前为空状态骨架,等待后续业务逻辑实现
  */
 export function CallsPage() {
+  const { t } = useTranslation(['pages', 'common']);
+  
   return (
     <PageTemplate
-      title="通话记录"
-      subtitle="查看每一次呼入或呼出的细节,并准备接入录音、搜索与过滤。"
+      title={t('pages:calls.title')}
+      subtitle={t('pages:calls.subtitle')}
     >
       <EmptyState
-        title="通话记录开发中"
-        description="此页面将显示通话历史记录,包括通话时长、状态、对端号码等信息,并支持搜索和导出功能。"
+        title={t('common:emptyState.title')}
+        description={t('pages:calls.emptyState')}
       />
     </PageTemplate>
   );

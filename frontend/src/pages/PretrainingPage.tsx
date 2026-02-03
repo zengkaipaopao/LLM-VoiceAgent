@@ -1,4 +1,5 @@
 import { InlineNotification } from '@carbon/react';
+import { useTranslation } from 'react-i18next';
 import { PageTemplate } from '../components/templates/PageTemplate';
 import { EmptyState } from '../components/organisms/EmptyState';
 
@@ -9,10 +10,12 @@ import { EmptyState } from '../components/organisms/EmptyState';
  * 当前为空状态骨架,等待后续业务逻辑实现
  */
 export function PretrainingPage() {
+  const { t } = useTranslation(['pages', 'common']);
+  
   return (
     <PageTemplate
-      title="微调"
-      subtitle="围绕业务样本微调模型表现,减少复杂提示词成本。"
+      title={t('pages:pretraining.title')}
+      subtitle={t('pages:pretraining.subtitle')}
     >
       <InlineNotification
         className="pretrain-notice"
@@ -22,8 +25,8 @@ export function PretrainingPage() {
         subtitle="当前提供流程指引与资源入口,后续接入训练任务与状态监控。"
       />
       <EmptyState
-        title="模型微调开发中"
-        description="此页面将提供模型微调的数据准备、任务创建、训练监控和模型发布功能。"
+        title={t('common:emptyState.title')}
+        description={t('pages:pretraining.emptyState')}
       />
     </PageTemplate>
   );

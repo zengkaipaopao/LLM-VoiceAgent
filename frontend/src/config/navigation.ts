@@ -8,12 +8,12 @@ import {
 } from '@carbon/icons-react';
 
 export const navLinks = [
-  { to: '/', label: '仪表盘', icon: Dashboard },
-  { to: '/calls', label: '通话记录', icon: Phone },
-  { to: '/appointments', label: '预约记录', icon: Calendar },
-  { to: '/prompts', label: 'Prompt 管理', icon: WatsonHealthTextAnnotationToggle },
-  { to: '/pretraining', label: '微调', icon: ModelBuilder },
-  { to: '/settings', label: '设置', icon: SettingsAdjust },
+  { to: '/', label: 'dashboard', icon: Dashboard },
+  { to: '/calls', label: 'calls', icon: Phone },
+  { to: '/appointments', label: 'appointments', icon: Calendar },
+  { to: '/prompts', label: 'prompts', icon: WatsonHealthTextAnnotationToggle },
+  { to: '/pretraining', label: 'pretraining', icon: ModelBuilder },
+  { to: '/settings', label: 'settings', icon: SettingsAdjust },
 ];
 
 export const testNavItems = [

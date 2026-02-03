@@ -1,0 +1,29 @@
+{
+  "buttons": {
+    "save": "保存",
+    "cancel": "キャンセル",
+    "delete": "削除",
+    "edit": "編集",
+    "add": "追加",
+    "close": "閉じる",
+    "confirm": "確認",
+    "back": "戻る"
+  },
+  "status": {
+    "loading": "読み込み中...",
+    "success": "成功",
+    "error": "エラー",
+    "warning": "警告",
+    "info": "情報"
+  },
+  "language": {
+    "label": "言語",
+    "chinese": "中文",
+    "english": "English",
+    "japanese": "日本語"
+  },
+  "emptyState": {
+    "title": "コンテンツなし",
+    "description": "このページは開発中です"
+  }
+}

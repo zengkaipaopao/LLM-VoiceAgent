@@ -1,0 +1,38 @@
+{
+  "dashboard": {
+    "title": "仪表盘",
+    "subtitle": "概览系统状态",
+    "emptyState": "此页面正在开发中"
+  },
+  "calls": {
+    "title": "通话记录",
+    "subtitle": "查看和管理所有通话记录",
+    "emptyState": "此页面正在开发中"
+  },
+  "appointments": {
+    "title": "预约管理",
+    "subtitle": "管理客户预约和日程安排",
+    "emptyState": "此页面正在开发中"
+  },
+  "prompts": {
+    "title": "Prompt 管理",
+    "subtitle": "配置和管理AI对话提示词",
+    "emptyState": "此页面正在开发中"
+  },
+  "settings": {
+    "title": "系统设置",
+    "subtitle": "配置系统参数和功能开关",
+    "emptyState": "此页面正在开发中"
+  },
+  "pretraining": {
+    "title": "模型微调",
+    "subtitle": "训练和优化AI模型",
+    "emptyState": "此页面正在开发中"
+  },
+  "test": {
+    "title": "实时调试实验室",
+    "subtitle": "在单一界面体验 WebSocket 以及 Twilio WebCall 等链路,方便比对。",
+    "emptyState": "测试功能开发中",
+    "emptyDescription": "此页面将提供WebSocket和Twilio WebCall的实时调试功能。"
+  }
+}

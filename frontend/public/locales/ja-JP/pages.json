@@ -1,0 +1,38 @@
+{
+  "dashboard": {
+    "title": "ダッシュボード",
+    "subtitle": "システムステータスの概要",
+    "emptyState": "このページは開発中です"
+  },
+  "calls": {
+    "title": "通話記録",
+    "subtitle": "すべての通話記録を表示・管理",
+    "emptyState": "このページは開発中です"
+  },
+  "appointments": {
+    "title": "予約管理",
+    "subtitle": "顧客の予約とスケジュールを管理",
+    "emptyState": "このページは開発中です"
+  },
+  "prompts": {
+    "title": "プロンプト管理",
+    "subtitle": "AI会話プロンプトの設定と管理",
+    "emptyState": "このページは開発中です"
+  },
+  "settings": {
+    "title": "システム設定",
+    "subtitle": "システムパラメータと機能フラグの設定",
+    "emptyState": "このページは開発中です"
+  },
+  "pretraining": {
+    "title": "モデルファインチューニング",
+    "subtitle": "AIモデルのトレーニングと最適化",
+    "emptyState": "このページは開発中です"
+  },
+  "test": {
+    "title": "リアルタイムデバッグラボ",
+    "subtitle": "WebSocketとTwilio WebCallを1つのインターフェースで体験し、簡単に比較できます。",
+    "emptyState": "テスト機能は開発中",
+    "emptyDescription": "このページでは、WebSocketとTwilio WebCallのリアルタイムデバッグ機能を提供します。"
+  }
+}

@@ -1,5 +1,6 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   Content,
   Header,
@@ -22,12 +23,14 @@ import {
 } from '@carbon/icons-react';
 import styles from './AppLayout.module.css';
 import { navLinks, testNavItems } from '../config/navigation';
+import { LanguageSwitcher } from './molecules/LanguageSwitcher';
 
 type AppLayoutProps = {
   children: ReactNode;
 };
 
 export function AppLayout({ children }: AppLayoutProps) {
+  const { t } = useTranslation(['navigation', 'common']); // 使用多个命名空间
   const location = useLocation();
   const navigate = useNavigate();
   const [isSideNavExpanded, setSideNavExpanded] = useState(false);
@@ -72,7 +75,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         <SkipToContent />
         <Header aria-label="LLM Voice Agent">
           <HeaderMenuButton
-            aria-label={isSideNavExpanded ? '收起菜单' : '展开菜单'}
+            aria-label={isSideNavExpanded ? t('navigation:header.menuCollapse') : t('navigation:header.menuExpand')}
             onClick={() => setSideNavExpanded((prev) => !prev)}
             isActive={isSideNavExpanded}
           />
@@ -87,10 +90,11 @@ export function AppLayout({ children }: AppLayoutProps) {
             Voice Agent
           </HeaderName>
           <HeaderGlobalBar>
-            <HeaderGlobalAction aria-label="通知">
+            <LanguageSwitcher />
+            <HeaderGlobalAction aria-label={t('navigation:header.notifications')}>
               <Notification size={24} />
             </HeaderGlobalAction>
-            <HeaderGlobalAction aria-label="账户">
+            <HeaderGlobalAction aria-label={t('navigation:header.account')}>
               <UserAvatarFilledAlt size={24} />
             </HeaderGlobalAction>
           </HeaderGlobalBar>
@@ -100,7 +104,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           expanded={isSideNavExpanded}
           isRail
           addFocusListeners={false}
-          aria-label="主要导航"
+          aria-label={t('navigation:header.mainNav')}
           onMouseEnter={expandNav}
         >
           <SideNavItems>
@@ -116,11 +120,11 @@ export function AppLayout({ children }: AppLayoutProps) {
                   // 点击仅导航，不折叠；移出侧边栏区域再收起。
                 }}
               >
-                {link.label}
+                {t(`navigation:menu.${link.label}`)}
               </SideNavLink>
             ))}
             <SideNavMenu
-              title="测试"
+              title={t('navigation:menu.test')}
               renderIcon={SailboatCoastal}
               isActive={location.pathname === '/test'}
               defaultExpanded={location.pathname === '/test'}

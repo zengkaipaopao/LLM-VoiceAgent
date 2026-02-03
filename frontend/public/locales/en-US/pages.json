@@ -1,0 +1,38 @@
+{
+  "dashboard": {
+    "title": "Dashboard",
+    "subtitle": "Overview of system status",
+    "emptyState": "This page is under development"
+  },
+  "calls": {
+    "title": "Call Records",
+    "subtitle": "View and manage all call records",
+    "emptyState": "This page is under development"
+  },
+  "appointments": {
+    "title": "Appointments",
+    "subtitle": "Manage customer appointments and schedules",
+    "emptyState": "This page is under development"
+  },
+  "prompts": {
+    "title": "Prompt Management",
+    "subtitle": "Configure and manage AI conversation prompts",
+    "emptyState": "This page is under development"
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Configure system parameters and feature flags",
+    "emptyState": "This page is under development"
+  },
+  "pretraining": {
+    "title": "Model Fine-tuning",
+    "subtitle": "Train and optimize AI models",
+    "emptyState": "This page is under development"
+  },
+  "test": {
+    "title": "Real-time Debug Lab",
+    "subtitle": "Experience WebSocket and Twilio WebCall in a single interface for easy comparison.",
+    "emptyState": "Test features under development",
+    "emptyDescription": "This page will provide real-time debugging for WebSocket and Twilio WebCall."
+  }
+}

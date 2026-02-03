@@ -1,0 +1,29 @@
+{
+  "buttons": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "close": "Close",
+    "confirm": "Confirm",
+    "back": "Back"
+  },
+  "status": {
+    "loading": "Loading...",
+    "success": "Success",
+    "error": "Error",
+    "warning": "Warning",
+    "info": "Info"
+  },
+  "language": {
+    "label": "Language",
+    "chinese": "中文",
+    "english": "English",
+    "japanese": "日本語"
+  },
+  "emptyState": {
+    "title": "No Content",
+    "description": "This page is under development"
+  }
+}

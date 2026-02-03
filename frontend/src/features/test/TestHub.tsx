@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { PageTemplate } from '../../components/templates/PageTemplate';
 import { EmptyState } from '../../components/organisms/EmptyState';
 
@@ -8,14 +9,16 @@ import { EmptyState } from '../../components/organisms/EmptyState';
  * 当前为空状态骨架,等待后续业务逻辑实现
  */
 export function TestHub() {
+  const { t } = useTranslation(['pages', 'common']);
+  
   return (
     <PageTemplate
-      title="实时调试实验室"
-      subtitle="在单一界面体验 WebSocket 以及 Twilio WebCall 等链路,方便比对。"
+      title={t('pages:test.title')}
+      subtitle={t('pages:test.subtitle')}
     >
       <EmptyState
-        title="测试功能开发中"
-        description="此页面将提供WebSocket和Twilio WebCall的实时调试功能。"
+        title={t('pages:test.emptyState')}
+        description={t('pages:test.emptyDescription')}
       />
     </PageTemplate>
   );

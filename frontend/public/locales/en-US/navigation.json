@@ -1,0 +1,18 @@
+{
+  "menu": {
+    "dashboard": "Dashboard",
+    "calls": "Calls",
+    "appointments": "Appointments",
+    "prompts": "Prompts",
+    "settings": "Settings",
+    "pretraining": "Fine-tuning",
+    "test": "Test"
+  },
+  "header": {
+    "notifications": "Notifications",
+    "account": "Account",
+    "menuExpand": "Expand menu",
+    "menuCollapse": "Collapse menu",
+    "mainNav": "Main navigation"
+  }
+}

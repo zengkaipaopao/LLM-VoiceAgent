@@ -1,3 +1,4 @@
+import './config/i18n'; // 初始化i18n
 import 'wicg-inert/dist/inert.esm.js';
 import React from 'react';
 import ReactDOM from 'react-dom/client';

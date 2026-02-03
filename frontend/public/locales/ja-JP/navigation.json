@@ -1,0 +1,18 @@
+{
+  "menu": {
+    "dashboard": "ダッシュボード",
+    "calls": "通話記録",
+    "appointments": "予約管理",
+    "prompts": "プロンプト",
+    "settings": "設定",
+    "pretraining": "ファインチューニング",
+    "test": "テスト"
+  },
+  "header": {
+    "notifications": "通知",
+    "account": "アカウント",
+    "menuExpand": "メニューを展開",
+    "menuCollapse": "メニューを折りたたむ",
+    "mainNav": "メインナビゲーション"
+  }
+}
