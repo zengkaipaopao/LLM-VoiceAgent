@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     twilio_say_voice: str | None = None
     twilio_say_language: str | None = None
     twilio_chat_model_id: str | None = None
+    
+    # Database
+    database_url: str = "postgresql://dev_user:dev_password@localhost:5432/llm_voice_agent"
+    
+    # Debug
+    debug: bool = True
 
 
 settings = Settings()
