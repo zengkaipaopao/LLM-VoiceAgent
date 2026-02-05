@@ -5,21 +5,11 @@
   background-color: var(--cds-layer-01);
 }
 
-/* 强制穿透覆盖 Carbon 内部表格元素的白色背景 */
-.container :global(.cds--data-table),
-.container :global(.cds--data-table th),
-.container :global(.cds--data-table td) {
-  background-color: var(--cds-layer-01);
-}
-
-/* 修复 Hover 状态的背景色 */
-.container :global(.cds--data-table tbody tr:hover td) {
-  background-color: var(--cds-layer-hover-01);
-}
+// 移除所有对于 Carbon 内部样式的覆盖，完全完全遵循官方 CSS
+// Remove all overrides for Carbon internal styles, strictly follow official CSS
 
 .emptyCell {
   text-align: center;
-  // Use spacing token for padding (3rem = spacing-09 often, or custom)
   padding: spacing.$spacing-09 !important;
 }
 
@@ -28,14 +18,13 @@
 }
 
 .filterItem {
-  width: 100%; // Full width in grid
+  width: 100%;
 }
 
 .filterPanel {
   background-color: var(--cds-layer-01);
   border-bottom: 1px solid var(--cds-border-subtle-01);
   padding: spacing.$spacing-05;
-  // Animation for smooth expand/collapse could be added here
 }
 
 .filterGrid {
@@ -45,10 +34,6 @@
   align-items: flex-end;
 }
 
-
-
 .filterPanelHidden {
   display: none;
 }
-
-

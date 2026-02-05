@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Any, Optional
 
 from pydantic import BaseModel
 
@@ -18,7 +18,7 @@ class AppointmentBase(BaseModel):
     address: str
     summary: str
     extra_request: str = ""
-    raw_messages: str
+    raw_messages: Optional[Any] = None
     operation: AppointmentOperation = "create"
 
 

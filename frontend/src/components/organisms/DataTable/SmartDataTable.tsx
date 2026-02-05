@@ -8,6 +8,9 @@ import {
   TableHeader,
   TableBody,
   TableCell,
+  TableExpandHeader,
+  TableExpandRow,
+  TableExpandedRow,
   TableToolbar,
   TableToolbarContent,
   TableToolbarSearch,
@@ -80,6 +83,9 @@ interface SmartDataTableProps<T extends DataRow> {
   
   // Cell Rendering
   renderCell?: (cellValue: any, cellKey: string, row: T) => React.ReactNode;
+  
+  // Expanded Row Rendering
+  renderExpandedRow?: (row: T) => React.ReactNode;
 }
 
 export function SmartDataTable<T extends DataRow>({
@@ -99,7 +105,8 @@ export function SmartDataTable<T extends DataRow>({
   selectedFilters = {},
   onFilterChange,
   toolbarActions,
-  renderCell
+  renderCell,
+  renderExpandedRow
 }: SmartDataTableProps<T>) {
 
   const [searchValue, setSearchValue] = useState('');
@@ -264,6 +271,7 @@ export function SmartDataTable<T extends DataRow>({
             <Table {...getTableProps()}>
               <TableHead>
                 <TableRow>
+                  {renderExpandedRow && <TableExpandHeader />}
                   {headers.map((header: any) => (
                     <TableHeader key={header.key} {...getHeaderProps({ header })}>
                       {header.header}
@@ -274,7 +282,7 @@ export function SmartDataTable<T extends DataRow>({
               <TableBody>
                 {carbonRows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={headers.length} className={styles.emptyCell}>
+                    <TableCell colSpan={headers.length + (renderExpandedRow ? 1 : 0)} className={styles.emptyCell}>
                       <div className={styles.emptyState}>No data found</div>
                     </TableCell>
                   </TableRow>
@@ -283,21 +291,30 @@ export function SmartDataTable<T extends DataRow>({
                      const originalRow = tableRows.find(r => r.id === row.id);
                      if (!originalRow) return null;
 
-                     return (
-                      <TableRow key={row.id} {...getRowProps({ row })}>
-                        {row.cells.map((cell: any) => {
-                          const cellValue = cell.value;
-                          const cellKey = cell.info.header;
+                     const RowComponent = renderExpandedRow ? TableExpandRow : TableRow;
 
-                          return (
-                            <TableCell key={cell.id}>
-                              {renderCell 
-                                ? renderCell(cellValue, cellKey, originalRow) 
-                                : cellValue}
-                            </TableCell>
-                          );
-                        })}
-                      </TableRow>
+                     return (
+                      <React.Fragment key={row.id}>
+                        <RowComponent {...getRowProps({ row })} key={row.id}>
+                          {row.cells.map((cell: any) => {
+                            const cellValue = cell.value;
+                            const cellKey = cell.info.header;
+
+                            return (
+                              <TableCell key={cell.id}>
+                                {renderCell 
+                                  ? renderCell(cellValue, cellKey, originalRow) 
+                                  : cellValue}
+                              </TableCell>
+                            );
+                          })}
+                        </RowComponent>
+                        {renderExpandedRow && row.isExpanded && (
+                          <TableExpandedRow colSpan={headers.length + 1}>
+                             {renderExpandedRow(originalRow)}
+                          </TableExpandedRow>
+                        )}
+                      </React.Fragment>
                     );
                   })
                 )}
