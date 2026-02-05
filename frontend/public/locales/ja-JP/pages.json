@@ -80,10 +80,21 @@
     "emptyState": "テスト機能は開発中",
     "emptyDescription": "このページでは、WebSocketとTwilio WebCallのリアルタイムデバッグ機能を提供します。",
     "tabs": {
-      "simulation": "Call Simulation",
-      "reviewer": "Reviewer Mode",
+      "ariaLabel": "テストオプション",
+      "simulation": "通話シミュレーション",
+      "appointment": "予約シミュレーション",
+      "reviewer": "レビュアーモード",
       "websocket": "WebSocket",
       "twilio": "Twilio WebCall"
+    },
+    "appointment": {
+      "description": "予約シミュレーション機能は開発中..."
+    },
+    "websocket": {
+      "description": "WebSocketテスト機能は開発中..."
+    },
+    "twilio": {
+      "description": "Twilio WebCallテスト機能は開発中..."
     },
     "simulation": {
       "scenarios": {
@@ -95,7 +106,7 @@
       },
       "batch": {
         "title": "一括テスト",
-        "description": "開発デバッグ用のテストデータを高速生成 (審査員モード: {{status}})",
+        "description": "開発デバッグ用のテストデータを高速生成 (レビュアーモード: {{status}})",
         "on": "ON",
         "off": "OFF",
         "generate10": "10件生成",

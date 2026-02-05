@@ -25,5 +25,10 @@
   "emptyState": {
     "title": "No Content",
     "description": "This page is under development"
+  },
+  "errorBoundary": {
+    "title": "Something went wrong",
+    "description": "The application encountered an unexpected error. Please try refreshing the page. If the problem persists, contact the administrator.",
+    "reloadButton": "Reload Page"
   }
 }

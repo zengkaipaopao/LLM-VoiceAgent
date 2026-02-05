@@ -17,6 +17,7 @@
   },
   "test": {
     "simulation": "Call Simulation",
+    "appointment": "Appointment Sim",
     "reviewer": "Reviewer Mode",
     "websocket": "WebSocket",
     "twilio": "Twilio WebCall"

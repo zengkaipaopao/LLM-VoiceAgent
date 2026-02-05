@@ -80,10 +80,21 @@
     "emptyState": "测试功能开发中",
     "emptyDescription": "此页面将提供WebSocket和Twilio WebCall的实时调试功能。",
     "tabs": {
-      "simulation": "Call 模拟",
-      "reviewer": "Reviewer 模式",
+      "ariaLabel": "测试选项",
+      "simulation": "通话模拟",
+      "appointment": "预约模拟",
+      "reviewer": "审查员模式",
       "websocket": "WebSocket",
       "twilio": "Twilio WebCall"
+    },
+    "appointment": {
+      "description": "预约模拟测试功能开发中..."
+    },
+    "websocket": {
+      "description": "WebSocket测试功能开发中..."
+    },
+    "twilio": {
+      "description": "Twilio WebCall测试功能开发中..."
     },
     "simulation": {
       "scenarios": {

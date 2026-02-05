@@ -80,10 +80,21 @@
     "emptyState": "Test features under development",
     "emptyDescription": "This page will provide real-time debugging for WebSocket and Twilio WebCall.",
     "tabs": {
+      "ariaLabel": "Test Options",
       "simulation": "Call Simulation",
+      "appointment": "Appointment Sim",
       "reviewer": "Reviewer Mode",
       "websocket": "WebSocket",
       "twilio": "Twilio WebCall"
+    },
+    "appointment": {
+      "description": "Appointment simulation feature under development..."
+    },
+    "websocket": {
+      "description": "WebSocket testing feature under development..."
+    },
+    "twilio": {
+      "description": "Twilio WebCall testing feature under development..."
     },
     "simulation": {
       "scenarios": {

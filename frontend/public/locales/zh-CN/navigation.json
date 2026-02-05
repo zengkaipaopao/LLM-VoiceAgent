@@ -16,8 +16,9 @@
     "mainNav": "主要导航"
   },
   "test": {
-    "simulation": "Call Simulation",
-    "reviewer": "Reviewer Mode",
+    "simulation": "通话模拟",
+    "appointment": "预约模拟",
+    "reviewer": "审查员模式",
     "websocket": "WebSocket",
     "twilio": "Twilio WebCall"
   }

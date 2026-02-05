@@ -17,7 +17,7 @@ import {
   TableBatchAction,
   Pagination,
   Tag,
-  Loading,
+  DataTableSkeleton,
   Button,
   OverflowMenu,
   OverflowMenuItem,
@@ -266,9 +266,13 @@ export function CallsPage() {
               </TableToolbar>
 
               {loading ? (
-                <div style={{ padding: '3rem', textAlign: 'center' }}>
-                  <Loading description="加载中..." withOverlay={false} />
-                </div>
+                <DataTableSkeleton
+                  columnCount={headers.length}
+                  rowCount={10}
+                  headers={headers.map(h => ({ key: h.key, header: h.header }))}
+                  showHeader={true}
+                  showToolbar={false}
+                />
               ) : (
                 <>
                   <Table {...getTableProps()} size="lg">

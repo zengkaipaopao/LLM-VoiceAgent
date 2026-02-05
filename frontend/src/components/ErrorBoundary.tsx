@@ -1,6 +1,7 @@
 import { Component, ErrorInfo, ReactNode } from 'react';
 import { Button, Tile, Theme } from '@carbon/react';
 import { WarningAltFilled } from '@carbon/icons-react';
+import i18n from '../config/i18n';
 
 interface Props {
   children: ReactNode;
@@ -46,10 +47,10 @@ export class ErrorBoundary extends Component<Props, State> {
             <Tile style={{ maxWidth: '500px', width: '100%' }}>
               <div style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem', alignItems: 'center' }}>
                 <WarningAltFilled size={32} fill="#da1e28" />
-                <h3 style={{ margin: 0 }}>出错了</h3>
+                <h3 style={{ margin: 0 }}>{i18n.t('common:errorBoundary.title')}</h3>
               </div>
               <p style={{ marginBottom: '2rem' }}>
-                应用程序遇到意外错误。请尝试刷新页面。如果问题持续存在，请联系管理员。
+                {i18n.t('common:errorBoundary.description')}
               </p>
               {this.state.error && (
                 <div style={{ 
@@ -64,7 +65,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 </div>
               )}
               <Button onClick={this.handleReload}>
-                刷新页面
+                {i18n.t('common:errorBoundary.reloadButton')}
               </Button>
             </Tile>
           </div>
