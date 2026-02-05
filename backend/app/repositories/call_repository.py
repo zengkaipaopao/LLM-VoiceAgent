@@ -120,10 +120,16 @@ class CallRepository(BaseRepository[Call]):
         
         # Apply filters
         if status:
-            query = query.filter(Call.status == status)
+            if ',' in status:
+                query = query.filter(Call.status.in_(status.split(',')))
+            else:
+                query = query.filter(Call.status == status)
         
         if handler_type:
-            query = query.filter(Call.handler_type == handler_type)
+            if ',' in handler_type:
+                query = query.filter(Call.handler_type.in_(handler_type.split(',')))
+            else:
+                query = query.filter(Call.handler_type == handler_type)
         
         if start_date:
             query = query.filter(Call.started_at >= start_date)

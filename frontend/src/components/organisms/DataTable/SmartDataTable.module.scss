@@ -26,3 +26,29 @@
 .emptyState {
   color: var(--cds-text-secondary);
 }
+
+.filterItem {
+  margin-right: spacing.$spacing-03;
+  width: 100%; // Full width in grid
+}
+
+.filterPanel {
+  background-color: var(--cds-layer-01);
+  border-bottom: 1px solid var(--cds-border-subtle-01);
+  padding: spacing.$spacing-05;
+  // Animation for smooth expand/collapse could be added here
+}
+
+.filterGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: spacing.$spacing-05;
+}
+
+
+
+.filterPanelHidden {
+  display: none;
+}
+
+

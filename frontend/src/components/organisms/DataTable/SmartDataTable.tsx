@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   DataTable,
   TableContainer,
@@ -11,15 +11,35 @@ import {
   TableToolbar,
   TableToolbarContent,
   TableToolbarSearch,
+  TableToolbarAction,
   TableBatchActions,
   Pagination,
   DataTableSkeleton,
+  MultiSelect,
+  Button,
+  DatePicker,
+  DatePickerInput,
 } from '@carbon/react';
+import { Filter } from '@carbon/icons-react';
 import styles from './SmartDataTable.module.scss';
 
 interface Header {
   key: string;
   header: string;
+}
+
+export interface FilterOption {
+  label: string;
+  value: string | number;
+}
+
+export type FilterType = 'select' | 'date-range';
+
+export interface FilterConfig {
+  key: string;
+  label: string;
+  type?: FilterType;
+  options?: FilterOption[];
 }
 
 export type DataRow = {
@@ -45,8 +65,17 @@ interface SmartDataTableProps<T extends DataRow> {
   // Toolbar
   title?: string;
   description?: string;
+  
+  // Search
   onSearch?: (query: string) => void;
   searchPlaceholder?: string;
+  
+  // Filters
+  filters?: FilterConfig[];
+  selectedFilters?: Record<string, any[]>;
+  onFilterChange?: (filters: Record<string, any[]>) => void;
+
+  // Custom Actions
   toolbarActions?: React.ReactNode;
   
   // Cell Rendering
@@ -66,25 +95,51 @@ export function SmartDataTable<T extends DataRow>({
   description,
   onSearch,
   searchPlaceholder = 'Search...',
+  filters = [],
+  selectedFilters = {},
+  onFilterChange,
   toolbarActions,
   renderCell
 }: SmartDataTableProps<T>) {
 
   const [searchValue, setSearchValue] = useState('');
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
 
-  // Debounce search
-  useEffect(() => {
-    if (!onSearch) return;
-
-    const timer = setTimeout(() => {
-      onSearch(searchValue);
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [searchValue, onSearch]);
-
+  // Search Handlers
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchValue(e.target.value);
+    const newVal = e.target.value;
+    setSearchValue(newVal);
+    
+    // Clear trigger: if empty, trigger search immediately (reset)
+    if (newVal === '' && onSearch) {
+      onSearch('');
+    }
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && onSearch) {
+      onSearch(searchValue);
+    }
+  };
+
+  // Filter Handlers
+  const handleFilterSelect = (filterKey: string, selectedItems: any) => {
+    if (onFilterChange) {
+      const filterConfig = filters.find(f => f.key === filterKey);
+      let valueToStore = selectedItems;
+
+      // For MultiSelect, we extract values from items
+      if (!filterConfig?.type || filterConfig.type === 'select') {
+         valueToStore = selectedItems.map((item: any) => item.value);
+      }
+      // For date-range, selectedItems is already Date[], keep as is
+      
+      const newFilters = {
+        ...selectedFilters,
+        [filterKey]: valueToStore
+      };
+      onFilterChange(newFilters);
+    }
   };
 
   if (loading) {
@@ -93,6 +148,7 @@ export function SmartDataTable<T extends DataRow>({
         columnCount={headers.length}
         rowCount={pageSize}
         headers={headers}
+        showToolbar={true} 
       />
     );
   }
@@ -113,7 +169,6 @@ export function SmartDataTable<T extends DataRow>({
           getBatchActionProps,
           getTableProps,
           getTableContainerProps,
-          onInputChange // Carbon's internal search handler, we override it
         }: any) => (
           <TableContainer
             title={title}
@@ -121,30 +176,93 @@ export function SmartDataTable<T extends DataRow>({
             {...getTableContainerProps()}
           >
             <TableToolbar {...getToolbarProps()}>
+              {/* Batch Actions Area */}
               <TableBatchActions {...getBatchActionProps()}>
                 {/* Future: Add Batch Actions here if needed */}
               </TableBatchActions>
+              
               <TableToolbarContent>
+                {/* 1. Global Search */}
                 {onSearch && (
                   <TableToolbarSearch
                     onChange={handleSearchChange}
-                    // We don't bind 'value' here to keep it uncontrolled-like for Carbon 
-                    // or implement fully controlled if Carbon supports it properly.
-                    // Carbon TableToolbarSearch is often uncontrolled by default.
-                    // But we want to control the input to avoid jank if parent re-renders?
-                    // Usually just onChange is enough for internal state.
-                    // Let's rely on internal state of Carbon for display, and debounce our callback.
-                    // Actually, if we use Carbon's onInputChange, it filters internally.
-                    // Since we do server-side search (usually), we ignore Carbon's internal filtering 
-                    // by not passing onInputChange to it, or handling it ourselves.
-                    
+                    onKeyDown={handleSearchKeyDown}
+                    value={searchValue}
                     placeholder={searchPlaceholder}
-                    persistent={true} // Keep it open
+                    persistent={true} 
                   />
                 )}
+
+                {/* 2. Filter Toggle Action */}
+                {filters.length > 0 && (
+                  <Button
+                    hasIconOnly
+                    renderIcon={Filter}
+                    iconDescription="Filter"
+                    tooltipPosition="bottom"
+                    kind={isFilterOpen ? 'primary' : 'ghost'} // Visual feedback for active state
+                    onClick={() => setIsFilterOpen(!isFilterOpen)}
+                  />
+                )}
+
+                {/* 3. Custom Actions (Buttons etc) */}
                 {toolbarActions}
               </TableToolbarContent>
             </TableToolbar>
+            
+            {/* Collapsible Filter Panel */}
+            {isFilterOpen && filters.length > 0 && (
+              <div className={styles.filterPanel}>
+                <div className={styles.filterGrid}>
+                  {filters.map((filter) => (
+                    <div key={filter.key} className={styles.filterItem}>
+                      {filter.type === 'date-range' ? (
+                        <DatePicker 
+                          datePickerType="range"
+                          dateFormat="Y/m/d" // Changed to slash format which is more common/friendly
+                          onChange={(dates: Date[]) => {
+                            handleFilterSelect(filter.key, dates);
+                          }}
+                          value={selectedFilters?.[filter.key] || []}
+                        >
+                          <DatePickerInput
+                            id={`filter-${filter.key}-start`}
+                            placeholder="yyyy/mm/dd"
+                            labelText={`${filter.label} (Start)`}
+                            size="md"
+                            autoComplete="off"
+                          />
+                          <DatePickerInput
+                            id={`filter-${filter.key}-end`}
+                            placeholder="yyyy/mm/dd"
+                            labelText={`${filter.label} (End)`}
+                            size="md"
+                            autoComplete="off"
+                          />
+                        </DatePicker>
+                      ) : (
+                        <MultiSelect
+                          id={`filter-${filter.key}`}
+                          label={filter.label}
+                          titleText={filter.label}
+                          items={filter.options || []}
+                          itemToString={(item: any) => (item ? item.label : '')}
+                          initialSelectedItems={
+                            (filter.options || []).filter(opt => 
+                              selectedFilters?.[filter.key]?.includes(opt.value)
+                            )
+                          }
+                          onChange={(e: any) => handleFilterSelect(filter.key, e.selectedItems)}
+                          size="md"
+                          type="default"
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
             <Table {...getTableProps()}>
               <TableHead>
                 <TableRow>

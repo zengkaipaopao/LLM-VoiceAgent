@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SmartDataTable } from '../components/organisms/DataTable/SmartDataTable';
 import {
@@ -48,6 +48,33 @@ interface CallsResponse {
 export function CallsPage() {
   const { t } = useTranslation(['pages', 'common']);
   
+  // Filters Configuration
+  const filterConfig = useMemo(() => [
+    {
+      key: 'status',
+      label: t('calls.table.headers.status'),
+      options: [
+        { label: t('calls.table.status.completed'), value: 'completed' },
+        { label: t('calls.table.status.failed'), value: 'failed' },
+        { label: t('calls.table.status.no_answer'), value: 'no_answer' },
+        { label: t('calls.table.status.ongoing'), value: 'ongoing' },
+      ]
+    },
+    {
+      key: 'handler_type',
+      label: t('calls.table.headers.handler'),
+      options: [
+        { label: t('calls.table.handler.ai'), value: 'ai' },
+        { label: t('calls.table.handler.transferred'), value: 'transferred' },
+      ]
+    },
+    {
+      key: 'created_at',
+      label: t('calls.table.headers.time'),
+      type: 'date-range' as const, 
+    }
+  ], [t]);
+
   // State
   const [calls, setCalls] = useState<Call[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,8 +82,13 @@ export function CallsPage() {
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [handlerFilter, setHandlerFilter] = useState('');
+  
+  // Unified Filter State
+  const [selectedFilters, setSelectedFilters] = useState<Record<string, any[]>>({
+    status: [],
+    handler_type: [],
+  });
+
   const [sortBy, setSortBy] = useState('started_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [selectedCall, setSelectedCall] = useState<Call | null>(null);
@@ -71,11 +103,36 @@ export function CallsPage() {
         page_size: pageSize.toString(),
         sort_by: sortBy,
         order: sortOrder,
+        filter_match: 'or', // User requested Union logic for filters
       });
 
       if (searchQuery) params.append('search', searchQuery);
-      if (statusFilter) params.append('status', statusFilter);
-      if (handlerFilter) params.append('handler_type', handlerFilter);
+      
+      // Apply filters
+      // Apply filters
+      if (selectedFilters.status?.length) {
+        params.append('status', selectedFilters.status.join(','));
+      }
+      if (selectedFilters.handler_type?.length) {
+        params.append('handler_type', selectedFilters.handler_type.join(','));
+      }
+      
+      // Handle Date Range
+      if (selectedFilters.created_at?.length === 2) {
+        const [start, end] = selectedFilters.created_at;
+        
+        if (start) {
+          const startDate = new Date(start);
+          startDate.setHours(0, 0, 0, 0);
+          params.append('start_date', startDate.toISOString());
+        }
+        
+        if (end) {
+          const endDate = new Date(end);
+          endDate.setHours(23, 59, 59, 999);
+          params.append('end_date', endDate.toISOString());
+        }
+      }
 
       const response = await fetch(`/api/v1/calls?${params}`);
       const data: CallsResponse = await response.json();
@@ -92,8 +149,12 @@ export function CallsPage() {
   };
 
   useEffect(() => {
+    // Avoid fetching if date range is incomplete (user is still selecting)
+    if (selectedFilters.created_at && selectedFilters.created_at.length === 1) {
+      return;
+    }
     fetchCalls();
-  }, [page, pageSize, searchQuery, statusFilter, handlerFilter, sortBy, sortOrder]);
+  }, [page, pageSize, searchQuery, selectedFilters, sortBy, sortOrder]);
 
   // Formatters
   const formatDuration = (seconds: number): string => {
@@ -187,13 +248,19 @@ export function CallsPage() {
         page={page}
         pageSize={pageSize}
         
+        // Search & Filter Props
+        onSearch={setSearchQuery}
+        searchPlaceholder={t('calls.table.toolbar.searchPlaceholder')}
+        
+        filters={filterConfig}
+        selectedFilters={selectedFilters}
+        onFilterChange={setSelectedFilters}
+        
         // Actions
         onPageChange={(p, s) => {
            setPage(p);
            setPageSize(s);
         }}
-        onSearch={setSearchQuery}
-        searchPlaceholder={t('calls.table.toolbar.searchPlaceholder')}
         
         // Toolbar Buttons
         toolbarActions={
