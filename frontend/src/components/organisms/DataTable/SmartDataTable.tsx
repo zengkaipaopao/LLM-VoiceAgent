@@ -230,14 +230,12 @@ export function SmartDataTable<T extends DataRow>({
                             placeholder="yyyy/mm/dd"
                             labelText={`${filter.label} (Start)`}
                             size="md"
-                            autoComplete="off"
                           />
                           <DatePickerInput
                             id={`filter-${filter.key}-end`}
                             placeholder="yyyy/mm/dd"
                             labelText={`${filter.label} (End)`}
                             size="md"
-                            autoComplete="off"
                           />
                         </DatePicker>
                       ) : (

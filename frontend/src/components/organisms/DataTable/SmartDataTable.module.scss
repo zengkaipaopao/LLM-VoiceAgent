@@ -28,7 +28,6 @@
 }
 
 .filterItem {
-  margin-right: spacing.$spacing-03;
   width: 100%; // Full width in grid
 }
 
@@ -41,8 +40,9 @@
 
 .filterGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: spacing.$spacing-05;
+  align-items: flex-end;
 }
 
 
