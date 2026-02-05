@@ -11,7 +11,8 @@ import {
   Grid,
   Column,
   Stack,
-
+  NumberInput,
+  ButtonSet,
 } from '@carbon/react';
 import {
   CheckmarkFilled,
@@ -48,6 +49,7 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [batchCount, setBatchCount] = useState(10);
   // Removed local enableReviewer state as it is now passed via props
 
   const API_BASE = 'http://localhost:8000/api/v1';
@@ -207,7 +209,7 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
 
         {/* 批量操作 */}
         <Tile>
-          <Stack gap={4}>
+          <Stack gap={6}>
             <div>
               <h4 className="cds--label">{t('pages:test.simulation.batch.title')}</h4>
               <p className="cds--label-description">
@@ -219,45 +221,69 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
               </p>
             </div>
             
-            <Grid narrow>
-              <Column lg={8} md={4} sm={2}>
-                <Stack gap={3}>
-                  <Button
-                    kind="secondary"
-                    onClick={() => simulateBatch(10)}
-                    disabled={loading}
-                    renderIcon={Renew}
-                    className={styles.actionButton}
-                  >
-                    {t('pages:test.simulation.batch.generate10')}
-                  </Button>
-                  
-                  <Button
-                    kind="secondary"
-                    onClick={() => simulateBatch(50)}
-                    disabled={loading}
-                    renderIcon={Renew}
-                    className={styles.actionButton}
-                  >
-                    {t('pages:test.simulation.batch.generate50')}
-                  </Button>
-                </Stack>
-              </Column>
-              
-              <Column lg={8} md={4} sm={2}>
-                <Stack gap={3}>
-                  <Button
-                    kind="danger"
-                    onClick={clearTestData}
-                    disabled={loading}
-                    renderIcon={TrashCan}
-                    className={styles.actionButton}
-                  >
-                   {t('pages:test.simulation.batch.clear')}
-                  </Button>
-                </Stack>
-              </Column>
-            </Grid>
+            {/* 主要操作区 */}
+            <div className={styles.batchControls}>
+              <NumberInput
+                id="batch-count"
+                label={t('pages:test.simulation.batch.countLabel', '生成数量')}
+                min={1}
+                max={1000}
+                value={batchCount}
+                onChange={(e: any) => setBatchCount(e.imaginaryTarget.value)}
+                invalidText={t('pages:test.simulation.batch.invalidCount', '请输入1-1000之间的数字')}
+                disabled={loading}
+              />
+              <Button
+                kind="primary"
+                onClick={() => simulateBatch(batchCount)}
+                disabled={loading}
+                renderIcon={Renew}
+                className={styles.generateButton}
+              >
+                {t('pages:test.simulation.batch.generate', '生成测试数据')}
+              </Button>
+            </div>
+
+            {/* 快捷选项 */}
+            <div className={styles.quickActions}>
+              <span className="cds--label">{t('pages:test.simulation.batch.quickOptions', '快捷选项:')}</span>
+              <ButtonSet>
+                <Button 
+                  size="sm" 
+                  kind="ghost" 
+                  onClick={() => setBatchCount(10)}
+                  disabled={loading}
+                >
+                  10
+                </Button>
+                <Button 
+                  size="sm" 
+                  kind="ghost" 
+                  onClick={() => setBatchCount(50)}
+                  disabled={loading}
+                >
+                  50
+                </Button>
+                <Button 
+                  size="sm" 
+                  kind="ghost" 
+                  onClick={() => setBatchCount(100)}
+                  disabled={loading}
+                >
+                  100
+                </Button>
+              </ButtonSet>
+            </div>
+
+            {/* 危险操作 */}
+            <Button
+              kind="danger--tertiary"
+              onClick={clearTestData}
+              disabled={loading}
+              renderIcon={TrashCan}
+            >
+              {t('pages:test.simulation.batch.clear')}
+            </Button>
           </Stack>
         </Tile>
       </Stack>

@@ -22,3 +22,31 @@
   width: 100%;
   max-width: 100%;
 }
+
+/* Batch Controls - NumberInput + Button 横向布局 */
+.batchControls {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+.batchControls > :first-child {
+  width: 120px;
+  flex-shrink: 0;
+}
+
+.generateButton {
+  flex-shrink: 0;
+}
+
+/* Quick Actions - 快捷按钮组 */
+.quickActions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.quickActions .cds--label {
+  margin: 0;
+  flex-shrink: 0;
+}

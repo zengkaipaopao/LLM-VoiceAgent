@@ -60,7 +60,7 @@
     "emptyState": "此页面正在开发中"
   },
   "prompts": {
-    "title": "Prompt 管理",
+    "title": "提示词管理",
     "subtitle": "配置和管理AI对话提示词",
     "emptyState": "此页面正在开发中"
   },
@@ -109,6 +109,10 @@
         "description": "快速生成多条测试数据用于开发调试 (审查员模式: {{status}})",
         "on": "开启",
         "off": "关闭",
+        "countLabel": "生成数量",
+        "invalidCount": "请输入1-1000之间的数字",
+        "generate": "生成测试数据",
+        "quickOptions": "快捷选项:",
         "generate10": "生成 10 条",
         "generate50": "生成 50 条",
         "clear": "清除所有数据",
