@@ -255,6 +255,14 @@ export function CallsPage() {
         filters={filterConfig}
         selectedFilters={selectedFilters}
         onFilterChange={setSelectedFilters}
+        // Clear Filters
+        onClearFilters={() => {
+          setSelectedFilters({
+            status: [],
+            handler_type: [],
+          });
+        }}
+        hasActiveFilters={Object.values(selectedFilters).some(arr => arr && arr.length > 0)}
         
         // Actions
         onPageChange={(p, s) => {

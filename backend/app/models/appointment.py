@@ -1,7 +1,8 @@
 """
 Appointment model for database.
 """
-from sqlalchemy import Column, String, DateTime, Text, Numeric
+from sqlalchemy import Column, String, DateTime, Text, Numeric, ForeignKey
+from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from datetime import datetime
 import uuid
@@ -15,7 +16,11 @@ class Appointment(Base, TimestampMixin):
     __tablename__ = "appointments"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    call_id = Column(UUID(as_uuid=True), index=True) # ForeignKey is optional strictly if we don't enforce constraints in app level often, but good to have. Schema has it.
+    call_id = Column(UUID(as_uuid=True), ForeignKey('calls.id'), index=True)
+    
+    # Relationship
+    call = relationship("Call", back_populates="appointment")
+    
     timestamp = Column(DateTime, nullable=False, index=True)
     caller_name = Column(String(100), nullable=False, index=True)
     company = Column(String(200))

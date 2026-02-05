@@ -23,7 +23,7 @@ import {
   DatePicker,
   DatePickerInput,
 } from '@carbon/react';
-import { Filter } from '@carbon/icons-react';
+import { Filter, Reset } from '@carbon/icons-react';
 import styles from './SmartDataTable.module.scss';
 
 interface Header {
@@ -106,8 +106,14 @@ export function SmartDataTable<T extends DataRow>({
   onFilterChange,
   toolbarActions,
   renderCell,
-  renderExpandedRow
-}: SmartDataTableProps<T>) {
+  renderExpandedRow,
+  // New props for Clear Filters
+  onClearFilters,
+  hasActiveFilters = false,
+}: SmartDataTableProps<T> & {
+  onClearFilters?: () => void;
+  hasActiveFilters?: boolean;
+}) {
 
   const [searchValue, setSearchValue] = useState('');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -200,7 +206,19 @@ export function SmartDataTable<T extends DataRow>({
                   />
                 )}
 
-                {/* 2. Filter Toggle Action */}
+                {/* 2. Clear Filters Action */}
+                {onClearFilters && hasActiveFilters && (
+                  <Button
+                    hasIconOnly
+                    renderIcon={Reset}
+                    iconDescription="Clear Filters"
+                    tooltipPosition="bottom"
+                    kind="tertiary"
+                    onClick={onClearFilters}
+                  />
+                )}
+
+                {/* 3. Filter Toggle Action */}
                 {filters.length > 0 && (
                   <Button
                     hasIconOnly

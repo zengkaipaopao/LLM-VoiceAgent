@@ -2,6 +2,7 @@
 Call model for database.
 """
 from sqlalchemy import Column, String, Integer, DateTime, Text, Enum as SQLEnum, Boolean
+from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from datetime import datetime
 import uuid
@@ -115,6 +116,9 @@ class Call(Base, TimestampMixin):
     # 关联信息
     prompt_id = Column(UUID(as_uuid=True), index=True)
     agent_id = Column(UUID(as_uuid=True))
+    
+    # Relationships
+    appointment = relationship("Appointment", back_populates="call", uselist=False)
     
     # 元数据 (JSON格式,存储额外信息)
     # 注意: 'metadata' 是 SQLAlchemy 保留字,使用 'extra_data' 代替

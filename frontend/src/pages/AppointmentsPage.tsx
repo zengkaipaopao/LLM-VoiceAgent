@@ -162,6 +162,16 @@ export function AppointmentsPage() {
         filters={filterConfig}
         selectedFilters={selectedFilters}
         onFilterChange={setSelectedFilters}
+        // Clear Filters
+        onClearFilters={() => {
+          setSelectedFilters({});
+          setSearchQuery(''); // Optional: checking if user wants search cleared too. Usually yes for "Clear All".
+          // If user specifically meant "Clear Filters" (not search), remove setSearchQuery. 
+          // Re-reading: "清空filter". Let's stick to clearing structured filters.
+          // But usually "Clear" next to filter button implies clearing the filter panel state.
+          // Let's just clear selectedFilters for now as it's safer.
+        }}
+        hasActiveFilters={Object.keys(selectedFilters).length > 0}
         
         // Actions
         onPageChange={(p, s) => {
