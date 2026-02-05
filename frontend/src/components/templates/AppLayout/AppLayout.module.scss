@@ -1,0 +1,22 @@
+@use '@carbon/styles/scss/theme';
+@use '@carbon/styles/scss/spacing';
+
+.app-shell {
+  min-height: 100vh;
+  // Use CSS custom property provided by Carbon (enabled in theme.scss)
+  background-color: var(--cds-ui-background);
+}
+
+.page-content {
+  // Use Carbon spacing tokens: spacing-07 (32px), spacing-08 (40px)
+  padding: spacing.$spacing-07 spacing.$spacing-08;
+  
+  // Header height is typically 3rem (48px)
+  min-height: calc(100vh - 3rem);
+  
+  // Use layer token for content background
+  background: var(--cds-layer-01);
+  
+  // Optional: Add subtle shadow if needed, or remove for flat design
+  // box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+}

@@ -1,7 +1,7 @@
 import { Component, ErrorInfo, ReactNode } from 'react';
 import { Button, Tile, Theme } from '@carbon/react';
 import { WarningAltFilled } from '@carbon/icons-react';
-import i18n from '../config/i18n';
+import i18n from "../../config/i18n";
 
 interface Props {
   children: ReactNode;

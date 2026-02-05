@@ -1,5 +1,5 @@
-import { CallSimulationTest } from '../../CallSimulationTest';
-import styles from '../../../pages/TestPage.module.css';
+import { CallSimulationTest } from '../CallSimulation/CallSimulationTest';
+import styles from '../../../pages/TestPage.module.scss';
 
 interface CallSimulationTabContentProps {
   enableReviewer?: boolean;

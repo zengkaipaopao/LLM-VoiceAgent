@@ -1,11 +1,13 @@
+@use '@carbon/styles/scss/spacing';
+
 /* Section Styling */
 .sectionTitle {
-  margin-bottom: 0.5rem;
+  margin-bottom: spacing.$spacing-03;
   color: var(--cds-text-primary);
 }
 
 .sectionDescription {
-  margin-bottom: 2rem;
+  margin-bottom: spacing.$spacing-07;
   color: var(--cds-text-secondary);
   max-width: 600px;
 }
@@ -14,7 +16,7 @@
 .scenarioGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 1rem;
+  gap: spacing.$spacing-05;
 }
 
 .scenarioTile {
@@ -26,7 +28,7 @@
   display: flex;
   flex-direction: row;
   align-items: flex-start;
-  gap: 1rem;
+  gap: spacing.$spacing-05;
   height: 100%;
   text-align: left;
 }
@@ -48,7 +50,7 @@
 
 .batchControls {
   display: flex;
-  gap: 1rem;
+  gap: spacing.$spacing-05;
   align-items: flex-end;
 }
 
@@ -64,7 +66,7 @@
 .quickActions {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: spacing.$spacing-05;
 }
 
 .quickActions .cds--label {

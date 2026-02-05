@@ -1,36 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { SmartDataTable } from '../components/organisms/DataTable/SmartDataTable';
 import {
-  DataTable,
-  TableContainer,
-  Table,
-  TableHead,
-  TableRow,
-  TableHeader,
-  TableBody,
-  TableCell,
-  TableToolbar,
-  TableToolbarContent,
-  TableToolbarSearch,
-  TableToolbarMenu,
-  TableBatchActions,
-  TableBatchAction,
-  Pagination,
   Tag,
-  DataTableSkeleton,
   Button,
-  OverflowMenu,
-  OverflowMenuItem,
   Modal,
+  TableToolbarMenu,
+  TableToolbarAction
 } from '@carbon/react';
 import {
-  PhoneIncoming,
-  PhoneOutgoing,
   View,
   Bot,
   User,
   ArrowsHorizontal,
-  Filter,
 } from '@carbon/icons-react';
 import { PageTemplate } from '../components/templates/PageTemplate';
 
@@ -113,14 +95,13 @@ export function CallsPage() {
     fetchCalls();
   }, [page, pageSize, searchQuery, statusFilter, handlerFilter, sortBy, sortOrder]);
 
-  // Format duration
+  // Formatters
   const formatDuration = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Format date with year
   const formatDate = (dateString: string): string => {
     const date = new Date(dateString);
     return date.toLocaleString('zh-CN', {
@@ -132,12 +113,6 @@ export function CallsPage() {
     });
   };
 
-  // Format call ID (show first 8 characters)
-  const formatCallId = (id: string): string => {
-    return id.substring(0, 8);
-  };
-
-  // Get status tag
   const getStatusTag = (status: string) => {
     const statusMap: Record<string, { type: any; label: string }> = {
       completed: { type: 'green', label: t('calls.table.status.completed') },
@@ -152,7 +127,6 @@ export function CallsPage() {
     return <Tag type={config.type} size="sm">{config.label}</Tag>;
   };
 
-  // Get handler display
   const getHandlerDisplay = (handlerType?: string) => {
     const handlerMap: Record<string, { icon: any; label: string }> = {
       ai: { icon: Bot, label: t('calls.table.handler.ai') },
@@ -174,7 +148,7 @@ export function CallsPage() {
     );
   };
 
-  // Table headers
+  // Table Configuration
   const headers = [
     { key: 'call_id', header: t('calls.table.headers.callId') },
     { key: 'caller', header: t('calls.table.headers.caller') },
@@ -186,17 +160,18 @@ export function CallsPage() {
     { key: 'actions', header: t('calls.table.headers.actions') },
   ];
 
-  // Table rows
-  const rows = calls.map((call) => ({
+  // Map backend data to table rows format if necessary, or just use as is if keys match
+  // We need to map some fields to match header keys
+  const tableRows = calls.map((call) => ({
     id: call.id,
-    direction: call.direction,
+    call_id: call.id.substring(0, 8),
     caller: call.caller_name || call.counterpart,
-    counterpart: call.counterpart,
     status: call.status,
     handler: call.handler_type,
     started_at: call.started_at,
     duration: call.duration_seconds,
     confidence: call.ai_confidence,
+    raw: call // Keep raw data for custom access reference
   }));
 
   return (
@@ -204,209 +179,71 @@ export function CallsPage() {
       title={t('calls.title')}
       subtitle={t('calls.subtitle')}
     >
-      <div style={{ backgroundColor: 'var(--cds-layer-00)', padding: '1rem' }}>
-        <DataTable rows={rows} headers={headers} isSortable>
-          {({
-            rows,
-            headers,
-            getHeaderProps,
-            getRowProps,
-            getTableProps,
-            getToolbarProps,
-            onInputChange,
-            getTableContainerProps,
-          }) => (
-            <TableContainer
-              {...getTableContainerProps()}
-              style={{ backgroundColor: 'var(--cds-layer-01)' }}
-            >
-              <TableToolbar {...getToolbarProps()}>
-                <TableToolbarContent>
-                  {/* 搜索框 - 默认收起 */}
-                  <TableToolbarSearch
-                    persistent={false}
-                    placeholder={t('calls.table.toolbar.searchPlaceholder')}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      setSearchQuery(e.target.value);
-                      setPage(1); // Reset to first page on search
-                    }}
-                    onClear={() => {
-                      setSearchQuery('');
-                      setPage(1);
-                    }}
-                  />
-                  
-                  {/* 筛选菜单 */}
-                  <TableToolbarMenu
-                    renderIcon={Filter}
-                    iconDescription={t('calls.table.toolbar.filter')}
-                  >
-                    <OverflowMenuItem
-                      itemText={t('calls.table.toolbar.filterAll')}
-                      onClick={() => setStatusFilter('')}
-                    />
-                    <OverflowMenuItem
-                      itemText={t('calls.table.status.completed')}
-                      onClick={() => setStatusFilter('completed')}
-                    />
-                    <OverflowMenuItem
-                      itemText={t('calls.table.status.ongoing')}
-                      onClick={() => setStatusFilter('ongoing')}
-                    />
-                    <OverflowMenuItem
-                      itemText={t('calls.table.status.failed')}
-                      onClick={() => setStatusFilter('failed')}
-                    />
-                    <OverflowMenuItem
-                      itemText={t('calls.table.status.no_answer')}
-                      onClick={() => setStatusFilter('no_answer')}
-                    />
-                  </TableToolbarMenu>
-                </TableToolbarContent>
-              </TableToolbar>
+      <SmartDataTable
+        rows={tableRows}
+        headers={headers}
+        loading={loading}
+        totalItems={total}
+        page={page}
+        pageSize={pageSize}
+        
+        // Actions
+        onPageChange={(p, s) => {
+           setPage(p);
+           setPageSize(s);
+        }}
+        onSearch={setSearchQuery}
+        searchPlaceholder={t('calls.table.toolbar.searchPlaceholder')}
+        
+        // Toolbar Buttons
+        toolbarActions={
+          <TableToolbarMenu>
+            <TableToolbarAction onClick={() => fetchCalls()}>
+              Refresh
+            </TableToolbarAction>
+             <TableToolbarAction onClick={() => {}}>
+              Export Data
+            </TableToolbarAction>
+          </TableToolbarMenu>
+        }
+        
+        // Custom Rendering
+        renderCell={(cellValue, cellKey, row) => {
+          if (cellKey === 'status') return getStatusTag(cellValue);
+          if (cellKey === 'handler') return getHandlerDisplay(cellValue);
+          if (cellKey === 'started_at') return formatDate(cellValue);
+          if (cellKey === 'duration') return formatDuration(cellValue);
+          if (cellKey === 'actions') {
+            return (
+              <Button
+                kind="ghost"
+                size="sm"
+                hasIconOnly
+                renderIcon={View}
+                iconDescription={t('calls.table.actions.view')}
+                onClick={() => {
+                   // row.raw contains the full original object
+                   setSelectedCall(row.raw as Call);
+                   setDetailModalOpen(true);
+                }}
+              />
+            );
+          }
+          return cellValue;
+        }}
+      />
 
-              {loading ? (
-                <DataTableSkeleton
-                  columnCount={headers.length}
-                  rowCount={10}
-                  headers={headers.map(h => ({ key: h.key, header: h.header }))}
-                  showHeader={true}
-                  showToolbar={false}
-                />
-              ) : (
-                <>
-                  <Table {...getTableProps()} size="lg">
-                    <TableHead>
-                      <TableRow>
-                        {headers.map((header) => (
-                          <TableHeader
-                            {...getHeaderProps({ header })}
-                            key={header.key}
-                            isSortable={header.key !== 'actions'}
-                          >
-                            {header.header}
-                          </TableHeader>
-                        ))}
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {rows.map((row) => {
-                        const call = calls.find((c) => c.id === row.id);
-                        if (!call) return null;
-
-                        return (
-                          <TableRow {...getRowProps({ row })} key={row.id}>
-                            <TableCell>
-                              <code style={{ 
-                                fontSize: '0.75rem',
-                                backgroundColor: 'var(--cds-layer-02)',
-                                padding: '2px 6px',
-                                borderRadius: '4px',
-                                fontFamily: 'monospace'
-                              }}>
-                                {formatCallId(call.id)}
-                              </code>
-                            </TableCell>
-                            <TableCell>
-                              <div>
-                                <div style={{ fontWeight: 500 }}>
-                                  {call.caller_name || '未知'}
-                                </div>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary)' }}>
-                                  {call.counterpart}
-                                </div>
-                              </div>
-                            </TableCell>
-                            <TableCell>{getStatusTag(call.status)}</TableCell>
-                            <TableCell>{getHandlerDisplay(call.handler_type)}</TableCell>
-                            <TableCell>{formatDate(call.started_at)}</TableCell>
-                            <TableCell>{formatDuration(call.duration_seconds)}</TableCell>
-                            <TableCell>
-                              {call.ai_confidence !== null && call.ai_confidence !== undefined
-                                ? `${call.ai_confidence}%`
-                                : '-'}
-                            </TableCell>
-                            <TableCell>
-                              <Button
-                                kind="ghost"
-                                size="sm"
-                                renderIcon={View}
-                                iconDescription={t('calls.table.actions.viewDetails')}
-                                hasIconOnly
-                                onClick={() => {
-                                  setSelectedCall(call);
-                                  setDetailModalOpen(true);
-                                }}
-                              />
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-
-                  <Pagination
-                    page={page}
-                    pageSize={pageSize}
-                    pageSizes={[10, 20, 50, 100]}
-                    totalItems={total}
-                    onChange={({ page, pageSize }) => {
-                      setPage(page);
-                      setPageSize(pageSize);
-                    }}
-                  />
-                </>
-              )}
-            </TableContainer>
-          )}
-        </DataTable>
-      </div>
-
-      {/* 详情Modal */}
+      {/* Call Detail Modal */}
       <Modal
         open={detailModalOpen}
         onRequestClose={() => setDetailModalOpen(false)}
-        modalHeading={t('calls.detailModal.title')}
+        modalHeading={selectedCall ? `Call Details: ${selectedCall.id}` : 'Details'}
         passiveModal
-        size="lg"
       >
         {selectedCall && (
-          <div style={{ padding: '1rem' }}>
-            <h4>{t('calls.detailModal.basicInfo')}</h4>
-            <div style={{ marginBottom: '1rem' }}>
-              <p><strong>{t('calls.detailModal.caller')}:</strong> {selectedCall.caller_name || '未知'}</p>
-              <p><strong>{t('calls.detailModal.number')}:</strong> {selectedCall.counterpart}</p>
-              <p><strong>{t('calls.detailModal.status')}:</strong> {getStatusTag(selectedCall.status)}</p>
-              <p><strong>{t('calls.detailModal.handler')}:</strong> {getHandlerDisplay(selectedCall.handler_type)}</p>
-              <p><strong>{t('calls.detailModal.duration')}:</strong> {formatDuration(selectedCall.duration_seconds)}</p>
-              {selectedCall.ai_confidence && (
-                <p><strong>{t('calls.detailModal.confidence')}:</strong> {selectedCall.ai_confidence}%</p>
-              )}
-            </div>
-
-            {selectedCall.summary && (
-              <>
-                <h4>{t('calls.detailModal.summary')}</h4>
-                <p style={{ marginBottom: '1rem' }}>{selectedCall.summary}</p>
-              </>
-            )}
-
-            {selectedCall.transcript && (
-              <>
-                <h4>{t('calls.detailModal.transcript')}</h4>
-                <pre style={{
-                  whiteSpace: 'pre-wrap',
-                  backgroundColor: 'var(--cds-layer-01)',
-                  padding: '1rem',
-                  borderRadius: '4px',
-                  fontSize: '0.875rem',
-                  lineHeight: '1.5',
-                }}>
-                  {selectedCall.transcript}
-                </pre>
-              </>
-            )}
-          </div>
+            <pre style={{ whiteSpace: 'pre-wrap' }}>
+                {JSON.stringify(selectedCall, null, 2)}
+            </pre>
         )}
       </Modal>
     </PageTemplate>

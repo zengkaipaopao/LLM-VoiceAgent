@@ -5,9 +5,9 @@ import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import App from './App';
-import { ErrorBoundary } from './components/ErrorBoundary';
-import '@carbon/styles/css/styles.css';
-import './styles.css';
+import { ErrorBoundary } from './components/utils/ErrorBoundary';
+import './styles/theme.scss';
+import './styles/global.scss';
 
 const queryClient = new QueryClient();
 

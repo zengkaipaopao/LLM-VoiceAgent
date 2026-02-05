@@ -1,7 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { ClickableTile, Grid, Column, Stack } from '@carbon/react';
-import styles from './simulation.module.css';
+import styles from './simulation.module.scss';
 
 export interface Scenario {
   id: string;

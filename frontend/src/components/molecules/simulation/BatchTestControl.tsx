@@ -8,7 +8,7 @@ import {
   ButtonSet 
 } from '@carbon/react';
 import { Renew, TrashCan } from '@carbon/icons-react';
-import styles from './simulation.module.css';
+import styles from './simulation.module.scss';
 
 interface BatchTestControlProps {
   // Actions

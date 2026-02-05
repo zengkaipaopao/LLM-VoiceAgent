@@ -1,13 +1,28 @@
+@use '@carbon/styles/scss/theme';
+@use '@carbon/styles/scss/type';
+
 :root {
   font-family: 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif;
-  background-color: var(--cds-ui-background, #f4f4f4);
-  color: var(--cds-text-primary, #161616);
+  // Use CSS custom properties for root variables
+  background-color: var(--cds-ui-background);
+  color: var(--cds-text-primary);
 }
 
 body {
   margin: 0;
+  /* Body background removed to allow Theme component to control it */
+  background-color: var(--cds-ui-background);
+  color: var(--cds-text-primary);
+}
+
+.app-root {
   min-height: 100vh;
-  background-color: var(--cds-ui-background, #f4f4f4);
+  width: 100%;
+  background-color: var(--cds-ui-background);
+  color: var(--cds-text-primary);
+  
+  // Ensure standard Carbon typography
+  @include type.type-style('body-01');
 }
 
 /* 页面基础样式 */

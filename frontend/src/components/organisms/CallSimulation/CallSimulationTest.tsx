@@ -17,9 +17,9 @@ import {
   CloseFilled,
 } from '@carbon/icons-react';
 
-import { ScenarioSelector, Scenario } from './molecules/simulation/ScenarioSelector';
-import { BatchTestControl } from './molecules/simulation/BatchTestControl';
-import styles from './CallSimulationTest.module.css';
+import { ScenarioSelector, Scenario } from '../../molecules/simulation/ScenarioSelector';
+import { BatchTestControl } from '../../molecules/simulation/BatchTestControl';
+import styles from './CallSimulationTest.module.scss';
 
 /**
  * Call Simulation Organism

@@ -1,0 +1,35 @@
+// Final attempt: Legacy @import strategy
+// This bypasses Sass module encapsulation and ensures feature flags are global
+
+// 1. Configure Feature Flags (Global Variable)
+$feature-flags: (
+  enable-css-custom-properties: true
+);
+
+// 2. Import Carbon Styles
+// Using direct path to avoid resolution ambiguity
+@import '@carbon/styles';
+@import '@carbon/styles/scss/themes';
+@import '@carbon/styles/scss/theme';
+
+// 3. Manually Generate Theme Classes
+// @import exposes mixins and variables globally
+:root {
+  @include theme($white);
+}
+
+.cds--theme--white {
+  @include theme($white);
+}
+
+.cds--theme--g10 {
+  @include theme($g10);
+}
+
+.cds--theme--g90 {
+  @include theme($g90);
+}
+
+.cds--theme--g100 {
+  @include theme($g100);
+}

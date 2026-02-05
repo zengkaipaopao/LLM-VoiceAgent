@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { EmptyState } from '../EmptyState';
-import styles from '../../../pages/TestPage.module.css';
+import styles from '../../../pages/TestPage.module.scss';
 
 /**
  * Appointment Tab内容组件

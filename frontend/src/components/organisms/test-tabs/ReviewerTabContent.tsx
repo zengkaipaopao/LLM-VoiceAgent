@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Tile, Stack, Toggle } from '@carbon/react';
 import { WatsonHealthAiStatus } from '@carbon/icons-react';
-import styles from '../../../pages/TestPage.module.css';
+import styles from './ReviewerTabContent.module.scss';
 
 interface ReviewerTabContentProps {
   enableReviewer: boolean;

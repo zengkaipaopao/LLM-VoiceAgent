@@ -10,7 +10,7 @@ import {
 } from '@carbon/react';
 import { PageTemplate } from '../components/templates/PageTemplate';
 import { testTabs } from '../config/navigation';
-import styles from './TestPage.module.css';
+import styles from './TestPage.module.scss';
 
 /**
  * TestPage - 实时调试实验室页面

@@ -1,3 +1,5 @@
+@use '@carbon/styles/scss/spacing';
+
 /* Page Layout - Two Column Grid */
 .container {
   width: 100%;
@@ -9,12 +11,14 @@
 }
 
 .mainColumn {
-  padding-right: 2rem; /* 在大屏幕上增加列间距 */
+  // Use Carbon spacing token: spacing-07 (32px)
+  padding-right: spacing.$spacing-07;
 }
 
 @media (max-width: 671px) {
   .mainColumn {
     padding-right: 0;
-    margin-bottom: 2rem;
+    // Use Carbon spacing token
+    margin-bottom: spacing.$spacing-07;
   }
 }

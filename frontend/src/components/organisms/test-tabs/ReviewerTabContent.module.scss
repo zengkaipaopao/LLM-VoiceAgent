@@ -1,36 +1,35 @@
-.tabPanelContent {
-  padding-top: 1rem;
-}
+@use '@carbon/styles/scss/spacing';
 
 .reviewerPanel {
-  padding-top: 1rem;
+  padding-top: spacing.$spacing-05;
   max-width: 800px;
 }
 
 .header {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: spacing.$spacing-03;
 }
 
 .reviewerSettings {
-  padding: 1rem;
+  padding: spacing.$spacing-05;
   background-color: transparent;
   border: none;
   transition: all 0.2s ease;
 }
 
 .reviewerSettingsActive {
+  // Use CSS custom properties for dynamic theming
   background-color: var(--cds-layer-01);
   border: 1px solid var(--cds-border-subtle);
 }
 
 .toggle {
-  margin-bottom: 1rem;
+  margin-bottom: spacing.$spacing-05;
 }
 
 .logicList {
   list-style-type: disc;
-  padding-left: 1rem;
-  margin-top: 0.5rem;
+  padding-left: spacing.$spacing-05;
+  margin-top: spacing.$spacing-03;
 }
