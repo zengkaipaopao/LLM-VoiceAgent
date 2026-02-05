@@ -5,7 +5,7 @@ import { fetchCalls } from './calls';
 import { fetchAppointments, submitAppointmentRecord, AppointmentRecordPayload } from './appointments';
 import { fetchAllowedModels, fetchModels, updateAllowedModels } from './models';
 import { createPrompt, deletePrompt, fetchPrompts, updatePrompt } from './prompts';
-import { PromptFormValues, PromptTemplate, ReservationRecord } from '../types';
+import { PromptFormValues, PromptTemplate, ReservationRecord } from '../types/shared';
 
 export function useCallsQuery() {
   return useQuery({

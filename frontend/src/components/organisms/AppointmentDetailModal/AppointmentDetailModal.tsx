@@ -1,0 +1,63 @@
+import React from 'react';
+import { Modal } from '@carbon/react';
+import { DialogueViewer } from '../../molecules/DialogueViewer/DialogueViewer';
+import styles from './AppointmentDetailModal.module.scss';
+import { Appointment } from '../../../types/shared';
+import { formatJapaneseDate } from '../../../utils/formatters';
+
+interface AppointmentDetailModalProps {
+  open: boolean;
+  onClose: () => void;
+  appointment: Appointment | null;
+}
+
+export const AppointmentDetailModal: React.FC<AppointmentDetailModalProps> = ({
+  open,
+  onClose,
+  appointment
+}) => {
+  return (
+    <Modal
+      open={open}
+      onRequestClose={onClose}
+      modalHeading={appointment ? `预约详情: ${appointment.caller_name}` : '详情'}
+      passiveModal
+    >
+      {appointment && (
+        <div className={styles.container}>
+          {/* ID Information - Upper Section */}
+          <div className={styles.idSection}>
+            <div>
+              <strong>预约事件ID:</strong> <span className={styles.mono}>{appointment.id}</span>
+            </div>
+            <div>
+              <strong>关联通话ID:</strong> <span className={styles.mono}>{appointment.call_id || '-'}</span>
+            </div>
+          </div>
+          
+          <hr className={styles.divider} />
+          
+          <div className={styles.infoGrid}>
+            <div><strong>预约时间:</strong> {formatJapaneseDate(appointment.timestamp)}</div>
+            <div><strong>希望回收时间:</strong> {formatJapaneseDate(appointment.appointment)}</div>
+            <div><strong>姓名:</strong> {appointment.caller_name}</div>
+            <div><strong>公司:</strong> {appointment.company}</div>
+            <div><strong>类别:</strong> {appointment.category}</div>
+            <div><strong>数量:</strong> {appointment.amount}</div>
+          </div>
+          <div><strong>地址:</strong> {appointment.address}</div>
+          
+          <hr className={styles.divider} />
+          
+          <div><strong>摘要:</strong> {appointment.summary}</div>
+          {appointment.extra_request && appointment.extra_request !== '-' && (
+            <div><strong>额外请求:</strong> {appointment.extra_request}</div>
+          )}
+          
+          {/* Reusable Dialogue Viewer Component */}
+          <DialogueViewer rawMessages={appointment.raw_messages} />
+        </div>
+      )}
+    </Modal>
+  );
+};

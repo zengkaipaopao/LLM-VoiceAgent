@@ -57,7 +57,30 @@
   "appointments": {
     "title": "预约管理",
     "subtitle": "管理客户预约和日程安排",
-    "emptyState": "此页面正在开发中"
+    "emptyState": "此页面正在开发中",
+    "table": {
+      "headers": {
+        "timestamp": "预约时间",
+        "appointment": "希望回收时间",
+        "operation": "操作类型",
+        "callerName": "客户姓名",
+        "company": "公司/单位",
+        "category": "类别",
+        "amount": "数量",
+        "address": "地址",
+        "actions": "详细内容"
+      },
+      "operations": {
+        "create": "新预约",
+        "update": "变更",
+        "cancel": "取消"
+      },
+      "toolbar": {
+        "searchPlaceholder": "搜索姓名、公司或内容...",
+        "refresh": "刷新",
+        "export": "导出数据"
+      }
+    }
   },
   "prompts": {
     "title": "提示词管理",

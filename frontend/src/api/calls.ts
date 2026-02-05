@@ -1,5 +1,5 @@
 import { http } from './http';
-import { CallLog, CallDirection, CallStatus } from '../types';
+import { CallLog, CallDirection, CallStatus } from '../types/shared';
 
 type ApiCallLog = {
   id: string;

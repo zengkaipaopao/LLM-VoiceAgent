@@ -57,7 +57,30 @@
   "appointments": {
     "title": "予約管理",
     "subtitle": "顧客の予約とスケジュールを管理",
-    "emptyState": "このページは開発中です"
+    "emptyState": "このページは開発中です",
+    "table": {
+      "headers": {
+        "timestamp": "予約日時",
+        "appointment": "希望回収日時",
+        "operation": "操作タイプ",
+        "callerName": "顧客名",
+        "company": "会社/組織",
+        "category": "カテゴリ",
+        "amount": "数量",
+        "address": "住所",
+        "actions": "詳細"
+      },
+      "operations": {
+        "create": "新規予約",
+        "update": "変更",
+        "cancel": "キャンセル"
+      },
+      "toolbar": {
+        "searchPlaceholder": "名前、会社、内容を検索...",
+        "refresh": "更新",
+        "export": "データ出力"
+      }
+    }
   },
   "prompts": {
     "title": "プロンプト管理",

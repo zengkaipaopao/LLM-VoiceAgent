@@ -100,3 +100,41 @@ export function formatRelativeTime(date: Date | string | number): string {
     return formatDate(dateObj);
   }
 }
+
+/**
+ * 格式化为日语标准日期格式 (e.g. 2025年8月20日（水）09:00:00)
+ */
+export function formatJapaneseDate(dateString: string | Date): string {
+  if (!dateString) return '-';
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return String(dateString);
+
+  const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const weekday = weekdays[date.getDay()];
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  const seconds = date.getSeconds().toString().padStart(2, '0');
+
+  return `${year}年${month}月${day}日（${weekday}）${hours}:${minutes}:${seconds}`;
+}
+
+/**
+ * 格式化为标准调用时间 (e.g. 2025/08/20 09:00:00)
+ */
+export function formatCallTime(dateString: string | Date): string {
+  if (!dateString) return '-';
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return String(dateString);
+
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  const seconds = date.getSeconds().toString().padStart(2, '0');
+
+  return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
+}

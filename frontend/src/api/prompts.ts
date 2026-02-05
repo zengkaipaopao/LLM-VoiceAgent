@@ -1,5 +1,5 @@
 import { http } from './http';
-import { PromptFormValues, PromptTemplate, VoiceConfig } from '../types';
+import { PromptFormValues, PromptTemplate, VoiceConfig } from '../types/shared';
 
 type ApiPrompt = {
   id: string;

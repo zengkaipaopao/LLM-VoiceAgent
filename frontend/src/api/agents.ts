@@ -1,4 +1,4 @@
-import { AgentProfile } from '../types';
+import { AgentProfile } from '../types/shared';
 
 const agents: AgentProfile[] = [
   {

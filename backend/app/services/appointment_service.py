@@ -116,7 +116,8 @@ class AppointmentService:
         order: str = "desc",
         search: str | None = None,
         start_date: str | None = None,
-        end_date: str | None = None
+        end_date: str | None = None,
+        operation: str | None = None
     ) -> dict:
         repo = AppointmentRepository(db)
         
@@ -142,7 +143,8 @@ class AppointmentService:
             order=order,
             search=search,
             start_date=dt_start,
-            end_date=dt_end
+            end_date=dt_end,
+            operation=operation
         )
         
         # Re-verify page_size usage
@@ -153,7 +155,8 @@ class AppointmentService:
             order=order,
             search=search,
             start_date=dt_start,
-            end_date=dt_end
+            end_date=dt_end,
+            operation=operation
         )
         
         return {

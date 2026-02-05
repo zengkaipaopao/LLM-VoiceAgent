@@ -76,3 +76,27 @@ export interface ReservationRecord {
   rawMessages: string;
   operation: 'create' | 'update' | 'delete';
 }
+
+export interface Appointment {
+  id: string;
+  call_id?: string;
+  timestamp: string;
+  caller_name: string;
+  company?: string;
+  appointment: string;
+  category?: string;
+  amount?: string;
+  address?: string;
+  summary?: string;
+  extra_request?: string;
+  raw_messages?: any;
+  operation?: string;
+}
+
+export interface AppointmentsResponse {
+  items: Appointment[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}

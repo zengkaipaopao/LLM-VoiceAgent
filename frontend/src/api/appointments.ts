@@ -1,5 +1,5 @@
 import { http } from './http';
-import { ReservationRecord } from '../types';
+import { ReservationRecord } from '../types/shared';
 
 type ApiAppointment = {
   id: string;

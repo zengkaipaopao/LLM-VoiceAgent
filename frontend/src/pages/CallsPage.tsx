@@ -51,6 +51,11 @@ export function CallsPage() {
   // Filters Configuration
   const filterConfig = useMemo(() => [
     {
+      key: 'created_at',
+      label: t('calls.table.headers.time'),
+      type: 'date-range' as const, 
+    },
+    {
       key: 'status',
       label: t('calls.table.headers.status'),
       options: [
@@ -67,11 +72,6 @@ export function CallsPage() {
         { label: t('calls.table.handler.ai'), value: 'ai' },
         { label: t('calls.table.handler.transferred'), value: 'transferred' },
       ]
-    },
-    {
-      key: 'created_at',
-      label: t('calls.table.headers.time'),
-      type: 'date-range' as const, 
     }
   ], [t]);
 

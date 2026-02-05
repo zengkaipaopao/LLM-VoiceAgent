@@ -57,7 +57,30 @@
   "appointments": {
     "title": "Appointments",
     "subtitle": "Manage customer appointments and schedules",
-    "emptyState": "This page is under development"
+    "emptyState": "This page is under development",
+    "table": {
+      "headers": {
+        "timestamp": "Time",
+        "appointment": "Recovery Time",
+        "operation": "Operation",
+        "callerName": "Caller Name",
+        "company": "Company",
+        "category": "Category",
+        "amount": "Amount",
+        "address": "Address",
+        "actions": "Details"
+      },
+      "operations": {
+        "create": "New Appointment",
+        "update": "Update",
+        "cancel": "Cancel"
+      },
+      "toolbar": {
+        "searchPlaceholder": "Search name, company or content...",
+        "refresh": "Refresh",
+        "export": "Export Data"
+      }
+    }
   },
   "prompts": {
     "title": "Prompt Management",

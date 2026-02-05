@@ -17,7 +17,9 @@ async def list_appointments(
     order: str = "desc",
     search: Optional[str] = None,
     start_date: Optional[str] = None,
+
     end_date: Optional[str] = None,
+    operation: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """
@@ -31,7 +33,8 @@ async def list_appointments(
         order=order,
         search=search,
         start_date=start_date,
-        end_date=end_date
+        end_date=end_date,
+        operation=operation
     )
 
 

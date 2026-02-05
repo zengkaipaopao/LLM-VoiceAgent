@@ -1,5 +1,5 @@
 import { http } from './http';
-import { ModelInfo } from '../types';
+import { ModelInfo } from '../types/shared';
 
 export async function fetchModels() {
   const response = await http.get<ModelInfo[]>('/models');
