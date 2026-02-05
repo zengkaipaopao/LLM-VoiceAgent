@@ -99,6 +99,7 @@
     "simulation": {
       "scenarios": {
         "title": "选择测试场景",
+        "description": "选择一个场景来模拟呼入通话。",
         "ai_handled": { "title": "AI成功处理", "description": "模拟AI完整处理来电" },
         "transferred": { "title": "转人工", "description": "模拟AI转接人工客服" },
         "no_answer": { "title": "未接听", "description": "模拟来电无人接听" },

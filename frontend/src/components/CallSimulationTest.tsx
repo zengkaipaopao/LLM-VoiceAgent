@@ -172,54 +172,66 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
   ];
 
   return (
-    <Stack gap={6}>
-      <Stack gap={6}>
-        {/* 场景选择卡片 */}
-        <Tile>
-          <h4 className={`cds--label ${styles.label}`}>
-            {t('pages:test.simulation.scenarios.title')}
-          </h4>
-          <Grid narrow>
-            {scenarios.map((scenario) => (
-              <Column key={scenario.id} lg={4} md={4} sm={2}>
-                <ClickableTile
-                  onClick={() => simulateCall(scenario.id)}
-                  disabled={loading}
-                  className={styles.tile}
-                >
-                  <div className={styles.tileContent}>
-                    <scenario.icon 
-                      size={32} 
-                      style={{ color: scenario.iconColor }} 
-                    />
-                    <div>
-                      <h5 className={`cds--type-heading-compact-01 ${styles.iconWithTitle}`}>
-                        {scenario.title}
-                      </h5>
-                      <p className="cds--label-description">
-                        {scenario.description}
-                      </p>
-                    </div>
-                  </div>
-                </ClickableTile>
-              </Column>
-            ))}
-          </Grid>
-        </Tile>
-
-        {/* 批量操作 */}
-        <Tile>
+    <div className={styles.container}>
+      <Grid narrow className={styles.gridContainer}>
+        {/* 左侧主要操作区 - 场景选择 */}
+        <Column lg={8} md={8} sm={4} className={styles.mainColumn}>
           <Stack gap={6}>
-            <div>
-              <h4 className="cds--label">{t('pages:test.simulation.batch.title')}</h4>
-              <p className="cds--label-description">
-                {t('pages:test.simulation.batch.description', { 
-                  status: enableReviewer 
-                    ? t('pages:test.simulation.batch.on') 
-                    : t('pages:test.simulation.batch.off') 
-                })}
+            <section>
+              <h4 className={`cds--heading-03 ${styles.sectionTitle}`}>
+                {t('pages:test.simulation.scenarios.title')}
+              </h4>
+              <p className={`cds--body-01 ${styles.sectionDescription}`}>
+                {t('pages:test.simulation.scenarios.description', 'Select a scenario to simulate an incoming call.')}
               </p>
-            </div>
+              
+              <div className={styles.scenarioGrid}>
+                {scenarios.map((scenario) => (
+                  <ClickableTile
+                    key={scenario.id}
+                    onClick={() => simulateCall(scenario.id)}
+                    disabled={loading}
+                    className={styles.scenarioTile}
+                  >
+                    <div className={styles.tileContent}>
+                      <div className={styles.tileIcon}>
+                        <scenario.icon 
+                          size={24} 
+                          style={{ color: scenario.iconColor }} 
+                        />
+                      </div>
+                      <div>
+                        <h5 className={`cds--heading-compact-01 ${styles.iconWithTitle}`}>
+                          {scenario.title}
+                        </h5>
+                        <p className="cds--body-compact-01 cds--text--secondary">
+                          {scenario.description}
+                        </p>
+                      </div>
+                    </div>
+                  </ClickableTile>
+                ))}
+              </div>
+            </section>
+          </Stack>
+        </Column>
+
+        {/* 右侧工具区 - 批量测试 & 审查员 */}
+        <Column lg={8} md={8} sm={4} className={styles.sideColumn}>
+          <Stack gap={6}>
+            {/* 批量操作 Panel */}
+            <Tile className={styles.toolTile}>
+              <Stack gap={6}>
+                <div>
+                  <h4 className="cds--heading-compact-02">{t('pages:test.simulation.batch.title')}</h4>
+                  <p className="cds--body-compact-01 cds--text--secondary">
+                    {t('pages:test.simulation.batch.description', { 
+                      status: enableReviewer 
+                        ? t('pages:test.simulation.batch.on') 
+                        : t('pages:test.simulation.batch.off') 
+                    })}
+                  </p>
+                </div>
             
             {/* 主要操作区 */}
             <div className={styles.batchControls}>
@@ -275,18 +287,20 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
               </ButtonSet>
             </div>
 
-            {/* 危险操作 */}
-            <Button
-              kind="danger--tertiary"
-              onClick={clearTestData}
-              disabled={loading}
-              renderIcon={TrashCan}
-            >
-              {t('pages:test.simulation.batch.clear')}
-            </Button>
+                {/* 危险操作 */}
+                <Button
+                  kind="danger--tertiary"
+                  onClick={clearTestData}
+                  disabled={loading}
+                  renderIcon={TrashCan}
+                >
+                  {t('pages:test.simulation.batch.clear')}
+                </Button>
+              </Stack>
+            </Tile>
           </Stack>
-        </Tile>
-      </Stack>
+        </Column>
+      </Grid>
 
       {/* Loading状态 */}
       {loading && <Loading description={t('pages:test.simulation.status.loading')} withOverlay={false} />}
@@ -328,7 +342,7 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
           </Stack>
         </Tile>
       )}
-    </Stack>
+    </div>
   );
 
 

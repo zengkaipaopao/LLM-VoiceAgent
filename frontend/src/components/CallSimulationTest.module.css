@@ -7,23 +7,77 @@
   margin-bottom: 1rem;
 }
 
+/* Page Layout - Two Column Grid */
+.container {
+  width: 100%;
+}
+
+.gridContainer {
+  margin: 0;
+  padding: 0;
+}
+
+.mainColumn {
+  padding-right: 2rem; /* 在大屏幕上增加列间距 */
+}
+
+@media (max-width: 671px) {
+  .mainColumn {
+    padding-right: 0;
+    margin-bottom: 2rem;
+  }
+}
+
+/* Section Styling */
+.sectionTitle {
+  margin-bottom: 0.5rem;
+  color: var(--cds-text-primary);
+}
+
+.sectionDescription {
+  margin-bottom: 2rem;
+  color: var(--cds-text-secondary);
+  max-width: 600px;
+}
+
+/* Scenario Grid - 卡片网格 */
+.scenarioGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.scenarioTile {
+  height: 100%;
+  min-height: 120px;
+}
+
+/* Tool Tile - 右侧工具面板 */
+.toolTile {
+  background-color: var(--cds-layer-01);
+  height: auto;
+}
+
+/* ... Existing styles ... */
+
 .tileContent {
   display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 1rem;
   height: 100%;
+  text-align: left;
+}
+
+.tileIcon {
+  flex-shrink: 0;
+  margin-top: 0.25rem;
 }
 
 .iconWithTitle {
   margin-bottom: 0.25rem;
 }
 
-.actionButton {
-  width: 100%;
-  max-width: 100%;
-}
-
-/* Batch Controls - NumberInput + Button 横向布局 */
 .batchControls {
   display: flex;
   gap: 1rem;
@@ -39,7 +93,6 @@
   flex-shrink: 0;
 }
 
-/* Quick Actions - 快捷按钮组 */
 .quickActions {
   display: flex;
   align-items: center;
