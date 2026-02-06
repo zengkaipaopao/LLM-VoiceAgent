@@ -12,6 +12,7 @@ from datetime import datetime
 from uuid import UUID
 
 class AppointmentBase(BaseModel):
+    model_config = {"from_attributes": True}
     timestamp: datetime
     caller_name: str
     company: str
@@ -29,6 +30,15 @@ class AppointmentBase(BaseModel):
 class AppointmentRecord(AppointmentBase):
     id: UUID
 
+class AppointmentResponse(AppointmentRecord):
+    pass
+
+class AppointmentsResponse(BaseModel):
+    items: list[AppointmentResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 class AppointmentCreateRequest(AppointmentBase):
     pass

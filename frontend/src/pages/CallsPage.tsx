@@ -35,14 +35,11 @@ interface Call {
 }
 
 interface CallsResponse {
-  success: boolean;
-  data: {
     items: Call[];
     total: number;
     page: number;
     page_size: number;
     total_pages: number;
-  };
 }
 
 export function CallsPage() {
@@ -137,9 +134,9 @@ export function CallsPage() {
       const response = await fetch(`/api/v1/calls?${params}`);
       const data: CallsResponse = await response.json();
 
-      if (data.success) {
-        setCalls(data.data.items);
-        setTotal(data.data.total);
+      if (data) {
+        setCalls(data.items);
+        setTotal(data.total);
       }
     } catch (error) {
       console.error('Failed to fetch calls:', error);

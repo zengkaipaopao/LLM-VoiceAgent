@@ -92,9 +92,12 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
           } 
         }
       );
-      setResult(response.data);
+      setResult({
+        ...response.data,
+        _message: t('pages:test.simulation.status.success')
+      });
     } catch (err: any) {
-      setError(err.response?.data?.message || t('pages:test.simulation.status.error', '模拟失败'));
+      setError(err.response?.data?.detail || err.response?.data?.message || t('pages:test.simulation.status.error', '模拟失败'));
     } finally {
       setLoading(false);
     }
@@ -116,9 +119,12 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
           } 
         }
       );
-      setResult(response.data);
+      setResult({
+        items: response.data,
+        _message: t('pages:test.simulation.status.batchSuccess', { count: response.data.length })
+      });
     } catch (err: any) {
-      setError(err.response?.data?.message || t('pages:test.simulation.status.error', '批量模拟失败'));
+      setError(err.response?.data?.detail || err.response?.data?.message || t('pages:test.simulation.status.error', '批量模拟失败'));
     } finally {
       setLoading(false);
     }
@@ -133,9 +139,12 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
     
     try {
       const response = await axios.delete(`${API_BASE}/calls/simulate/clear-test-data`);
-      setResult(response.data);
+      setResult({
+        ...response.data,
+        _message: t('pages:test.simulation.status.clearSuccess', { count: response.data.deleted_count })
+      });
     } catch (err: any) {
-      setError(err.response?.data?.message || t('pages:test.simulation.status.error', '清除失败'));
+      setError(err.response?.data?.detail || err.response?.data?.message || t('pages:test.simulation.status.error', '清除失败'));
     } finally {
       setLoading(false);
     }
@@ -187,7 +196,7 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
         <InlineNotification
           kind="success"
           title={t('pages:test.simulation.status.success')}
-          subtitle={result.message}
+          subtitle={result._message || 'Success'}
           onCloseButtonClick={() => setResult(null)}
           lowContrast
         />

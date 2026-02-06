@@ -54,18 +54,17 @@ backend/
 │   ├── models/            # SQLAlchemy模型
 │   ├── repositories/      # 数据访问层
 │   ├── schemas/           # Pydantic模型
-│   ├── services/          # 业务逻辑层
+│   ├── services/          # 业务逻辑层 (Simulation)
 │   └── utils/             # 工具函数
 │
 ├── tests/                 # 测试
 ├── docs/                  # 文档
-├── credentials/           # 凭证文件
-├── data/                  # 数据文件(临时)
+├── alembic/               # 数据库迁移
 │
 ├── .env                   # 当前环境变量(不提交)
-├── .env.local             # 本地开发配置(不提交)
-├── .env.aws               # AWS生产配置(不提交)
 ├── .env.example           # 配置示例(可提交)
+├── Dockerfile             # 容器构建文件
+├── .dockerignore
 ├── .gitignore
 ├── pyproject.toml
 └── init.sql               # 数据库初始化脚本
@@ -85,24 +84,16 @@ backend/
 
 - **框架**: FastAPI
 - **数据库**: PostgreSQL + SQLAlchemy
-- **缓存**: Redis
-- **LLM**: OpenAI, Google Gemini
-- **语音**: Twilio, Google TTS
+- **迁移工具**: Alembic
+- **模拟引擎**: Custom Simulation Service
 
 ---
 
 ## 🌍 环境说明
 
 ### 本地开发
-- 配置文件: `.env.local`
+- 配置文件: 复制 `.env.example` 到 `.env`
 - 数据库: Docker PostgreSQL
-- 存储: 本地文件系统
-
-### AWS生产
-- 配置文件: `.env.aws`
-- 数据库: RDS PostgreSQL
-- 存储: S3
-- 缓存: ElastiCache
 
 ---
 

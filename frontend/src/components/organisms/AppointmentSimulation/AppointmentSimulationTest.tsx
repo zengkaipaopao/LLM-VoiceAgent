@@ -73,9 +73,12 @@ export const AppointmentSimulationTest: React.FC = () => {
           params: { scenario } 
         }
       );
-      setResult(response.data);
+      setResult({
+        ...response.data,
+        _message: 'Appointment simulated successfully'
+      });
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Simulation failed');
+      setError(err.response?.data?.detail || err.response?.data?.message || 'Simulation failed');
     } finally {
       setLoading(false);
     }
@@ -94,9 +97,12 @@ export const AppointmentSimulationTest: React.FC = () => {
           params: { count } 
         }
       );
-      setResult(response.data);
+      setResult({
+        items: response.data,
+        _message: `Batch ${response.data.length} appointments simulated successfully`
+      });
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Batch simulation failed');
+      setError(err.response?.data?.detail || err.response?.data?.message || 'Batch simulation failed');
     } finally {
       setLoading(false);
     }
@@ -111,9 +117,12 @@ export const AppointmentSimulationTest: React.FC = () => {
     
     try {
       const response = await axios.delete(`${API_BASE}/appointments/simulate/clear-test-data`);
-      setResult(response.data);
+      setResult({
+        ...response.data,
+        _message: `Cleared ${response.data.deleted_count} test appointments`
+      });
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Clear failed');
+      setError(err.response?.data?.detail || err.response?.data?.message || 'Clear failed');
     } finally {
       setLoading(false);
     }
@@ -165,7 +174,7 @@ export const AppointmentSimulationTest: React.FC = () => {
         <InlineNotification
           kind="success"
           title="Success"
-          subtitle={result.message}
+          subtitle={result._message || result.message || 'Success'}
           onCloseButtonClick={() => setResult(null)}
           lowContrast
         />

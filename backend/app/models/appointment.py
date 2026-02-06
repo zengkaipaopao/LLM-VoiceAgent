@@ -31,7 +31,6 @@ class Appointment(Base, TimestampMixin):
     summary = Column(Text)
     extra_request = Column(Text)
     raw_messages = Column(JSONB)
-    raw_messages = Column(JSONB)
     operation = Column(String(10)) # create, update, delete
     is_handled = Column(Boolean, default=False, nullable=False)
     
