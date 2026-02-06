@@ -8,12 +8,14 @@ import { formatJapaneseDate } from '../../../utils/formatters';
 interface AppointmentDetailModalProps {
   open: boolean;
   onClose: () => void;
+  onSuccess: () => void;
   appointment: Appointment | null;
 }
 
 export const AppointmentDetailModal: React.FC<AppointmentDetailModalProps> = ({
   open,
   onClose,
+  onSuccess,
   appointment
 }) => {
   return (
@@ -21,7 +23,22 @@ export const AppointmentDetailModal: React.FC<AppointmentDetailModalProps> = ({
       open={open}
       onRequestClose={onClose}
       modalHeading={appointment ? `预约详情: ${appointment.caller_name}` : '详情'}
-      passiveModal
+      onRequestSubmit={async () => {
+          if (!appointment) return;
+          try {
+              const res = await fetch(`/api/v1/appointments/${appointment.id}/handle`, {
+                  method: 'PATCH'
+              });
+              if (res.ok) {
+                  onSuccess(); 
+                  onClose();
+              }
+          } catch (e) {
+              console.error(e);
+          }
+      }}
+      primaryButtonText="对应完毕"
+      secondaryButtonText="关闭"
     >
       {appointment && (
         <div className={styles.container}>

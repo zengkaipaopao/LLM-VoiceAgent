@@ -26,7 +26,8 @@ class AppointmentRepository(BaseRepository[Appointment]):
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
         search: Optional[str] = None,
-        operation: Optional[str] = None
+        operation: Optional[str] = None,
+        is_handled: Optional[bool] = None
     ) -> Tuple[List[Appointment], int]:
         """
         Get paginated appointments with filtering and sorting.
@@ -39,6 +40,9 @@ class AppointmentRepository(BaseRepository[Appointment]):
             ops = [op.strip() for op in operation.split(",") if op.strip()]
             if ops:
                 query = query.filter(Appointment.operation.in_(ops))
+
+        if is_handled is not None:
+            query = query.filter(Appointment.is_handled == is_handled)
 
         if start_date:
             query = query.filter(Appointment.timestamp >= start_date)

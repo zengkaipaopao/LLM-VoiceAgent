@@ -66,9 +66,14 @@
         "callerName": "客户姓名",
         "company": "公司/单位",
         "category": "类别",
-        "amount": "数量",
+        "amount": "重量/体积",
         "address": "地址",
+        "handledStatus": "对应情况",
         "actions": "详细内容"
+      },
+      "status": {
+        "handled": "已对应",
+        "unhandled": "未对应"
       },
       "operations": {
         "create": "新预约",

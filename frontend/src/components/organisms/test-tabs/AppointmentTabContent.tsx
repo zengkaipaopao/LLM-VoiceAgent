@@ -1,21 +1,15 @@
-import { useTranslation } from 'react-i18next';
-import { EmptyState } from '../EmptyState';
+import { AppointmentSimulationTest } from '../AppointmentSimulation/AppointmentSimulationTest';
 import styles from '../../../pages/TestPage.module.scss';
 
 /**
  * Appointment Tab内容组件
  * 
- * 预约模拟测试功能（开发中）
+ * 预约模拟测试功能
  */
 export function AppointmentTabContent() {
-  const { t } = useTranslation(['pages']);
-
   return (
     <div className={styles.tabPanelContent}>
-      <EmptyState
-        title={t('pages:test.tabs.appointment')}
-        description={t('pages:test.appointment.description', '预约模拟测试功能开发中...')}
-      />
+      <AppointmentSimulationTest />
     </div>
   );
 }

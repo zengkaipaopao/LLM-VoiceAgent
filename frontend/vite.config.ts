@@ -13,6 +13,13 @@ export default defineConfig({
       },
     },
   },
+  css: {
+    preprocessorOptions: {
+      scss: {
+        silenceDeprecations: ['legacy-js-api', 'import', 'if-function', 'global-builtin'],
+      },
+    },
+  },
   preview: {
     port: 4173,
   },

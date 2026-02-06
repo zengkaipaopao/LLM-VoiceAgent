@@ -5,14 +5,17 @@ from typing import Literal, Any, Optional
 from pydantic import BaseModel
 
 
-AppointmentOperation = Literal["create", "update", "delete"]
+AppointmentOperation = Literal["create", "update", "delete", "cancel"]
 
+
+from datetime import datetime
+from uuid import UUID
 
 class AppointmentBase(BaseModel):
-    timestamp: str
+    timestamp: datetime
     caller_name: str
     company: str
-    appointment: str
+    appointment: datetime
     category: str
     amount: str
     address: str
@@ -20,10 +23,11 @@ class AppointmentBase(BaseModel):
     extra_request: str = ""
     raw_messages: Optional[Any] = None
     operation: AppointmentOperation = "create"
-
+    is_handled: bool = False
+    extra_data: Optional[dict] = None  # Add this
 
 class AppointmentRecord(AppointmentBase):
-    id: str
+    id: UUID
 
 
 class AppointmentCreateRequest(AppointmentBase):

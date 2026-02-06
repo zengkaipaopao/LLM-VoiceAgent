@@ -1,0 +1,28 @@
+@use '@carbon/styles/scss/spacing';
+
+/* Page Layout - Two Column Grid */
+.container {
+  width: 100%;
+}
+
+.gridContainer {
+  margin: 0;
+  padding: 0;
+}
+
+.mainColumn {
+  // Use Carbon spacing token: spacing-07 (32px)
+  padding-right: spacing.$spacing-07;
+}
+
+// .sideColumn {
+//   // Mobile first order
+// }
+
+@media (max-width: 671px) {
+  .mainColumn {
+    padding-right: 0;
+    // Use Carbon spacing token
+    margin-bottom: spacing.$spacing-07;
+  }
+}

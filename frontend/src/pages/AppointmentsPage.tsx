@@ -36,6 +36,14 @@ export function AppointmentsPage() {
         { label: t('pages:appointments.table.operations.update'), value: 'update' },
         { label: t('pages:appointments.table.operations.cancel'), value: 'cancel' },
       ]
+    },
+    {
+      key: 'is_handled',
+      label: t('pages:appointments.table.headers.handledStatus'),
+      options: [
+        { label: t('pages:appointments.table.status.handled'), value: 'true' },
+        { label: t('pages:appointments.table.status.unhandled'), value: 'false' },
+      ]
     }
   ], [t]);
 
@@ -73,6 +81,10 @@ export function AppointmentsPage() {
         params.append('operation', selectedFilters.operation.join(','));
       }
       
+      if (selectedFilters.is_handled?.length === 1) {
+          params.append('is_handled', selectedFilters.is_handled[0]);
+      }
+
       // Handle Date Range
       if (selectedFilters.timestamp?.length === 2) {
         const [start, end] = selectedFilters.timestamp;
@@ -119,6 +131,7 @@ export function AppointmentsPage() {
     { key: 'timestamp', header: t('pages:appointments.table.headers.timestamp') },
     { key: 'appointment', header: t('pages:appointments.table.headers.appointment') },
     { key: 'operation', header: t('pages:appointments.table.headers.operation') },
+    { key: 'is_handled', header: t('pages:appointments.table.headers.handledStatus') },
     { key: 'caller_name', header: t('pages:appointments.table.headers.callerName') },
     { key: 'company', header: t('pages:appointments.table.headers.company') },
     { key: 'category', header: t('pages:appointments.table.headers.category') },
@@ -132,6 +145,7 @@ export function AppointmentsPage() {
     timestamp: appt.timestamp,
     appointment: appt.appointment,
     operation: appt.operation || 'create',
+    is_handled: appt.is_handled,
     caller_name: appt.caller_name,
     company: appt.company || '-',
     category: appt.category || '-',
@@ -196,6 +210,20 @@ export function AppointmentsPage() {
           if (cellKey === 'timestamp') return formatCallTime(cellValue);
           if (cellKey === 'appointment') return formatJapaneseDate(cellValue);
           
+          if (cellKey === 'is_handled') {
+             return cellValue ? (
+               <div style={{ color: '#198038', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                 <CheckmarkFilled size={16} />
+                 <span>{t('pages:appointments.table.status.handled')}</span>
+               </div>
+             ) : (
+               <div style={{ color: '#da1e28', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                 <ErrorFilled size={16} />
+                 <span>{t('pages:appointments.table.status.unhandled')}</span>
+               </div>
+             );
+          }
+
           if (cellKey === 'operation') {
              const map: Record<string, { label: string, color: string, icon: any }> = {
                'create': { label: t('pages:appointments.table.operations.create'), color: '#198038', icon: <CheckmarkFilled size={16} style={{ fill: '#198038' }} /> },
@@ -264,6 +292,7 @@ export function AppointmentsPage() {
       <AppointmentDetailModal
         open={detailModalOpen}
         onClose={() => setDetailModalOpen(false)}
+        onSuccess={fetchAppointments}
         appointment={selectedAppointment}
       />
     </PageTemplate>

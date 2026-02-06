@@ -91,6 +91,7 @@ export interface Appointment {
   extra_request?: string;
   raw_messages?: any;
   operation?: string;
+  is_handled?: boolean;
 }
 
 export interface AppointmentsResponse {

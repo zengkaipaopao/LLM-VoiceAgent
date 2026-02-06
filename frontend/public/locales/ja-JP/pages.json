@@ -66,9 +66,14 @@
         "callerName": "顧客名",
         "company": "会社/組織",
         "category": "カテゴリ",
-        "amount": "数量",
+        "amount": "重量/容積",
         "address": "住所",
-        "actions": "詳細"
+        "handledStatus": "対応状況",
+        "actions": "詳細内訳"
+      },
+      "status": {
+        "handled": "対応済み",
+        "unhandled": "未対応"
       },
       "operations": {
         "create": "新規予約",

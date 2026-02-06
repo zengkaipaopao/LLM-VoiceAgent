@@ -117,7 +117,8 @@ class AppointmentService:
         search: str | None = None,
         start_date: str | None = None,
         end_date: str | None = None,
-        operation: str | None = None
+        operation: str | None = None,
+        is_handled: bool | None = None
     ) -> dict:
         repo = AppointmentRepository(db)
         
@@ -144,7 +145,8 @@ class AppointmentService:
             search=search,
             start_date=dt_start,
             end_date=dt_end,
-            operation=operation
+            operation=operation,
+            is_handled=is_handled
         )
         
         # Re-verify page_size usage
@@ -156,7 +158,8 @@ class AppointmentService:
             search=search,
             start_date=dt_start,
             end_date=dt_end,
-            operation=operation
+            operation=operation,
+            is_handled=is_handled
         )
         
         return {
@@ -166,5 +169,16 @@ class AppointmentService:
             "page_size": page_size,
             "total_pages": (total + page_size - 1) // page_size
         }
+        
+    async def mark_as_handled(self, appointment_id: str, db: Session) -> Appointment:
+        repo = AppointmentRepository(db)
+        appointment = repo.get(appointment_id)
+        if not appointment:
+            raise HTTPException(status_code=404, detail="预约记录不存在")
+        
+        appointment.is_handled = True
+        db.commit()
+        db.refresh(appointment)
+        return appointment
 
 appointment_service = AppointmentService()

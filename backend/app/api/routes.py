@@ -11,7 +11,7 @@ from app.api.v1 import (
     twilio_voice,
     webhooks,
 )
-from app.api.v1.endpoints import call_simulation, calls  # 从endpoints子目录导入
+from app.api.v1.endpoints import call_simulation, calls, appointment_simulation  # 从endpoints子目录导入
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
@@ -25,4 +25,5 @@ api_router.include_router(realtime.router, prefix="/realtime", tags=["realtime"]
 api_router.include_router(tts.router, prefix="/tts", tags=["tts"])
 api_router.include_router(twilio_voice.router, prefix="/twilio", tags=["twilio"])
 api_router.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])
+api_router.include_router(appointment_simulation.router, prefix="/appointments/simulate", tags=["appointment-simulation"])
 

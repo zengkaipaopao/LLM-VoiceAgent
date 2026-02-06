@@ -66,9 +66,14 @@
         "callerName": "Caller Name",
         "company": "Company",
         "category": "Category",
-        "amount": "Amount",
+        "amount": "Weight/Volume",
         "address": "Address",
-        "actions": "Details"
+        "handledStatus": "Status",
+        "actions": "Actions"
+      },
+      "status": {
+        "handled": "Handled",
+        "unhandled": "Pending"
       },
       "operations": {
         "create": "New Appointment",

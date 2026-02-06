@@ -1,7 +1,7 @@
 """
 Appointment model for database.
 """
-from sqlalchemy import Column, String, DateTime, Text, Numeric, ForeignKey
+from sqlalchemy import Column, String, DateTime, Text, Numeric, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from datetime import datetime
@@ -31,7 +31,12 @@ class Appointment(Base, TimestampMixin):
     summary = Column(Text)
     extra_request = Column(Text)
     raw_messages = Column(JSONB)
+    raw_messages = Column(JSONB)
     operation = Column(String(10)) # create, update, delete
+    is_handled = Column(Boolean, default=False, nullable=False)
+    
+    # Meta
+    extra_data = Column(JSONB)
 
     def __repr__(self):
         return f"<Appointment {self.id} - {self.caller_name}>"

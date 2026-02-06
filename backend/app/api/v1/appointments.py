@@ -20,6 +20,7 @@ async def list_appointments(
 
     end_date: Optional[str] = None,
     operation: Optional[str] = None,
+    is_handled: Optional[bool] = None,
     db: Session = Depends(get_db)
 ):
     """
@@ -34,7 +35,8 @@ async def list_appointments(
         search=search,
         start_date=start_date,
         end_date=end_date,
-        operation=operation
+        operation=operation,
+        is_handled=is_handled
     )
 
 
@@ -44,3 +46,14 @@ async def create_appointment(
     db: Session = Depends(get_db)
 ) -> AppointmentRecord:
     return await appointment_service.create_from_conversation(payload, db)
+
+
+@router.patch("/{appointment_id}/handle", response_model=AppointmentRecord, summary="标记预约为已对应")
+async def handle_appointment(
+    appointment_id: str,
+    db: Session = Depends(get_db)
+) -> AppointmentRecord:
+    """
+    标记预约为已处理（对应完毕）
+    """
+    return await appointment_service.mark_as_handled(appointment_id, db)
