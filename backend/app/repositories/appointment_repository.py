@@ -79,3 +79,14 @@ class AppointmentRepository(BaseRepository[Appointment]):
         items = query.offset(skip).limit(page_size).all()
         
         return items, total
+
+    def mark_as_handled(self, appointment_id: str, is_handled: bool = True) -> Optional[Appointment]:
+        """
+        Mark appointment as handled.
+        """
+        appointment = self.get(appointment_id)
+        if appointment:
+            appointment.is_handled = is_handled
+            self.db.commit()
+            self.db.refresh(appointment)
+        return appointment

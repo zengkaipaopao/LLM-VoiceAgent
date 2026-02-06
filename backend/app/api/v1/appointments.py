@@ -48,3 +48,21 @@ def list_appointments(
         page_size=page_size,
         total_pages=total_pages
     )
+
+
+@router.patch("/{appointment_id}/handle", response_model=AppointmentResponse)
+def handle_appointment(
+    appointment_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Mark an appointment as handled.
+    """
+    repo = AppointmentRepository(db)
+    appointment = repo.mark_as_handled(appointment_id, True)
+    
+    if not appointment:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Appointment not found")
+        
+    return AppointmentResponse.model_validate(appointment)
