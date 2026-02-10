@@ -1,0 +1,59 @@
+/**
+ * StatCard Styles
+ * 
+ * 遵循Carbon Design System的spacing和typography规范
+ */
+@use '@carbon/styles/scss/spacing' as *;
+@use '@carbon/styles/scss/type' as *;
+@use '@carbon/styles/scss/theme' as *;
+
+.stat-card {
+  height: 100%;
+  min-height: 140px;
+
+  &__content {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-03;
+  }
+
+  &__label {
+    @include type-style('label-01');
+    color: $text-secondary;
+    margin: 0;
+  }
+
+  &__value {
+    @include type-style('productive-heading-05');
+    color: $text-primary;
+    margin: 0;
+    font-weight: 400;
+  }
+
+  &__trend {
+    display: flex;
+    align-items: center;
+    gap: $spacing-02;
+    @include type-style('helper-text-01');
+
+    &--positive {
+      color: $support-success;
+
+      svg {
+        fill: $support-success;
+      }
+    }
+
+    &--negative {
+      color: $support-error;
+
+      svg {
+        fill: $support-error;
+      }
+    }
+  }
+
+  &__trend-text {
+    font-weight: 600;
+  }
+}

@@ -1,0 +1,21 @@
+/**
+ * TimeRangeSelector Styles
+ */
+@use '@carbon/styles/scss/spacing' as *;
+@use '@carbon/styles/scss/theme' as *;
+
+.time-range-selector {
+  margin-bottom: $spacing-05;
+
+  &__group {
+    display: flex;
+    gap: $spacing-05;
+    align-items: flex-end;
+    flex-wrap: wrap;
+  }
+
+  &__granularity {
+    min-width: 160px;
+    flex-shrink: 0;
+  }
+}

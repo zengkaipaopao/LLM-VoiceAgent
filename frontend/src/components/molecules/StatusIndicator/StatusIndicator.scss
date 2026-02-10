@@ -1,0 +1,66 @@
+/**
+ * StatusIndicator Styles
+ */
+@use '@carbon/styles/scss/spacing' as *;
+@use '@carbon/styles/scss/type' as *;
+@use '@carbon/styles/scss/theme' as *;
+
+.status-indicator {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-02;
+
+  &__main {
+    display: flex;
+    align-items: center;
+    gap: $spacing-03;
+  }
+
+  &__icon {
+    flex-shrink: 0;
+
+    &--online {
+      fill: $support-success;
+    }
+
+    &--warning {
+      fill: $support-warning;
+    }
+
+    &--error {
+      fill: $support-error;
+    }
+
+    &--unknown {
+      fill: $text-secondary;
+    }
+  }
+
+  &__label {
+    @include type-style('body-01');
+    color: $text-primary;
+    flex-shrink: 0; // 防止label被压缩
+    margin-right: $spacing-03; // label和tag之间的固定间距
+  }
+
+  &__details {
+    @include type-style('helper-text-01');
+    color: $text-secondary;
+    margin: 0 0 0 calc(#{$spacing-03} + 20px); // Icon size + gap
+  }
+
+  &--compact {
+    .status-indicator__main {
+      gap: $spacing-02;
+    }
+
+    .status-indicator__icon {
+      width: 16px;
+      height: 16px;
+    }
+
+    .status-indicator__label {
+      @include type-style('label-01');
+    }
+  }
+}

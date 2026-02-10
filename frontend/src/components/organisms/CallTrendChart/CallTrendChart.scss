@@ -1,0 +1,23 @@
+@use '@carbon/styles/scss/spacing' as *;
+@use '@carbon/styles/scss/type' as *;
+@use '@carbon/styles/scss/spacing' as *;
+
+.call-trend-chart {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-05;
+
+  &__content {
+    min-height: 300px;
+
+    &--loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+  }
+
+  &__empty {
+    color: var(--cds-text-secondary);
+  }
+}

@@ -5,11 +5,13 @@ from app.api.v1.endpoints import (
     appointments,
     call_simulation, 
     appointment_simulation,
-    calls
+    calls,
+    dashboard
 )
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
+api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 api_router.include_router(call_simulation.router, prefix="/calls/simulate", tags=["call-simulation"])
 api_router.include_router(appointment_simulation.router, prefix="/appointments/simulate", tags=["appointment-simulation"])
 api_router.include_router(appointments.router, prefix="/appointments", tags=["appointments"])
