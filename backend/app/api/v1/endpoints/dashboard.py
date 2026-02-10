@@ -1,201 +1,212 @@
 """
 Dashboard API Endpoints
-提供仪表盘统计数据
+提供仪表盘统计数据 - 预约管理中心
 """
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_, case
 from datetime import datetime, timezone, timedelta
-from typing import List
 
 from app.api.deps import get_db
 from app.models.call import Call, CallStatus
 from app.models.appointment import Appointment
-from app.api.v1.endpoints.dashboard_helpers import _generate_trend_data
 
 router = APIRouter()
 
 
 @router.get("/stats")
-def get_dashboard_stats(
-    start_date: str = Query(None, description="开始日期，格式：YYYY-MM-DD"),
-    end_date: str = Query(None, description="结束日期，格式：YYYY-MM-DD"),
-    granularity: str = Query("day", regex="^(hour|day|week|month|year)$", description="数据粒度"),
-    db: Session = Depends(get_db)
-):
+def get_dashboard_stats(db: Session = Depends(get_db)):
     """
-    获取Dashboard统计数据
+    获取Dashboard统计数据 - 固定最近7天，天粒度
     
-    Args:
-        start_date: 开始日期（可选，默认为今天0点）
-        end_date: 结束日期（可选，默认为当前时间）
-        granularity: 数据粒度（minute/hour/day/week/month/year）
-        
     Returns:
-        - 通话统计
-        - 预约统计
-        - 通话趋势数据（按粒度聚合）
-        - AI效率分布
+        - 通话统计：总数、今日、平均时长、总时长
+        - 预约统计：总数、今日、待处理、新增、取消、变更、完成、处理率
+        - 通话趋势：最近7天趋势数据
         - 系统状态
     """
     now = datetime.now(timezone.utc)
-    
-    # 解析时间范围
-    if start_date:
-        start_time = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
-    else:
-        start_time = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    
-    if end_date:
-        end_time = datetime.fromisoformat(end_date).replace(tzinfo=timezone.utc)
-    else:
-        end_time = now
-    
-    # 昨日同时间（用于计算趋势）
-    time_diff = end_time - start_time
-    yesterday_start = start_time - time_diff
-    yesterday_end = start_time
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_ago = today_start - timedelta(days=7)
     
     # ==================== 通话统计 ====================
-    period_calls = db.query(func.count(Call.id)).filter(
-        and_(
-            Call.created_at >= start_time,
-            Call.created_at <= end_time
-        )
+    # 总通话数
+    total_calls = db.query(func.count(Call.id)).scalar() or 0
+    
+    # 今日通话数
+    today_calls = db.query(func.count(Call.id)).filter(
+        Call.created_at >= today_start
     ).scalar() or 0
     
-    previous_calls = db.query(func.count(Call.id)).filter(
+    # 平均通话时长
+    avg_duration_seconds = db.query(func.avg(Call.duration_seconds)).scalar() or 0
+    avg_duration = _format_duration(int(avg_duration_seconds))
+    
+    # 总通话时长
+    total_duration_seconds = db.query(func.sum(Call.duration_seconds)).scalar() or 0
+    total_duration = _format_duration(int(total_duration_seconds))
+    
+    # 计算趋势（与昨天同期比较）
+    yesterday_start = today_start - timedelta(days=1)
+    yesterday_calls = db.query(func.count(Call.id)).filter(
         and_(
             Call.created_at >= yesterday_start,
-            Call.created_at < yesterday_end
+            Call.created_at < today_start
         )
     ).scalar() or 0
     
-    # 计算趋势
     calls_trend = 0
-    if previous_calls > 0:
-        calls_trend = round(((period_calls - previous_calls) / previous_calls) * 100, 1)
-    
-    # 成功率
-    completed_calls = db.query(func.count(Call.id)).filter(
-        and_(
-            Call.created_at >= start_time,
-            Call.created_at <= end_time,
-            Call.status == CallStatus.COMPLETED.value
-        )
-    ).scalar() or 0
-    
-    success_rate = 0
-    if period_calls > 0:
-        success_rate = round((completed_calls / period_calls) * 100, 1)
-    
-    # AI处理统计
-    ai_handled = db.query(func.count(Call.id)).filter(
-        and_(
-            Call.created_at >= start_time,
-            Call.created_at <= end_time,
-            Call.handler_type == "ai"
-        )
-    ).scalar() or 0
-    
-    ai_percent = 0
-    if period_calls > 0:
-        ai_percent = round((ai_handled / period_calls) * 100, 1)
-    
-    # 平均时长
-    avg_duration = db.query(func.avg(Call.duration_seconds)).filter(
-        and_(
-            Call.created_at >= start_time,
-            Call.created_at <= end_time,
-            Call.duration_seconds.isnot(None)
-        )
-    ).scalar() or 0
-    
-    avg_duration = int(avg_duration) if avg_duration else 0
+    if yesterday_calls > 0:
+        calls_trend = round(((today_calls - yesterday_calls) / yesterday_calls) * 100, 1)
     
     # ==================== 预约统计 ====================
-    period_appointments = db.query(func.count(Appointment.id)).filter(
+    # 总预约数
+    total_appointments = db.query(func.count(Appointment.id)).scalar() or 0
+    
+    # 今日预约数
+    today_appointments = db.query(func.count(Appointment.id)).filter(
+        Appointment.created_at >= today_start
+    ).scalar() or 0
+    
+    # 待处理预约（is_handled = False）
+    pending_appointments = db.query(func.count(Appointment.id)).filter(
+        Appointment.is_handled.is_(False)
+    ).scalar() or 0
+    
+    # 今日新增预约（operation = 'create' AND today）
+    new_today = db.query(func.count(Appointment.id)).filter(
         and_(
-            Appointment.created_at >= start_time,
-            Appointment.created_at <= end_time
+            Appointment.operation == 'create',
+            Appointment.created_at >= today_start
         )
     ).scalar() or 0
     
-    new_appointments = db.query(func.count(Appointment.id)).filter(
-        and_(
-            Appointment.created_at >= start_time,
-            Appointment.created_at <= end_time,
-            Appointment.operation == 'create'
-        )
-    ).scalar() or 0
-    
+    # 已取消（operation = 'delete'）
     cancelled_appointments = db.query(func.count(Appointment.id)).filter(
-        and_(
-            Appointment.created_at >= start_time,
-            Appointment.created_at <= end_time,
-            Appointment.operation == 'delete'
-        )
+        Appointment.operation == 'delete'
     ).scalar() or 0
     
+    # 已变更（operation = 'update'）
     rescheduled_appointments = db.query(func.count(Appointment.id)).filter(
+        Appointment.operation == 'update'
+    ).scalar() or 0
+    
+    # 已完成（is_handled = True）
+    completed_appointments = db.query(func.count(Appointment.id)).filter(
+        Appointment.is_handled.is_(True)
+    ).scalar() or 0
+    
+    # 处理率（已完成 / 总数 * 100）
+    completion_rate = 0
+    if total_appointments > 0:
+        completion_rate = round((completed_appointments / total_appointments) * 100, 1)
+    
+    # 预约趋势
+    appointments_trend = 0
+    yesterday_appointments = db.query(func.count(Appointment.id)).filter(
         and_(
-            Appointment.created_at >= start_time,
-            Appointment.created_at <= end_time,
-            Appointment.operation == 'update'
+            Appointment.created_at >= yesterday_start,
+            Appointment.created_at < today_start
         )
     ).scalar() or 0
     
-    # ==================== 趋势数据（按粒度聚合） ====================
-    trend_data = _generate_trend_data(db, start_time, end_time, granularity)
+    if yesterday_appointments > 0:
+        appointments_trend = round(((today_appointments - yesterday_appointments) / yesterday_appointments) * 100, 1)
     
-    # ==================== AI效率分布 ====================
-    # 只统计已接通的通话（排除no_answer等）
-    ai_handled_count = db.query(func.count(Call.id)).filter(
-        and_(
-            Call.created_at >= start_time,
-            Call.created_at <= end_time,
-            Call.handler_type == "ai",
-            Call.is_answered == True
-        )
-    ).scalar() or 0
-    
-    transferred_count = db.query(func.count(Call.id)).filter(
-        and_(
-            Call.created_at >= start_time,
-            Call.handler_type == "transferred",
-            Call.is_answered == True
-        )
-    ).scalar() or 0
-    
-    efficiency_data = [
-        {"group": "AI处理", "value": ai_handled_count},
-        {"group": "转人工", "value": transferred_count},
-    ]
+    # ==================== 通话趋势数据（最近7天，天粒度）====================
+    trend_data = _generate_daily_trend(db, week_ago, now)
     
     # ==================== 系统状态 ====================
-    # TODO: 实现真实的系统健康检查
     system_status = {
-        "postgres": "online",
-        "redis": "online",
-        "llm_api": "online"
+        "database": _check_database(db),
+        "redis": {"status": "healthy", "message": "连接正常"},  # TODO: 实际检查Redis
+        "ai_service": {"status": "healthy", "message": "服务正常"}  # TODO: 实际检查AI服务
     }
     
     return {
         "calls": {
-            "total": period_calls,
-            "trend": calls_trend,
-            "success_rate": success_rate,
-            "ai_handled": ai_handled,
-            "ai_percent": ai_percent,
+            "total": total_calls,
+            "today": today_calls,
             "avg_duration": avg_duration,
+            "total_duration": total_duration,
+            "trend": calls_trend
         },
         "appointments": {
-            "total": period_appointments,
-            "new": new_appointments,
+            "total": total_appointments,
+            "today": today_appointments,
+            "pending": pending_appointments,
+            "new_today": new_today,
             "cancelled": cancelled_appointments,
             "rescheduled": rescheduled_appointments,
+            "completed": completed_appointments,
+            "completion_rate": completion_rate,
+            "trend": appointments_trend
         },
         "trend": trend_data,
-        "efficiency": efficiency_data,
-        "system_status": system_status,
+        "system_status": system_status
     }
+
+
+def _format_duration(seconds: int) -> str:
+    """格式化时长为 HH:MM:SS 或 MM:SS"""
+    if seconds == 0:
+        return "0:00"
+    
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    secs = seconds % 60
+    
+    if hours > 0:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    else:
+        return f"{minutes}:{secs:02d}"
+
+
+def _generate_daily_trend(db: Session, start_time: datetime, end_time: datetime) -> list:
+    """
+    生成每日通话趋势数据（最近7天）
+    """
+    from sqlalchemy import func, cast, Date
+    
+    # 使用PostgreSQL的date_trunc按天分组
+    trend_query = db.query(
+        func.date_trunc('day', Call.created_at).label('day'),
+        func.count(Call.id).label('count')
+    ).filter(
+        and_(
+            Call.created_at >= start_time,
+            Call.created_at <= end_time
+        )
+    ).group_by(
+        func.date_trunc('day', Call.created_at)
+    ).order_by('day').all()
+    
+    # 转换为字典以便快速查找
+    data_dict = {
+        row.day.date().isoformat(): row.count 
+        for row in trend_query
+    }
+    
+    # 填充所有日期（包括没有数据的日期）
+    trend_data = []
+    current = start_time
+    while current <= end_time:
+        date_str = current.date().isoformat()
+        value = data_dict.get(date_str, 0)
+        trend_data.append({
+            "date": date_str,
+            "value": value,
+            "group": "通话数"
+        })
+        current += timedelta(days=1)
+    
+    return trend_data
+
+
+def _check_database(db: Session) -> dict:
+    """检查数据库连接状态"""
+    try:
+        db.execute("SELECT 1")
+        return {"status": "healthy", "message": "连接正常"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}

@@ -1,62 +1,45 @@
 /**
  * useDashboardStats - Dashboard统计数据Hook
- * 从API获取Dashboard的实时统计数据
+ * 获取预约管理Dashboard的实时统计数据（固定最近7天）
  */
 import { useQuery, UseQueryResult } from '@tanstack/react-query';
 
 export interface DashboardStats {
   calls: {
     total: number;
-    trend: number;
-    success_rate: number;
-    ai_handled: number;
-    ai_percent: number;
-    avg_duration: number;
+    today: number;
+    avg_duration: string;  // 格式化的时长 "HH:MM:SS"
+    total_duration: string;
+    trend: number;  // 百分比变化
   };
   appointments: {
     total: number;
-    new: number;
-    cancelled: number;
-    rescheduled: number;
+    today: number;
+    pending: number;        // 待处理
+    new_today: number;      // 今日新增
+    cancelled: number;      // 已取消
+    rescheduled: number;    // 已变更
+    completed: number;      // 已完成
+    completion_rate: number; // 处理率
+    trend: number;  // 百分比变化
   };
   trend: Array<{
-    date: string;
+    date: string;  // YYYY-MM-DD
     value: number;
     group: string;
-  }>;
-  efficiency: Array<{
-    group: string;
-    value: number;
   }>;
   system_status: {
-    postgres: string;
-    redis: string;
-    llm_api: string;
+    database: { status: string; message: string };
+    redis: { status: string; message: string };
+    ai_service: { status: string; message: string };
   };
-}
-
-interface UseDashboardStatsOptions {
-  startDate?: string;  // YYYY-MM-DD格式
-  endDate?: string;    // YYYY-MM-DD格式
-  granularity?: 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year';
-  enabled?: boolean;
-  refetchInterval?: number;
 }
 
 /**
- * 获取Dashboard统计数据
+ * 获取Dashboard统计数据（固定最近7天，天粒度）
  */
-async function fetchDashboardStats(
-  startDate?: string,
-  endDate?: string,
-  granularity: string = 'day'
-): Promise<DashboardStats> {
-  const params = new URLSearchParams();
-  if (startDate) params.append('start_date', startDate);
-  if (endDate) params.append('end_date', endDate);
-  params.append('granularity', granularity);
-  
-  const response = await fetch(`/api/v1/dashboard/stats?${params}`);
+async function fetchDashboardStats(): Promise<DashboardStats> {
+  const response = await fetch('/api/v1/dashboard/stats');
   
   if (!response.ok) {
     throw new Error('Failed to fetch dashboard stats');
@@ -68,17 +51,13 @@ async function fetchDashboardStats(
 /**
  * Dashboard统计数据Hook
  * 
- * @param options - 查询选项
+ * @param enabled - 是否启用查询
+ * @param refetchInterval - 自动刷新间隔（毫秒）
  * @returns Dashboard统计数据
  * 
  * @example
  * ```tsx
- * const { data, isLoading, error } = useDashboardStats({
- *   startDate: '2026-02-01',
- *   endDate: '2026-02-10',
- *   granularity: 'day',
- *   refetchInterval: 60000,
- * });
+ * const { data, isLoading, error } = useDashboardStats();
  * 
  * if (isLoading) return <Loading />;
  * if (error) return <Error />;
@@ -87,19 +66,12 @@ async function fetchDashboardStats(
  * ```
  */
 export function useDashboardStats(
-  options: UseDashboardStatsOptions = {}
+  enabled: boolean = true,
+  refetchInterval: number = 60000
 ): UseQueryResult<DashboardStats, Error> {
-  const {
-    startDate,
-    endDate,
-    granularity = 'day',
-    enabled = true,
-    refetchInterval = 60000,
-  } = options;
-
   return useQuery({
-    queryKey: ['dashboardStats', startDate, endDate, granularity],
-    queryFn: () => fetchDashboardStats(startDate, endDate, granularity),
+    queryKey: ['dashboardStats'],
+    queryFn: fetchDashboardStats,
     enabled,
     refetchInterval,
     placeholderData: (previousData) => previousData,

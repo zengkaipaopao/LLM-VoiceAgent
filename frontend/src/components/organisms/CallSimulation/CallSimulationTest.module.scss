@@ -3,6 +3,10 @@
 /* Page Layout - Two Column Grid */
 .container {
   width: 100%;
+  // 限制最大宽度，避免大屏幕上内容被拉得太开
+  max-width: 1400px;
+  // 左对齐 (Carbon Product Model)
+  margin: 0;
 }
 
 .gridContainer {
