@@ -21,6 +21,7 @@ def list_calls(
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
     search: Optional[str] = None,
+    filter_match: str = Query("and", regex="^(and|or)$"),
     db: Session = Depends(get_db)
 ):
     """
@@ -39,7 +40,8 @@ def list_calls(
         handler_type=handler_type,
         start_date=start_date,
         end_date=end_date,
-        search=search
+        search=search,
+        filter_match=filter_match
     )
     
     total_pages = math.ceil(total / page_size) if total > 0 else 0

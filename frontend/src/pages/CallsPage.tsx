@@ -15,32 +15,9 @@ import {
   ArrowsHorizontal,
 } from '@carbon/icons-react';
 import { PageTemplate } from '../components/templates/PageTemplate';
-
-interface Call {
-  id: string;
-  direction: 'inbound' | 'outbound';
-  counterpart: string;
-  caller_name?: string;
-  started_at: string;
-  answered_at?: string;
-  ended_at?: string;
-  duration_seconds: number;
-  status: string;
-  handler_type?: string;
-  is_answered: boolean;
-  ai_confidence?: number;
-  summary?: string;
-  transcript?: string;
-  created_at: string;
-}
-
-interface CallsResponse {
-    items: Call[];
-    total: number;
-    page: number;
-    page_size: number;
-    total_pages: number;
-}
+import { CallLog } from '../types/shared';
+// Import dynamically to avoid circle if needed, or static is fine. Using static for cleanliness if possible, but the plan used import(). Stick to dynamic or standard import. Standard is better.
+import { fetchCalls } from '../api/calls';
 
 export function CallsPage() {
   const { t } = useTranslation(['pages', 'common']);
@@ -73,7 +50,7 @@ export function CallsPage() {
   ], [t]);
 
   // State
-  const [calls, setCalls] = useState<Call[]>([]);
+  const [calls, setCalls] = useState<CallLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -88,32 +65,16 @@ export function CallsPage() {
 
   const [sortBy, setSortBy] = useState('started_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [selectedCall, setSelectedCall] = useState<Call | null>(null);
+  const [selectedCall, setSelectedCall] = useState<CallLog | null>(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
 
   // Fetch calls
-  const fetchCalls = async () => {
+  const loadCalls = async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({
-        page: page.toString(),
-        page_size: pageSize.toString(),
-        sort_by: sortBy,
-        order: sortOrder,
-        filter_match: 'or', // User requested Union logic for filters
-      });
+      let startDateStr: string | undefined;
+      let endDateStr: string | undefined;
 
-      if (searchQuery) params.append('search', searchQuery);
-      
-      // Apply filters
-      // Apply filters
-      if (selectedFilters.status?.length) {
-        params.append('status', selectedFilters.status.join(','));
-      }
-      if (selectedFilters.handler_type?.length) {
-        params.append('handler_type', selectedFilters.handler_type.join(','));
-      }
-      
       // Handle Date Range
       if (selectedFilters.created_at?.length === 2) {
         const [start, end] = selectedFilters.created_at;
@@ -121,23 +82,31 @@ export function CallsPage() {
         if (start) {
           const startDate = new Date(start);
           startDate.setHours(0, 0, 0, 0);
-          params.append('start_date', startDate.toISOString());
+          startDateStr = startDate.toISOString();
         }
         
         if (end) {
           const endDate = new Date(end);
           endDate.setHours(23, 59, 59, 999);
-          params.append('end_date', endDate.toISOString());
+          endDateStr = endDate.toISOString();
         }
       }
 
-      const response = await fetch(`/api/v1/calls?${params}`);
-      const data: CallsResponse = await response.json();
+      const { items, total: totalItems } = await fetchCalls({
+        page,
+        pageSize,
+        sortBy,
+        sortOrder,
+        status: selectedFilters.status,
+        handlerType: selectedFilters.handler_type,
+        startDate: startDateStr,
+        endDate: endDateStr,
+        search: searchQuery,
+        filterMatch: 'or', // Explicitly request OR logic for status/handler
+      });
 
-      if (data) {
-        setCalls(data.items);
-        setTotal(data.total);
-      }
+      setCalls(items);
+      setTotal(totalItems);
     } catch (error) {
       console.error('Failed to fetch calls:', error);
     } finally {
@@ -150,7 +119,7 @@ export function CallsPage() {
     if (selectedFilters.created_at && selectedFilters.created_at.length === 1) {
       return;
     }
-    fetchCalls();
+    loadCalls();
   }, [page, pageSize, searchQuery, selectedFilters, sortBy, sortOrder]);
 
   // Formatters
@@ -223,12 +192,12 @@ export function CallsPage() {
   const tableRows = calls.map((call) => ({
     id: call.id,
     call_id: call.id.substring(0, 8),
-    caller: call.caller_name || call.counterpart,
+    caller: call.callerName || call.counterpart,
     status: call.status,
-    handler: call.handler_type,
-    started_at: call.started_at,
-    duration: call.duration_seconds,
-    confidence: call.ai_confidence,
+    handler: call.handlerType,
+    started_at: call.startedAt,
+    duration: call.durationSeconds,
+    confidence: call.aiConfidence,
     raw: call // Keep raw data for custom access reference
   }));
 
@@ -270,7 +239,7 @@ export function CallsPage() {
         // Toolbar Buttons
         toolbarActions={
           <TableToolbarMenu>
-            <TableToolbarAction onClick={() => fetchCalls()}>
+            <TableToolbarAction onClick={() => loadCalls()}>
               Refresh
             </TableToolbarAction>
              <TableToolbarAction onClick={() => {}}>
@@ -295,7 +264,7 @@ export function CallsPage() {
                 iconDescription={t('calls.table.actions.view')}
                 onClick={() => {
                    // row.raw contains the full original object
-                   setSelectedCall(row.raw as Call);
+                   setSelectedCall(row.raw as CallLog);
                    setDetailModalOpen(true);
                 }}
               />

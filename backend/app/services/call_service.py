@@ -44,7 +44,8 @@ class CallService:
         handler_type: Optional[str] = None,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
-        search: Optional[str] = None
+        search: Optional[str] = None,
+        filter_match: str = "and"
     ) -> Tuple[List[Call], int]:
         """
         List calls with pagination and filtering.
@@ -59,6 +60,7 @@ class CallService:
             start_date: Filter by start date (>=)
             end_date: Filter by end date (<=)
             search: Search in caller_name or counterpart
+            filter_match: 'and' or 'or' logic for filters
             
         Returns:
             Tuple of (calls list, total count)
@@ -77,7 +79,8 @@ class CallService:
             handler_type=handler_type,
             start_date=start_date,
             end_date=end_date,
-            search=search
+            search=search,
+            filter_match=filter_match
         )
     
     def get_call_by_id(self, call_id: UUID) -> Optional[Call]:

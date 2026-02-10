@@ -5,10 +5,18 @@ export interface CallLog {
   id: string;
   direction: CallDirection;
   counterpart: string;
+  callerName?: string;
   startedAt: string;
+  answeredAt?: string;
+  endedAt?: string;
   durationSeconds: number;
   status: CallStatus;
+  handlerType?: string;
+  isAnswered: boolean;
+  aiConfidence?: number;
   summary?: string;
+  transcript?: string;
+  createdAt: string;
 }
 
 export interface PromptTemplate {

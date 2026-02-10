@@ -161,3 +161,90 @@ class CallRepository(BaseRepository[Call]):
         calls = query.offset(skip).limit(page_size).all()
         
         return calls, total
+
+    def get_paginated(
+        self,
+        page: int = 1,
+        page_size: int = 20,
+        sort_by: str = "started_at",
+        order: str = "desc",
+        status: Optional[str] = None,
+        handler_type: Optional[str] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        search: Optional[str] = None,
+        filter_match: str = "and"
+    ) -> Tuple[List[Call], int]:
+        """
+        Get paginated calls with filtering and sorting.
+        
+        Args:
+            page: Page number (1-indexed)
+            page_size: Items per page
+            sort_by: Field to sort by
+            order: Sort order (asc/desc)
+            status: Filter by status (comma-separated)
+            handler_type: Filter by handler type (comma-separated)
+            start_date: Filter by start date (>=)
+            end_date: Filter by end date (<=)
+            search: Search in caller_name or counterpart
+            filter_match: 'and' or 'or' for combining status and handler filters
+            
+        Returns:
+            Tuple of (calls list, total count)
+        """
+        query = self.db.query(Call)
+        
+        # Collect property filters
+        filters = []
+        
+        if status:
+            if ',' in status:
+                filters.append(Call.status.in_(status.split(',')))
+            else:
+                filters.append(Call.status == status)
+        
+        if handler_type:
+            if ',' in handler_type:
+                filters.append(Call.handler_type.in_(handler_type.split(',')))
+            else:
+                filters.append(Call.handler_type == handler_type)
+        
+        # Apply property filters based on match mode
+        if filters:
+            if filter_match == "or":
+                query = query.filter(or_(*filters))
+            else:  # "and"
+                query = query.filter(and_(*filters))
+        
+        # Time and Search filters are always AND (constraints)
+        if start_date:
+            query = query.filter(Call.started_at >= start_date)
+        
+        if end_date:
+            query = query.filter(Call.started_at <= end_date)
+        
+        if search:
+            search_pattern = f"%{search}%"
+            query = query.filter(
+                or_(
+                    Call.caller_name.ilike(search_pattern),
+                    Call.counterpart.ilike(search_pattern)
+                )
+            )
+        
+        # Get total count before pagination
+        total = query.count()
+        
+        # Apply sorting
+        sort_column = getattr(Call, sort_by, Call.started_at)
+        if order == "asc":
+            query = query.order_by(asc(sort_column))
+        else:
+            query = query.order_by(desc(sort_column))
+        
+        # Apply pagination
+        skip = (page - 1) * page_size
+        calls = query.offset(skip).limit(page_size).all()
+        
+        return calls, total

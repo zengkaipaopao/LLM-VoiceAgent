@@ -1,16 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { fetchAgents } from './agents';
-import { fetchCalls } from './calls';
+import { fetchCalls, FetchCallsParams } from './calls';
 import { fetchAppointments, submitAppointmentRecord, AppointmentRecordPayload } from './appointments';
 import { fetchAllowedModels, fetchModels, updateAllowedModels } from './models';
 import { createPrompt, deletePrompt, fetchPrompts, updatePrompt } from './prompts';
 import { PromptFormValues, PromptTemplate, ReservationRecord } from '../types/shared';
 
-export function useCallsQuery() {
+export function useCallsQuery(params?: FetchCallsParams) {
   return useQuery({
-    queryKey: ['calls'],
-    queryFn: fetchCalls,
+    queryKey: ['calls', params],
+    queryFn: () => fetchCalls(params),
     staleTime: 30_000,
   });
 }

@@ -14,12 +14,6 @@ class Settings(BaseSettings):
     
     # Debug
     debug: bool = True
-    
-    # Database
-    database_url: str = "postgresql://dev_user:dev_password@localhost:5432/llm_voice_agent"
-    
-    # Debug
-    debug: bool = True
 
 
 settings = Settings()
