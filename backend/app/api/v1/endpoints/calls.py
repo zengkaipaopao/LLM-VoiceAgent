@@ -5,7 +5,7 @@ from datetime import datetime
 import math
 
 from app.api.deps import get_db
-from app.repositories.call_repository import CallRepository
+from app.services.call_service import CallService
 from app.schemas.call import CallListResponse, CallResponse
 
 router = APIRouter()
@@ -25,9 +25,12 @@ def list_calls(
 ):
     """
     List calls (read-only for simulation results).
+    
+    Uses CallService layer for business logic.
     """
-    repo = CallRepository(db)
-    items, total = repo.get_paginated(
+    # Use Service layer instead of direct Repository access
+    service = CallService(db)
+    items, total = service.list_calls(
         page=page,
         page_size=page_size,
         sort_by=sort_by,

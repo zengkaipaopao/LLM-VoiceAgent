@@ -81,10 +81,37 @@ print_header "🚀 LLM-VoiceAgent 开发环境启动"
 check_and_start_postgres() {
   print_info "检查 PostgreSQL 状态..."
   
-  # 检查 PostgreSQL 是否运行
-  if pg_isready -h localhost -p 5432 >/dev/null 2>&1; then
-    print_success "PostgreSQL 已运行"
-    return 0
+  # 首先检查 Docker容器
+  if command -v docker >/dev/null 2>&1 || [ -f "/Applications/Docker.app/Contents/Resources/bin/docker" ]; then
+    DOCKER_CMD="docker"
+    if ! command -v docker >/dev/null 2>&1; then
+      DOCKER_CMD="/Applications/Docker.app/Contents/Resources/bin/docker"
+    fi
+    
+    if $DOCKER_CMD ps 2>/dev/null | grep -q llm-voice-agent-db; then
+      print_success "PostgreSQL (Docker) 已运行"
+      return 0
+    fi
+    
+    # 尝试启动Docker容器
+    if [ -f "$ROOT_DIR/docker-compose.yml" ]; then
+      print_info "尝试使用 Docker 启动 PostgreSQL..."
+      if $DOCKER_CMD compose up -d postgres >/dev/null 2>&1; then
+        sleep 3
+        if $DOCKER_CMD ps 2>/dev/null | grep -q llm-voice-agent-db; then
+          print_success "PostgreSQL (Docker) 启动成功"
+          return 0
+        fi
+      fi
+    fi
+  fi
+  
+  # 检查本地 PostgreSQL 是否运行
+  if command -v pg_isready >/dev/null 2>&1; then
+    if pg_isready -h localhost -p 5432 >/dev/null 2>&1; then
+      print_success "PostgreSQL 已运行"
+      return 0
+    fi
   fi
   
   print_warning "PostgreSQL 未运行,尝试启动..."
@@ -100,38 +127,15 @@ check_and_start_postgres() {
     if brew services start postgresql@14 >/dev/null 2>&1 || brew services start postgresql >/dev/null 2>&1; then
       print_info "等待 PostgreSQL 启动..."
       sleep 3
-      if pg_isready -h localhost -p 5432 >/dev/null 2>&1; then
+      if command -v pg_isready >/dev/null 2>&1 && pg_isready -h localhost -p 5432 >/dev/null 2>&1; then
         print_success "PostgreSQL 启动成功"
         return 0
       fi
     fi
   fi
   
-  # 检查 Docker
-  if command -v docker >/dev/null 2>&1; then
-    if docker ps | grep -q postgres; then
-      print_success "PostgreSQL (Docker) 已运行"
-      return 0
-    fi
-    
-    print_info "尝试使用 Docker 启动 PostgreSQL..."
-    if [ -f "$ROOT_DIR/docker-compose.yml" ]; then
-      # 支持新版 docker compose 和旧版 docker-compose
-      if docker compose version >/dev/null 2>&1; then
-        docker compose up -d postgres >/dev/null 2>&1 || true
-      elif command -v docker-compose >/dev/null 2>&1; then
-        docker-compose up -d postgres >/dev/null 2>&1 || true
-      fi
-      sleep 3
-      if pg_isready -h localhost -p 5432 >/dev/null 2>&1; then
-        print_success "PostgreSQL (Docker) 启动成功"
-        return 0
-      fi
-    fi
-  fi
-  
   print_error "PostgreSQL 启动失败,请手动启动"
-  print_info "提示: brew services start postgresql 或 docker-compose up -d postgres"
+  print_info "提示: docker compose up -d postgres 或 brew services start postgresql"
   return 1
 }
 
@@ -141,10 +145,37 @@ check_and_start_postgres() {
 check_and_start_redis() {
   print_info "检查 Redis 状态..."
   
-  # 检查 Redis 是否运行
-  if redis-cli ping >/dev/null 2>&1; then
-    print_success "Redis 已运行"
-    return 0
+  # 首先检查 Docker容器
+  if command -v docker >/dev/null 2>&1 || [ -f "/Applications/Docker.app/Contents/Resources/bin/docker" ]; then
+    DOCKER_CMD="docker"
+    if ! command -v docker >/dev/null 2>&1; then
+      DOCKER_CMD="/Applications/Docker.app/Contents/Resources/bin/docker"
+    fi
+    
+    if $DOCKER_CMD ps 2>/dev/null | grep -q llm-voice-agent-redis; then
+      print_success "Redis (Docker) 已运行"
+      return 0
+    fi
+    
+    # 尝试启动Docker容器
+    if [ -f "$ROOT_DIR/docker-compose.yml" ]; then
+      print_info "尝试使用 Docker 启动 Redis..."
+      if $DOCKER_CMD compose up -d redis >/dev/null 2>&1; then
+        sleep 2
+        if $DOCKER_CMD ps 2>/dev/null | grep -q llm-voice-agent-redis; then
+          print_success "Redis (Docker) 启动成功"
+          return 0
+        fi
+      fi
+    fi
+  fi
+  
+  # 检查本地 Redis 是否运行
+  if command -v redis-cli >/dev/null 2>&1; then
+    if redis-cli ping >/dev/null 2>&1; then
+      print_success "Redis 已运行"
+      return 0
+    fi
   fi
   
   print_warning "Redis 未运行,尝试启动..."
@@ -158,31 +189,8 @@ check_and_start_redis() {
     
     if brew services start redis >/dev/null 2>&1; then
       sleep 2
-      if redis-cli ping >/dev/null 2>&1; then
+      if command -v redis-cli >/dev/null 2>&1 && redis-cli ping >/dev/null 2>&1; then
         print_success "Redis 启动成功"
-        return 0
-      fi
-    fi
-  fi
-  
-  # 检查 Docker
-  if command -v docker >/dev/null 2>&1; then
-    if docker ps | grep -q redis; then
-      print_success "Redis (Docker) 已运行"
-      return 0
-    fi
-    
-    print_info "尝试使用 Docker 启动 Redis..."
-    if [ -f "$ROOT_DIR/docker-compose.yml" ]; then
-      # 支持新版 docker compose 和旧版 docker-compose
-      if docker compose version >/dev/null 2>&1; then
-        docker compose up -d redis >/dev/null 2>&1 || true
-      elif command -v docker-compose >/dev/null 2>&1; then
-        docker-compose up -d redis >/dev/null 2>&1 || true
-      fi
-      sleep 2
-      if redis-cli ping >/dev/null 2>&1; then
-        print_success "Redis (Docker) 启动成功"
         return 0
       fi
     fi
@@ -259,12 +267,45 @@ run_migrations() {
 }
 
 # ============================================
+# 主动启动 Docker 服务（一键启动的核心）
+# ============================================
+start_docker_services() {
+  # 检查 Docker 是否可用
+  DOCKER_CMD=""
+  if command -v docker >/dev/null 2>&1; then
+    DOCKER_CMD="docker"
+  elif [ -f "/Applications/Docker.app/Contents/Resources/bin/docker" ]; then
+    DOCKER_CMD="/Applications/Docker.app/Contents/Resources/bin/docker"
+  fi
+  
+  if [ -z "$DOCKER_CMD" ]; then
+    return 0  # Docker不可用，跳过
+  fi
+  
+  # 检查是否有 docker-compose.yml
+  if [ ! -f "$ROOT_DIR/docker-compose.yml" ]; then
+    return 0  # 没有docker-compose文件，跳过
+  fi
+  
+  print_info "检测到 docker-compose.yml，启动 Docker 服务..."
+  
+  # 一键启动所有Docker服务
+  if $DOCKER_CMD compose up -d >/dev/null 2>&1; then
+    print_success "Docker 服务启动成功"
+    sleep 2  # 等待服务初始化
+  else
+    print_warning "Docker 服务启动失败，将尝试其他方式"
+  fi
+}
+
+# ============================================
 # 主流程
 # ============================================
 
-# 数据库检查
+# 优先启动 Docker 服务（如果可用）
 if [ "$RUN_DB" = true ]; then
   print_header "📦 数据库服务"
+  start_docker_services
   check_and_start_postgres
   check_and_start_redis
 fi

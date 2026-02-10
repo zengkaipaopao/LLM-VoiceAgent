@@ -33,6 +33,10 @@
   - 分层架构
   - 命名规范
   - 开发工作流
+- [SERVICE_LAYER_GUIDE.md](./SERVICE_LAYER_GUIDE.md) - Service层开发指南
+  - Service层骨架使用
+  - 如何实现TODO方法
+  - 最佳实践
 
 ### 系统设计
 - [api/appointment_system_design.md](./api/appointment_system_design.md) - 预约管理系统设计

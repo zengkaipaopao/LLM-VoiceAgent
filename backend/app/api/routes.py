@@ -1,10 +1,8 @@
 from fastapi import APIRouter
 
-from app.api.v1 import (
-    health,
-    appointments
-)
 from app.api.v1.endpoints import (
+    health,
+    appointments,
     call_simulation, 
     appointment_simulation,
     calls
