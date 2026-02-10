@@ -2,7 +2,33 @@
   "dashboard": {
     "title": "Dashboard",
     "subtitle": "Overview of system status",
-    "emptyState": "This page is under development"
+    "emptyState": "This page is under development",
+    "stats": {
+      "totalCalls": "Total Calls",
+      "todayCalls": "Calls Today",
+      "avgDuration": "Avg Duration",
+      "totalDuration": "Total Duration",
+      "totalAppointments": "Total Appointments",
+      "todayAppointments": "Appointments Today",
+      "pendingAppointments": "Pending",
+      "newAppointments": "New Today",
+      "cancelled": "Cancelled",
+      "rescheduled": "Rescheduled",
+      "completed": "Completed",
+      "completionRate": "Completion Rate"
+    },
+    "system": {
+      "title": "System Status",
+      "postgres": "PostgreSQL",
+      "redis": "Redis",
+      "aiService": "AI Service",
+      "unknown": "Unknown",
+      "status": {
+        "online": "Online",
+        "error": "Error",
+        "warning": "Warning"
+      }
+    }
   },
   "calls": {
     "title": "Call Records",

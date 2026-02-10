@@ -2,7 +2,33 @@
   "dashboard": {
     "title": "仪表盘",
     "subtitle": "概览系统状态",
-    "emptyState": "此页面正在开发中"
+    "emptyState": "此页面正在开发中",
+    "stats": {
+      "totalCalls": "总通话数",
+      "todayCalls": "今日通话",
+      "avgDuration": "平均通话时长",
+      "totalDuration": "总通话时长",
+      "totalAppointments": "总预约数",
+      "todayAppointments": "今日预约",
+      "pendingAppointments": "待处理预约",
+      "newAppointments": "新增预约",
+      "cancelled": "已取消",
+      "rescheduled": "已变更",
+      "completed": "已完成",
+      "completionRate": "处理率"
+    },
+    "system": {
+      "title": "系统状态",
+      "postgres": "PostgreSQL",
+      "redis": "Redis",
+      "aiService": "AI 服务",
+      "unknown": "未知",
+      "status": {
+        "online": "在线",
+        "error": "异常",
+        "warning": "警告"
+      }
+    }
   },
   "calls": {
     "title": "通话记录",

@@ -4,6 +4,7 @@
  * Molecule组件，用于展示服务/系统的健康状态
  * 符合Carbon Design System规范
  */
+import { useTranslation } from 'react-i18next';
 import { Tag } from '@carbon/react';
 import { 
   CheckmarkFilled, 
@@ -30,22 +31,22 @@ const statusConfig = {
   online: {
     icon: CheckmarkFilled,
     tagType: 'green' as const,
-    label: '正常',
+    labelKey: 'status.online',
   },
   warning: {
     icon: WarningFilled,
-    tagType: 'yellow' as const,
-    label: '警告',
+    tagType: 'warm-gray' as const, // Fixed: 'yellow' is not a valid Carbon Tag type
+    labelKey: 'status.warning',
   },
   error: {
     icon: ErrorFilled,
     tagType: 'red' as const,
-    label: '错误',
+    labelKey: 'status.error',
   },
   unknown: {
     icon: CircleFilled,
     tagType: 'gray' as const,
-    label: '未知',
+    labelKey: 'status.unknown',
   },
 };
 
@@ -55,6 +56,7 @@ export function StatusIndicator({
   details,
   compact = false,
 }: StatusIndicatorProps) {
+  const { t } = useTranslation('common');
   const config = statusConfig[status];
   const Icon = config.icon;
 
@@ -67,7 +69,7 @@ export function StatusIndicator({
         />
         <span className="status-indicator__label">{label}</span>
         <Tag type={config.tagType} size="sm">
-          {config.label}
+          {t(config.labelKey)}
         </Tag>
       </div>
       

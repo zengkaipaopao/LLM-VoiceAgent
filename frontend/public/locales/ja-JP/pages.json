@@ -2,7 +2,33 @@
   "dashboard": {
     "title": "ダッシュボード",
     "subtitle": "システムステータスの概要",
-    "emptyState": "このページは開発中です"
+    "emptyState": "このページは開発中です",
+    "stats": {
+      "totalCalls": "総通話数",
+      "todayCalls": "今日の通話",
+      "avgDuration": "平均通話時間",
+      "totalDuration": "総通話時間",
+      "totalAppointments": "総予約数",
+      "todayAppointments": "今日の予約",
+      "pendingAppointments": "対応待ち",
+      "newAppointments": "新規予約",
+      "cancelled": "キャンセル済",
+      "rescheduled": "変更済",
+      "completed": "完了",
+      "completionRate": "完了率"
+    },
+    "system": {
+      "title": "システム状態",
+      "postgres": "PostgreSQL",
+      "redis": "Redis",
+      "aiService": "AIサービス",
+      "unknown": "不明",
+      "status": {
+        "online": "稼働中",
+        "error": "エラー",
+        "warning": "警告"
+      }
+    }
   },
   "calls": {
     "title": "通話記録",

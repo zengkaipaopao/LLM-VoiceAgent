@@ -14,7 +14,9 @@
     "success": "成功",
     "error": "エラー",
     "warning": "警告",
-    "info": "情報"
+    "info": "情報",
+    "online": "正常",
+    "unknown": "不明"
   },
   "language": {
     "label": "言語",

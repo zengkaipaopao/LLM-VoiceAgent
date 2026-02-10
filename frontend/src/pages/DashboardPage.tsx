@@ -105,7 +105,7 @@ export function DashboardPage() {
           {/* Row 1: 通话统计 */}
           <Column lg={4} md={4} sm={4}>
             <StatCard
-              label="总通话数"
+              label={t('pages:dashboard.stats.totalCalls')}
               value={stats.calls.total}
               trend={stats.calls.trend}
             />
@@ -113,7 +113,7 @@ export function DashboardPage() {
 
           <Column lg={4} md={4} sm={4}>
             <StatCard
-              label="今日通话"
+              label={t('pages:dashboard.stats.todayCalls')}
               value={stats.calls.today}
               trend={stats.calls.trend}
             />
@@ -121,14 +121,14 @@ export function DashboardPage() {
 
           <Column lg={4} md={4} sm={4}>
             <StatCard
-              label="平均通话时长"
+              label={t('pages:dashboard.stats.avgDuration')}
               value={stats.calls.avg_duration}
             />
           </Column>
 
           <Column lg={4} md={4} sm={4}>
             <StatCard
-              label="总通话时长"
+              label={t('pages:dashboard.stats.totalDuration')}
               value={stats.calls.total_duration}
             />
           </Column>
@@ -136,7 +136,7 @@ export function DashboardPage() {
           {/* Row 2: 预约概览 */}
           <Column lg={4} md={4} sm={4}>
             <StatCard
-              label="总预约数"
+              label={t('pages:dashboard.stats.totalAppointments')}
               value={stats.appointments.total}
               trend={stats.appointments.trend}
             />
@@ -144,7 +144,7 @@ export function DashboardPage() {
 
           <Column lg={4} md={4} sm={4}>
             <StatCard
-              label="今日预约"
+              label={t('pages:dashboard.stats.todayAppointments')}
               value={stats.appointments.today}
               trend={stats.appointments.trend}
             />
@@ -152,14 +152,14 @@ export function DashboardPage() {
 
           <Column lg={4} md={4} sm={4}>
             <StatCard
-              label="待处理预约"
+              label={t('pages:dashboard.stats.pendingAppointments')}
               value={stats.appointments.pending}
             />
           </Column>
 
           <Column lg={4} md={4} sm={4}>
             <StatCard
-              label="新增预约"
+              label={t('pages:dashboard.stats.newAppointments')}
               value={stats.appointments.new_today}
             />
           </Column>
@@ -167,28 +167,28 @@ export function DashboardPage() {
           {/* Row 3: 预约详情 */}
           <Column lg={4} md={4} sm={4}>
             <StatCard
-              label="已取消"
+              label={t('pages:dashboard.stats.cancelled')}
               value={stats.appointments.cancelled}
             />
           </Column>
 
           <Column lg={4} md={4} sm={4}>
             <StatCard
-              label="已变更"
+              label={t('pages:dashboard.stats.rescheduled')}
               value={stats.appointments.rescheduled}
             />
           </Column>
 
           <Column lg={4} md={4} sm={4}>
             <StatCard
-              label="已完成"
+              label={t('pages:dashboard.stats.completed')}
               value={stats.appointments.completed}
             />
           </Column>
 
           <Column lg={4} md={4} sm={4}>
             <StatCard
-              label="处理率"
+              label={t('pages:dashboard.stats.completionRate')}
               value={`${stats.appointments.completion_rate}%`}
             />
           </Column>
@@ -202,22 +202,22 @@ export function DashboardPage() {
         {/* ==================== 系统状态 ==================== */}
         <section className="dashboard__section">
           <Tile className="dashboard__system-status">
-            <h3 className="dashboard__section-title">系统状态</h3>
+            <h3 className="dashboard__section-title">{t('pages:dashboard.system.title')}</h3>
             <div className="dashboard__status-grid">
               <StatusIndicator
-                label="PostgreSQL"
+                label={t('pages:dashboard.system.postgres')}
                 status={getDatabaseStatus()}
-                details={stats.system_status.database?.message || '未知'}
+                details={stats.system_status.database?.message || t('pages:dashboard.system.unknown')}
               />
               <StatusIndicator
-                label="Redis"
+                label={t('pages:dashboard.system.redis')}
                 status={getRedisStatus()}
-                details={stats.system_status.redis?.message || '未知'}
+                details={stats.system_status.redis?.message || t('pages:dashboard.system.unknown')}
               />
               <StatusIndicator
-                label="AI Service"
+                label={t('pages:dashboard.system.aiService')}
                 status={getAIServiceStatus()}
-                details={stats.system_status.ai_service?.message || '未知'}
+                details={stats.system_status.ai_service?.message || t('pages:dashboard.system.unknown')}
               />
             </div>
           </Tile>
