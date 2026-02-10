@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  // 强制 Vite 重新加载配置 (Force Reload)
   server: {
     port: 5173,
     proxy: {
