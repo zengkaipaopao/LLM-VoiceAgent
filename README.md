@@ -27,6 +27,12 @@ poetry run uvicorn app.main:app --reload
 - 在 `src/main.tsx` 最顶部引入 `wicg-inert/dist/inert.esm.js` polyfill（Carbon UIShell 依赖 `inert` 属性），随后引入 `@carbon/styles/css/styles.css`；编写新组件时直接从 `@carbon/react` 引用即可，若需要图标使用 `@carbon/icons-react`。
 - 若要自定义主题，可在 `AppLayout` 中调整 `<Theme theme=\"g10\">` 或通过 CSS 自定义属性覆盖局部样式。
 
+## 📚 文档
+
+- [系统架构](./docs/ARCHITECTURE.md) - 完整的系统架构设计
+- [后端文档](./backend/README.md) - 后端开发文档
+- [前端文档](./frontend/README.md) - 前端开发文档
+
 ## 下一步建议
 1. 将 `repositories` 接入真实数据库（Postgres/Redis）并实现查询/分页。
 2. 把 `telephony_adapter`、`llm_client` 接入目标供应商并在 services 中注入。
