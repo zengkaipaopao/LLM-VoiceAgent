@@ -9,7 +9,7 @@ import { EmptyState } from '../components/organisms/EmptyState';
  * 围绕业务样本微调模型表现,减少复杂提示词成本
  * 当前为空状态骨架,等待后续业务逻辑实现
  */
-export function PretrainingPage() {
+export function Pretraining() {
   const { t } = useTranslation(['pages', 'common']);
   
   return (

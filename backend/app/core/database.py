@@ -13,7 +13,7 @@ engine = create_engine(
     pool_size=5,              # Connection pool size
     max_overflow=10,          # Maximum overflow connections
     pool_recycle=3600,        # Recycle connections after 1 hour
-    echo=settings.debug       # Log SQL queries in debug mode
+    echo=False,  # 关闭 SQL 日志输出,保持终端清爽
 )
 
 # Create session factory

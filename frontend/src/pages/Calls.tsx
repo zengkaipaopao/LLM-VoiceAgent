@@ -19,7 +19,7 @@ import { CallLog } from '../types/shared';
 // Import dynamically to avoid circle if needed, or static is fine. Using static for cleanliness if possible, but the plan used import(). Stick to dynamic or standard import. Standard is better.
 import { fetchCalls } from '../api/calls';
 
-export function CallsPage() {
+export function Calls() {
   const { t } = useTranslation(['pages', 'common']);
   
   // Filters Configuration

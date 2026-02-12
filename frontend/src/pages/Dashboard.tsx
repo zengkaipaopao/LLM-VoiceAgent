@@ -17,7 +17,7 @@ import { StatCard } from '../components/molecules/StatCard';
 import { StatusIndicator, StatusType } from '../components/molecules/StatusIndicator';
 import { CallTrendChart } from '../components/organisms/CallTrendChart';
 import { useDashboardStats } from '../hooks/useDashboardStats';
-import './DashboardPage.scss';
+import styles from './Dashboard.module.scss';
 
 /**
  * DashboardPage - 仪表盘页面 - 预约管理中心
@@ -26,7 +26,7 @@ import './DashboardPage.scss';
  * 基于Carbon Design System设计规范
  * 数据从后端API实时获取
  */
-export function DashboardPage() {
+export function Dashboard() {
   const { t } = useTranslation(['pages', 'common']);
 
   // 获取Dashboard统计数据（固定最近7天）
@@ -39,8 +39,8 @@ export function DashboardPage() {
         title={t('pages:dashboard.title')}
         subtitle={t('pages:dashboard.subtitle')}
       >
-        <div className="dashboard">
-          <Grid fullWidth className="dashboard__stats">
+        <div className={styles.dashboard}>
+          <Grid fullWidth className={styles.dashboard__stats}>
             {/* 生成12个skeleton卡片 */}
             {[...Array(12)].map((_, i) => (
               <Column key={i} lg={4} md={4} sm={4}>
@@ -99,9 +99,9 @@ export function DashboardPage() {
       title={t('pages:dashboard.title')}
       subtitle={t('pages:dashboard.subtitle')}
     >
-      <div className="dashboard">
+      <div className={styles.dashboard}>
         {/* ==================== 统计卡片区 ==================== */}
-        <Grid fullWidth className="dashboard__stats">
+        <Grid fullWidth className={styles.dashboard__stats}>
           {/* Row 1: 通话统计 */}
           <Column lg={4} md={4} sm={4}>
             <StatCard
@@ -195,15 +195,15 @@ export function DashboardPage() {
         </Grid>
 
         {/* ==================== 通话趋势图 ==================== */}
-        <section className="dashboard__section">
+        <section className={styles.dashboard__section}>
           <CallTrendChart data={stats.trend} loading={isLoading} />
         </section>
 
         {/* ==================== 系统状态 ==================== */}
-        <section className="dashboard__section">
-          <Tile className="dashboard__system-status">
-            <h3 className="dashboard__section-title">{t('pages:dashboard.system.title')}</h3>
-            <div className="dashboard__status-grid">
+        <section className={styles.dashboard__section}>
+          <Tile className={styles.dashboard__systemStatus}>
+            <h3 className={styles.dashboard__sectionTitle}>{t('pages:dashboard.system.title')}</h3>
+            <div className={styles.dashboard__statusGrid}>
               <StatusIndicator
                 label={t('pages:dashboard.system.postgres')}
                 status={getDatabaseStatus()}

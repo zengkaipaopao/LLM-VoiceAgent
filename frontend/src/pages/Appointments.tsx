@@ -18,7 +18,7 @@ import { AppointmentDetailModal } from '../components/organisms/AppointmentDetai
 import { formatJapaneseDate, formatCallTime } from '../utils/formatters';
 import { Appointment, AppointmentsResponse } from '../types/shared';
 
-export function AppointmentsPage() {
+export function Appointments() {
   const { t } = useTranslation(['pages', 'common']);
   
   // Filters Configuration

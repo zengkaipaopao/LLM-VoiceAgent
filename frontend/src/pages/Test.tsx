@@ -10,7 +10,7 @@ import {
 } from '@carbon/react';
 import { PageTemplate } from '../components/templates/PageTemplate';
 import { testTabs } from '../config/navigation';
-import styles from './TestPage.module.scss';
+import styles from './Test.module.scss';
 
 /**
  * TestPage - 实时调试实验室页面
@@ -22,7 +22,7 @@ import styles from './TestPage.module.scss';
  * - 动态生成Tab UI和TabPanel，无需手动维护顺序
  * - 遵循 Carbon Design System Tabs 最佳实践
  */
-export function TestPage() {
+export function Test() {
   const { t } = useTranslation(['pages', 'common']);
   const [searchParams, setSearchParams] = useSearchParams();
   const [enableReviewer, setEnableReviewer] = useState(true);

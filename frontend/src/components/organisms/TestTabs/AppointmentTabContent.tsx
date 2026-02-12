@@ -1,5 +1,5 @@
 import { AppointmentSimulationTest } from '../AppointmentSimulation/AppointmentSimulationTest';
-import styles from '../../../pages/TestPage.module.scss';
+import styles from '../../../pages/Test.module.scss';
 
 /**
  * Appointment Tab内容组件

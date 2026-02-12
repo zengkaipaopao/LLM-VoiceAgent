@@ -98,4 +98,20 @@
     flex-direction: column;
     gap: $spacing-04;
   }
+
+  &__section {
+    margin-bottom: $spacing-06;
+  }
+
+  &__status-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: $spacing-05;
+  }
+
+  &__section-title {
+    @include type-style('productive-heading-03');
+    color: $text-primary;
+    margin: 0 0 $spacing-05 0;
+  }
 }

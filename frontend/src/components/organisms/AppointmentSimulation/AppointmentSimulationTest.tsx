@@ -17,8 +17,8 @@ import {
   ErrorFilled,
 } from '@carbon/icons-react';
 
-import { ScenarioSelector, Scenario } from '../../molecules/simulation/ScenarioSelector';
-import { BatchTestControl } from '../../molecules/simulation/BatchTestControl';
+import { ScenarioSelector, Scenario } from '../../molecules/Simulation/ScenarioSelector';
+import { BatchTestControl } from '../../molecules/Simulation/BatchTestControl';
 import styles from './AppointmentSimulationTest.module.scss';
 
 /**

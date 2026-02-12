@@ -1,11 +1,11 @@
 import { createBrowserRouter, Outlet } from 'react-router-dom';
-import { DashboardPage } from '../pages/DashboardPage';
-import { CallsPage } from '../pages/CallsPage';
-import { PromptsPage } from '../pages/PromptsPage';
-import { AppointmentsPage } from '../pages/AppointmentsPage';
-import { SettingsPage } from '../pages/SettingsPage';
-import { PretrainingPage } from '../pages/PretrainingPage';
-import { TestPage } from '../pages/TestPage';
+import { Dashboard } from '../pages/Dashboard';
+import { Calls } from '../pages/Calls';
+import { Prompts } from '../pages/Prompts';
+import { Appointments } from '../pages/Appointments';
+import { Settings } from '../pages/Settings';
+import { Pretraining } from '../pages/Pretraining';
+import { Test } from '../pages/Test';
 import { AppLayout } from '../components/templates/AppLayout/AppLayout';
 import { Theme } from '@carbon/react';
 import { Suspense } from 'react';
@@ -28,31 +28,31 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <DashboardPage />,
+        element: <Dashboard />,
       },
       {
         path: 'calls',
-        element: <CallsPage />,
+        element: <Calls />,
       },
       {
         path: 'appointments',
-        element: <AppointmentsPage />,
+        element: <Appointments />,
       },
       {
         path: 'prompts',
-        element: <PromptsPage />,
+        element: <Prompts />,
       },
       {
         path: 'pretraining',
-        element: <PretrainingPage />,
+        element: <Pretraining />,
       },
       {
         path: 'settings',
-        element: <SettingsPage />,
+        element: <Settings />,
       },
       {
         path: 'test',
-        element: <TestPage />,
+        element: <Test />,
       },
     ],
   },

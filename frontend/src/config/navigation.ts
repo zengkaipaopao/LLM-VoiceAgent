@@ -17,7 +17,7 @@ import {
   AppointmentTabContent, 
   WebSocketTabContent, 
   TwilioTabContent 
-} from '../components/organisms/test-tabs';
+} from '../components/organisms/TestTabs';
 
 export const navLinks = [
   { to: '/', label: 'dashboard', icon: Dashboard },

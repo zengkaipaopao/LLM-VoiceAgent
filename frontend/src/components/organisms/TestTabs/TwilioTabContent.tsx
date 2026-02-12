@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { EmptyState } from '../EmptyState';
-import styles from '../../../pages/TestPage.module.scss';
+import styles from '../../../pages/Test.module.scss';
 
 /**
  * Twilio Tab内容组件
