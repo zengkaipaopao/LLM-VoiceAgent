@@ -16,7 +16,8 @@ import {
   ReviewerTabContent, 
   AppointmentTabContent, 
   WebSocketTabContent, 
-  TwilioTabContent 
+  TwilioTabContent,
+  ChatTabContent
 } from '../components/organisms/TestTabs';
 
 export const navLinks = [
@@ -55,6 +56,12 @@ export const testTabs: TestTabConfig[] = [
     label: 'appointment', 
     icon: User,
     component: AppointmentTabContent
+  },
+  { 
+    id: 'chat', 
+    label: 'chat', 
+    icon: WatsonHealthAiStatus,
+    component: ChatTabContent
   },
   { 
     id: 'reviewer', 

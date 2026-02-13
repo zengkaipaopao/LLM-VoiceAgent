@@ -1,0 +1,70 @@
+.appointmentCard {
+  width: 100%;
+  background-color: var(--cds-layer-accent);
+  margin-top: var(--cds-spacing-05);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--cds-spacing-05);
+}
+
+.titleInfo {
+  display: flex;
+  align-items: center;
+  gap: var(--cds-spacing-03);
+}
+
+.summary {
+  margin: 0;
+  font-size: var(--cds-heading-01-font-size);
+  font-weight: 600;
+  color: var(--cds-text-primary);
+}
+
+.actions {
+  display: flex;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cds-spacing-03);
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: var(--cds-spacing-03);
+  font-size: var(--cds-body-short-01-font-size);
+}
+
+.icon {
+  color: var(--cds-icon-secondary);
+}
+
+.label {
+  color: var(--cds-text-secondary);
+  min-width: 40px;
+}
+
+.value {
+  color: var(--cds-text-primary);
+  font-weight: 500;
+}
+
+.footer {
+  margin-top: var(--cds-spacing-05);
+  padding-top: var(--cds-spacing-03);
+  border-top: 1px solid var(--cds-border-subtle);
+  display: flex;
+  align-items: center;
+  gap: var(--cds-spacing-03);
+}
+
+.confidenceLabel {
+  font-size: var(--cds-label-01-font-size);
+  color: var(--cds-text-secondary);
+}

@@ -169,10 +169,25 @@ export function SmartDataTable<T extends DataRow>({
   // Preserve rows reference for inner render prop access
   const tableRows = rows;
 
+  // Filter rows to only include id and header keys for Carbon DataTable
+  // This prevents passing complex objects like 'original' which might cause issues
+  const carbonDataRows = rows.map(r => {
+    const newRow: any = { id: r.id, isExpanded: r.isExpanded };
+    headers.forEach(h => {
+      if (r[h.key] !== undefined) {
+        newRow[h.key] = r[h.key];
+      }
+    });
+    return newRow;
+  });
+
   return (
     <div className={styles.container}>
-      <DataTable rows={rows.map(r => ({ ...r, id: r.id }))} headers={headers} isSortable>
-        {({
+      <DataTable
+        rows={carbonDataRows}
+        headers={headers}
+        isSortable
+        render={({
           rows: carbonRows,
           headers,
           getHeaderProps,
@@ -244,7 +259,7 @@ export function SmartDataTable<T extends DataRow>({
                       {filter.type === 'date-range' ? (
                         <DatePicker 
                           datePickerType="range"
-                          dateFormat="Y/m/d" // Changed to slash format which is more common/friendly
+                          dateFormat="Y/m/d" 
                           onChange={(dates: Date[]) => {
                             handleFilterSelect(filter.key, dates);
                           }}
@@ -289,12 +304,14 @@ export function SmartDataTable<T extends DataRow>({
             <Table {...getTableProps()}>
               <TableHead>
                 <TableRow>
-                  {renderExpandedRow && <TableExpandHeader />}
-                  {headers.map((header: any) => (
-                    <TableHeader key={header.key} {...getHeaderProps({ header })}>
-                      {header.header}
-                    </TableHeader>
-                  ))}
+                  {headers.map((header: any) => {
+                    const { key, ...headerProps } = getHeaderProps({ header });
+                    return (
+                      <TableHeader key={key} {...headerProps}>
+                        {header.header}
+                      </TableHeader>
+                    );
+                  })}
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -340,7 +357,7 @@ export function SmartDataTable<T extends DataRow>({
             </Table>
           </TableContainer>
         )}
-      </DataTable>
+      />
       
       {onPageChange && (
         <Pagination

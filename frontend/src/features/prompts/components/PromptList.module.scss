@@ -1,0 +1,11 @@
+@use '@carbon/styles/scss/theme' as *;
+@use '@carbon/styles/scss/colors' as *;
+
+.dangerButton {
+  color: $support-error;
+  
+  &:hover {
+    color: $text-on-color;
+    background-color: $support-error;
+  }
+}

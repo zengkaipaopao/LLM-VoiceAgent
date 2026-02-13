@@ -20,6 +20,7 @@
     "appointment": "予約シミュレーション",
     "reviewer": "レビュアーモード",
     "websocket": "WebSocket",
-    "twilio": "Twilio WebCall"
+    "twilio": "Twilio WebCall",
+    "chat": "LLMチャット"
   }
 }

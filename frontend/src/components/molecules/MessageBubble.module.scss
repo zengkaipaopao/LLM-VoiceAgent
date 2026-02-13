@@ -1,0 +1,114 @@
+.messageBubble {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cds-spacing-03);
+  margin-bottom: var(--cds-spacing-05);
+  max-width: 80%;
+
+  &.user {
+    align-self: flex-end;
+    
+    .messageHeader {
+      justify-content: flex-end;
+    }
+    
+    .messageContent {
+      background-color: var(--cds-layer-accent);
+    }
+  }
+
+  &.assistant {
+    align-self: flex-start;
+    
+    .messageContent {
+      background-color: var(--cds-layer);
+    }
+  }
+}
+
+.messageHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--cds-spacing-03);
+  padding: 0 var(--cds-spacing-03);
+}
+
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background-color: var(--cds-layer-accent);
+  color: var(--cds-text-primary);
+}
+
+.role {
+  font-size: var(--cds-body-compact-01-font-size);
+  font-weight: 600;
+  color: var(--cds-text-primary);
+}
+
+.timestamp {
+  font-size: var(--cds-label-01-font-size);
+  color: var(--cds-text-secondary);
+  margin-left: auto;
+}
+
+.messageContent {
+  padding: var(--cds-spacing-05);
+  
+  p {
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  // Markdown 样式
+  h1, h2, h3, h4, h5, h6 {
+    margin-top: var(--cds-spacing-05);
+    margin-bottom: var(--cds-spacing-03);
+    
+    &:first-child {
+      margin-top: 0;
+    }
+  }
+
+  ul, ol {
+    margin: var(--cds-spacing-03) 0;
+    padding-left: var(--cds-spacing-06);
+  }
+
+  code {
+    background-color: var(--cds-layer-accent);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.9em;
+  }
+
+  pre {
+    background-color: var(--cds-layer-accent);
+    padding: var(--cds-spacing-05);
+    border-radius: 4px;
+    overflow-x: auto;
+    
+    code {
+      background-color: transparent;
+      padding: 0;
+    }
+  }
+}
+
+.systemMessage {
+  text-align: center;
+  padding: var(--cds-spacing-03);
+  margin-bottom: var(--cds-spacing-05);
+  
+  p {
+    margin: 0;
+    font-size: var(--cds-label-01-font-size);
+    color: var(--cds-text-secondary);
+    font-style: italic;
+  }
+}

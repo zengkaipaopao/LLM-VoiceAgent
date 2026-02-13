@@ -2,7 +2,7 @@
 API v1 router.
 """
 from fastapi import APIRouter
-from app.api.v1.endpoints import calls, call_simulation, appointment_simulation
+from app.api.v1.endpoints import calls, call_simulation, appointment_simulation, prompts, chat
 
 api_router = APIRouter()
 

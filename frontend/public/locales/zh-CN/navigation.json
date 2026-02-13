@@ -20,6 +20,7 @@
     "appointment": "预约模拟",
     "reviewer": "审查员模式",
     "websocket": "WebSocket",
-    "twilio": "Twilio WebCall"
+    "twilio": "Twilio WebCall",
+    "chat": "LLM 聊天"
   }
 }

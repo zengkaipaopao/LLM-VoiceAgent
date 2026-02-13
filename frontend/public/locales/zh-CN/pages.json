@@ -116,7 +116,58 @@
   "prompts": {
     "title": "提示词管理",
     "subtitle": "配置和管理AI对话提示词",
-    "emptyState": "此页面正在开发中"
+    "emptyState": "此页面正在开发中",
+    "list": {
+      "headers": {
+        "name": "名称",
+        "code": "代号",
+        "model": "模型",
+        "temperature": "温度",
+        "updatedAt": "更新时间",
+        "actions": "操作"
+      },
+      "actions": {
+        "create": "新建 Agent",
+        "edit": "编辑",
+        "delete": "删除",
+        "deleteConfirm": "确定要删除这个提示词模板吗？"
+      },
+      "loading": "加载中..."
+    },
+    "editor": {
+      "title": {
+        "create": "新建 Agent",
+        "edit": "编辑 Agent"
+      },
+      "tabs": {
+        "general": "基本信息",
+        "model": "模型配置",
+        "prompt": "提示词",
+        "voice": "语音配置"
+      },
+      "fields": {
+        "name": "名称",
+        "namePlaceholder": "例如: 客服助手",
+        "code": "代号 (Code)",
+        "codePlaceholder": "例如: customer_support_v1",
+        "description": "描述",
+        "provider": "LLM 提供商",
+        "model": "模型名称",
+        "temperature": "温度",
+        "maxTokens": "最大 Token 数",
+        "systemPrompt": "系统提示词 (System Prompt)",
+        "extractionPrompt": "提取提示词 (Extraction Prompt)",
+        "extractionPromptHelper": "用于 JSON 提取的具体指令",
+        "userPrompt": "用户提示词 (User Prompt)",
+        "voiceProvider": "语音提供商",
+        "voiceId": "语音 ID"
+      },
+      "actions": {
+        "save": "保存",
+        "cancel": "取消",
+        "saving": "保存中..."
+      }
+    }
   },
   "settings": {
     "title": "系统设置",
@@ -137,6 +188,7 @@
       "ariaLabel": "测试选项",
       "simulation": "通话模拟",
       "appointment": "预约模拟",
+      "chat": "LLM 对话",
       "reviewer": "审查员模式",
       "websocket": "WebSocket",
       "twilio": "Twilio WebCall"

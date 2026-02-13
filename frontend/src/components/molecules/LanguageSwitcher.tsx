@@ -4,12 +4,13 @@ import { Dropdown } from '@carbon/react';
 interface LanguageOption {
   id: string;
   label: string;
+  flag: string;
 }
 
 const languages: LanguageOption[] = [
-  { id: 'zh-CN', label: '中文' },
-  { id: 'en-US', label: 'English' },
-  { id: 'ja-JP', label: '日本語' },
+  { id: 'zh-CN', label: '中文', flag: '🇨🇳' },
+  { id: 'en-US', label: 'English', flag: '🇺🇸' },
+  { id: 'ja-JP', label: '日本語', flag: '🇯🇵' },
 ];
 
 /**
@@ -31,8 +32,8 @@ export function LanguageSwitcher() {
 
   return (
     <div style={{ 
-      minWidth: '110px', 
-      maxWidth: '110px',
+      minWidth: '120px', 
+      maxWidth: '120px',
       marginRight: '0.5rem',
       display: 'flex',
       alignItems: 'center'
@@ -40,9 +41,9 @@ export function LanguageSwitcher() {
       <Dropdown
         id="language-switcher"
         titleText=""
-        label={currentLanguage.label}
+        label={`${currentLanguage.flag} ${currentLanguage.label}`}
         items={languages}
-        itemToString={(item) => (item ? item.label : '')}
+        itemToString={(item) => (item ? `${item.flag} ${item.label}` : '')}
         selectedItem={currentLanguage}
         onChange={handleLanguageChange}
         size="sm"

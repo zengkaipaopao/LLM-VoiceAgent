@@ -22,25 +22,65 @@ export interface CallLog {
 export interface PromptTemplate {
   id: string;
   name: string;
-  modelId: string;
+  code: string;
+  description?: string;
+  category?: string;
+  modelId?: string; // Legacy
+  
+  // LLM Config
+  llmProvider: string;
+  llmModel: string;
+  temperature: number;
+  maxTokens: number;
+  
+  // Content
   systemPrompt: string;
-  instructions: string;
+  extractionPrompt?: string;
+  extractionSchema?: Record<string, any>;
+  
+  // Output Config
+  responseFormat?: 'text' | 'json_object';
+  outputSchema?: Record<string, any>; // JSON schema
+  
+  // Voice Config
+  voiceProvider?: string;
+  voiceId?: string;
+  voiceSettings?: Record<string, any>;
+  
+  // Legacy fields mapped
+  instructions?: string;
   welcomeMessage?: string;
   closingMessage?: string;
-  capabilities: PromptCapabilities;
-  voiceConfig?: VoiceConfig;
+  capabilities?: PromptCapabilities;
+  voiceConfig?: VoiceConfig; // Legacy
+  
   updatedAt: string;
-  version: string;
+  version: number;
+  isActive: boolean;
 }
 
 export interface PromptFormValues {
   name: string;
-  modelId: string;
+  code: string;
+  description?: string;
+  category?: string;
+  
+  llmProvider: string;
+  llmModel: string;
+  temperature: number;
+  maxTokens: number;
+  
   systemPrompt: string;
-  welcomeMessage?: string;
-  closingMessage?: string;
-  capabilities: PromptCapabilities;
-  version: string;
+  extractionPrompt?: string;
+  
+  responseFormat?: 'text' | 'json_object';
+  outputSchema?: string; // String for editor
+  
+  voiceProvider?: string;
+  voiceId?: string;
+  
+  // Legacy
+  capabilities?: PromptCapabilities;
   voiceConfig?: VoiceConfig;
 }
 

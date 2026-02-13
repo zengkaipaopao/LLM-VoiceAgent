@@ -116,7 +116,58 @@
   "prompts": {
     "title": "プロンプト管理",
     "subtitle": "AI会話プロンプトの設定と管理",
-    "emptyState": "このページは開発中です"
+    "emptyState": "このページは開発中です",
+    "list": {
+      "headers": {
+        "name": "名前",
+        "code": "コード",
+        "model": "モデル",
+        "temperature": "温度",
+        "updatedAt": "更新日時",
+        "actions": "操作"
+      },
+      "actions": {
+        "create": "新規エージェント",
+        "edit": "編集",
+        "delete": "削除",
+        "deleteConfirm": "このプロンプトテンプレートを削除してもよろしいですか？"
+      },
+      "loading": "読み込み中..."
+    },
+    "editor": {
+      "title": {
+        "create": "新規エージェント",
+        "edit": "エージェント編集"
+      },
+      "tabs": {
+        "general": "基本情報",
+        "model": "モデル設定",
+        "prompt": "プロンプト",
+        "voice": "音声設定"
+      },
+      "fields": {
+        "name": "名前",
+        "namePlaceholder": "例: サポートボット",
+        "code": "コード",
+        "codePlaceholder": "例: support_v1",
+        "description": "説明",
+        "provider": "LLMプロバイダー",
+        "model": "モデル名",
+        "temperature": "温度",
+        "maxTokens": "最大トークン数",
+        "systemPrompt": "システムプロンプト",
+        "extractionPrompt": "抽出プロンプト (任意)",
+        "extractionPromptHelper": "JSON抽出のための具体的な指示",
+        "userPrompt": "ユーザープロンプト",
+        "voiceProvider": "音声プロバイダー",
+        "voiceId": "音声ID"
+      },
+      "actions": {
+        "save": "保存",
+        "cancel": "キャンセル",
+        "saving": "保存中..."
+      }
+    }
   },
   "settings": {
     "title": "システム設定",

@@ -8,3 +8,4 @@ export { ReviewerTabContent } from './ReviewerTabContent';
 export { AppointmentTabContent } from './AppointmentTabContent';
 export { WebSocketTabContent } from './WebSocketTabContent';
 export { TwilioTabContent } from './TwilioTabContent';
+export { ChatTabContent } from './ChatTabContent';

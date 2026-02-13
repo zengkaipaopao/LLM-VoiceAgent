@@ -20,6 +20,7 @@
     "appointment": "Appointment Sim",
     "reviewer": "Reviewer Mode",
     "websocket": "WebSocket",
-    "twilio": "Twilio WebCall"
+    "twilio": "Twilio WebCall",
+    "chat": "LLM Chat"
   }
 }
