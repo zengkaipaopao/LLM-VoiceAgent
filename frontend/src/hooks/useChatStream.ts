@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
+import { streamMessage, ChatRequest as ApiChatRequest } from '../api/chat';
 
 /**
  * Message 接口
@@ -98,25 +99,8 @@ export function useChatStream(
         call_id: callId || undefined
       };
 
-      // 发起 SSE 请求
-      const response = await fetch('/api/v1/chat/stream', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-        signal: abortControllerRef.current.signal
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      // 处理 SSE 流
-      const reader = response.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let assistantContent = '';
+      // 发起 SSE 请求并获取生成器
+      const stream = streamMessage(requestBody, abortControllerRef.current.signal);
 
       // 创建临时的 assistant 消息
       const assistantMessage: Message = {
@@ -126,57 +110,43 @@ export function useChatStream(
       };
       setMessages(prev => [...prev, assistantMessage]);
 
-      while (true) {
-        const { done, value } = await reader.read();
-        
-        if (done) break;
+      let assistantContent = '';
 
-        // 解码数据
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
+      for await (const event of stream) {
+        if (abortControllerRef.current.signal.aborted) {
+          break;
+        }
 
-        // 处理每一行
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const event: SSEEvent = JSON.parse(line.slice(6));
-
-              switch (event.type) {
-                case 'call_id':
-                  if (event.call_id) {
-                    setCallId(event.call_id);
-                  }
-                  break;
-
-                case 'content':
-                  if (event.content) {
-                    assistantContent += event.content;
-                    setMessages(prev => {
-                      const newMessages = [...prev];
-                      newMessages[newMessages.length - 1] = {
-                        ...assistantMessage,
-                        content: assistantContent
-                      };
-                      return newMessages;
-                    });
-                  }
-                  break;
-
-                case 'done':
-                  console.log('Stream completed');
-                  if (event.tokens_used) {
-                    setTotalTokens(prev => prev + event.tokens_used!);
-                  }
-                  break;
-
-                case 'error':
-                  throw new Error(event.error || 'Unknown error');
-              }
-            } catch (parseError) {
-              console.error('Failed to parse SSE event:', parseError);
+        switch (event.type) {
+          case 'call_id':
+            if (event.call_id) {
+              setCallId(event.call_id);
             }
-          }
+            break;
+
+          case 'content':
+            if (event.content) {
+              assistantContent += event.content;
+              setMessages(prev => {
+                const newMessages = [...prev];
+                newMessages[newMessages.length - 1] = {
+                  ...assistantMessage,
+                  content: assistantContent
+                };
+                return newMessages;
+              });
+            }
+            break;
+
+          case 'done':
+            console.log('Stream completed');
+            if (event.tokens_used) {
+              setTotalTokens(prev => prev + event.tokens_used!);
+            }
+            break;
+
+          case 'error':
+            throw new Error(event.error || 'Unknown error');
         }
       }
 

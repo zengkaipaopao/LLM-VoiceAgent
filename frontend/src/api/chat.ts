@@ -61,7 +61,7 @@ export interface PromptTemplateListResponse {
  * Send a chat message and get response.
  */
 export async function sendMessage(request: ChatRequest): Promise<ChatResponse> {
-  const response = await fetch(`${API_BASE}/chat/chat`, {
+  const response = await fetch(`${API_BASE}/chat`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -74,24 +74,30 @@ export async function sendMessage(request: ChatRequest): Promise<ChatResponse> {
     throw new Error(error.detail || 'Chat request failed');
   }
 
-  return response.json();
+  const json = await response.json();
+  return json.data;
 }
 
 /**
  * Stream chat messages using Server-Sent Events.
  */
-export async function* streamMessage(request: ChatRequest): AsyncGenerator<{
+export async function* streamMessage(
+  request: ChatRequest,
+  signal?: AbortSignal
+): AsyncGenerator<{
   type: 'call_id' | 'content' | 'done' | 'error';
   content?: string;
   call_id?: string;
   error?: string;
+  tokens_used?: number;
 }> {
-  const response = await fetch(`${API_BASE}/chat/chat/stream`, {
+  const response = await fetch(`${API_BASE}/chat/stream`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(request),
+    signal,
   });
 
   if (!response.ok) {
@@ -145,7 +151,8 @@ export async function extractAppointment(
     throw new Error(error.detail || 'Extraction failed');
   }
 
-  return response.json();
+  const json = await response.json();
+  return json.data;
 }
 
 /**
