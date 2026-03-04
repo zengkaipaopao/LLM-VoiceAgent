@@ -304,6 +304,7 @@ export function SmartDataTable<T extends DataRow>({
             <Table {...getTableProps()}>
               <TableHead>
                 <TableRow>
+                  {renderExpandedRow && <TableExpandHeader />}
                   {headers.map((header: any) => {
                     const { key, ...headerProps } = getHeaderProps({ header });
                     return (

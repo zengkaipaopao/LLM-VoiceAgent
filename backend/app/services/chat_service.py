@@ -248,7 +248,8 @@ class ChatService:
                 company=extraction_result.company,
                 appointment=appt_time,
                 category=extraction_result.category,
-                summary=extraction_result.summary,
+                summary=extraction_result.summary or extraction_result.appointment_content or "提取的预约信息",
+                operation="create",
                 raw_messages={
                     "extraction_source": "llm_chat",
                     "template_code": template_code,

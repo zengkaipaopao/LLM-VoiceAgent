@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal, Any, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 AppointmentOperation = Literal["create", "update", "delete", "cancel"]
@@ -15,17 +15,23 @@ class AppointmentBase(BaseModel):
     model_config = {"from_attributes": True}
     timestamp: datetime
     caller_name: str
-    company: str
+    company: Optional[str] = None
     appointment: datetime
-    category: str
-    amount: str
-    address: str
+    category: Optional[str] = None
+    amount: Optional[str] = None
+    address: Optional[str] = None
     summary: str
-    extra_request: str = ""
+    extra_request: Optional[str] = None
     raw_messages: Optional[Any] = None
-    operation: AppointmentOperation = "create"
+    operation: Optional[AppointmentOperation] = "create"
     is_handled: bool = False
-    extra_data: Optional[dict] = None  # Add this
+    extra_data: Optional[dict] = None
+
+    @field_validator("operation", mode="before")
+    @classmethod
+    def coerce_operation(cls, v: Any) -> str:
+        """将数据库中的 NULL operation 归一化为默认值 'create'"""
+        return v if v in ("create", "update", "delete", "cancel") else "create"
 
 class AppointmentRecord(AppointmentBase):
     id: UUID
