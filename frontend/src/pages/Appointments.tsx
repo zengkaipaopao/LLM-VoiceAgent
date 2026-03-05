@@ -5,6 +5,7 @@ import {
   Button,
   TableToolbarMenu,
   TableToolbarAction,
+  Dropdown,
 } from '@carbon/react';
 import {
   View,
@@ -16,10 +17,46 @@ import {
 import { PageTemplate } from '../components/templates/PageTemplate';
 import { AppointmentDetailModal } from '../components/organisms/AppointmentDetailModal/AppointmentDetailModal';
 import { formatJapaneseDate, formatCallTime } from '../utils/formatters';
-import { Appointment, AppointmentsResponse } from '../types/shared';
+import { Appointment, AppointmentsResponse, PromptTemplate } from '../types/shared';
 
 export function Appointments() {
   const { t } = useTranslation(['pages', 'common']);
+  
+  // State for available prompts
+  const [availablePrompts, setAvailablePrompts] = useState<PromptTemplate[]>([]);
+
+  // Fetch prompts on mount
+  useEffect(() => {
+    const fetchPrompts = async () => {
+      try {
+        const response = await fetch('/api/v1/prompts');
+        const data = await response.json();
+        // API returns { templates: [...], total: ... }
+        if (data && Array.isArray(data.templates)) {
+          setAvailablePrompts(data.templates);
+          
+          // Auto-select base_appointment or the first available prompt
+          const basePrompt = data.templates.find((p: any) => p.code === 'base_appointment');
+          if (basePrompt) {
+            setSelectedPromptId(basePrompt.id);
+          } else if (data.templates.length > 0) {
+            setSelectedPromptId(data.templates[0].id);
+          }
+        } else if (data && Array.isArray(data.data)) {
+          setAvailablePrompts(data.data);
+          
+          if (data.data.length > 0) setSelectedPromptId(data.data[0].id);
+        } else if (Array.isArray(data)) {
+          setAvailablePrompts(data);
+          
+          if (data.length > 0) setSelectedPromptId(data[0].id);
+        }
+      } catch (error) {
+        console.error('Failed to fetch prompts:', error);
+      }
+    };
+    fetchPrompts();
+  }, []);
   
   // Filters Configuration
   const filterConfig = useMemo(() => [
@@ -45,7 +82,7 @@ export function Appointments() {
         { label: t('pages:appointments.table.status.unhandled'), value: 'false' },
       ]
     }
-  ], [t]);
+  ], [t, availablePrompts]);
 
   // State
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -57,6 +94,10 @@ export function Appointments() {
   
   // Filter State
   const [selectedFilters, setSelectedFilters] = useState<Record<string, any[]>>({});
+  
+  // Try to set default to base_appointment if available, else first item, else empty string.
+  // We'll initialize as empty string and let useEffect set it once prompts load.
+  const [selectedPromptId, setSelectedPromptId] = useState<string>('');
 
   const [sortBy, setSortBy] = useState('timestamp');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -83,6 +124,10 @@ export function Appointments() {
       
       if (selectedFilters.is_handled?.length === 1) {
           params.append('is_handled', selectedFilters.is_handled[0]);
+      }
+      
+      if (selectedPromptId) {
+          params.append('prompt_id', selectedPromptId);
       }
 
       // Handle Date Range
@@ -122,12 +167,12 @@ export function Appointments() {
       return;
     }
     fetchAppointments();
-  }, [page, pageSize, searchQuery, selectedFilters, sortBy, sortOrder]);
+  }, [page, pageSize, searchQuery, selectedFilters, sortBy, sortOrder, selectedPromptId]);
 
 
 
-  // Table Configuration
-  const headers = useMemo(() => [
+  // Table Configuration Base
+  const baseHeaders = useMemo(() => [
     { key: 'timestamp', header: t('pages:appointments.table.headers.timestamp') },
     { key: 'appointment', header: t('pages:appointments.table.headers.appointment') },
     { key: 'operation', header: t('pages:appointments.table.headers.operation') },
@@ -140,27 +185,105 @@ export function Appointments() {
     { key: 'actions', header: t('pages:appointments.table.headers.actions') },
   ], [t]);
 
-  const tableRows = appointments.map((appt) => ({
-    id: appt.id,
-    timestamp: appt.timestamp,
-    appointment: appt.appointment,
-    operation: appt.operation || 'create',
-    is_handled: appt.is_handled,
-    caller_name: appt.caller_name,
-    company: appt.company || '-',
-    category: appt.category || '-',
-    amount: appt.amount || '-',
-    address: appt.address || '-',
-    summary: appt.summary || '-',
-    extra_request: appt.extra_request || '-',
-    raw: appt
-  }));
+  // Dynamically compute headers
+  const headers = useMemo(() => {
+    const dynamicKeys = new Set<string>();
+    
+    // 1. Try to get keys from the selected prompt's schema (even if data is empty)
+    const selectedPrompt = availablePrompts.find(p => p.id === selectedPromptId);
+    if (selectedPrompt) {
+       const schema: any = (selectedPrompt as any).extraction_schema || selectedPrompt.extractionSchema;
+       if (schema && schema.fields && Array.isArray(schema.fields)) {
+           schema.fields.forEach((f: any) => dynamicKeys.add(f.name));
+       } else if (schema && schema.properties) {
+           Object.keys(schema.properties).forEach(key => dynamicKeys.add(key));
+       }
+    }
+
+    // 2. Fallback: get keys from actual data
+    appointments.forEach(appt => {
+      if (appt.extracted_data) {
+        Object.keys(appt.extracted_data).forEach(key => {
+          // Skip internal or duplicate keys if necessary
+          dynamicKeys.add(key);
+        });
+      }
+    });
+    
+    const dynamicHeaders = Array.from(dynamicKeys).map(key => ({
+      key: `dynamic_${key}`,
+      header: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' '),
+    }));
+    
+    // Insert dynamic headers before the 'actions' column
+    const actionHeader = baseHeaders.find(h => h.key === 'actions');
+    
+    // If a specific prompt is selected (not 'all' and not base_appointment), might optionally hide some legacy base headers.
+    let otherHeaders = baseHeaders.filter(h => h.key !== 'actions');
+    
+    // For specific scenarios like hotel or flight, we only want timestamp, operation, and the dynamic ones.
+    const isCustomPrompt = availablePrompts.find(p => p.id === selectedPromptId && p.code !== 'base_appointment');
+          
+    if (isCustomPrompt) {
+        // Keep only essential system fields. Hide legacy base appointment fields like category, amount, etc.
+        const essentialKeys = ['timestamp', 'operation', 'is_handled'];
+        otherHeaders = otherHeaders.filter(h => essentialKeys.includes(h.key));
+    }
+    
+    return actionHeader 
+      ? [...otherHeaders, ...dynamicHeaders, actionHeader] 
+      : [...baseHeaders, ...dynamicHeaders];
+  }, [baseHeaders, appointments, availablePrompts, selectedPromptId]);
+
+  const tableRows = appointments.map((appt) => {
+    const rowContent: any = {
+      id: appt.id,
+      timestamp: appt.timestamp,
+      appointment: appt.appointment,
+      operation: appt.operation || 'create',
+      is_handled: appt.is_handled,
+      caller_name: appt.caller_name,
+      company: appt.company || '-',
+      category: appt.category || '-',
+      amount: appt.amount || '-',
+      address: appt.address || '-',
+      summary: appt.summary || '-',
+      extra_request: appt.extra_request || '-',
+      raw: appt
+    };
+    
+    if (appt.extracted_data) {
+      Object.entries(appt.extracted_data).forEach(([key, value]) => {
+        rowContent[`dynamic_${key}`] = typeof value === 'object' ? JSON.stringify(value) : value;
+      });
+    }
+    
+    return rowContent;
+  });
+
+  const promptDropdownItems = availablePrompts.map(p => ({ id: p.id, text: p.name }));
 
   return (
     <PageTemplate
       title={t('pages:appointments.title')}
       subtitle={t('pages:appointments.subtitle')}
     >
+      <div style={{ padding: '0 0 1rem 0', width: '320px' }}>
+        <Dropdown
+          id="prompt-switcher"
+          titleText="Select Prompt Context"
+          label="Select a prompt"
+          items={promptDropdownItems}
+          itemToString={(item: any) => (item ? item.text : '')}
+          selectedItem={promptDropdownItems.find(item => item.id === selectedPromptId) || null}
+          onChange={({ selectedItem }: any) => {
+            if (selectedItem) {
+              setSelectedPromptId(selectedItem.id);
+              setPage(1);
+            }
+          }}
+        />
+      </div>
       <SmartDataTable
         rows={tableRows}
         headers={headers}

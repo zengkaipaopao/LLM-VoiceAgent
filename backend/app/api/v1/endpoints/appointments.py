@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import datetime
+from uuid import UUID
 import math
 
 from app.api.deps import get_db
@@ -21,6 +22,8 @@ def list_appointments(
     search: Optional[str] = None,
     operation: Optional[str] = None,
     is_handled: Optional[bool] = None,
+    type_name: Optional[str] = None,
+    prompt_id: Optional[UUID] = None,
     db: Session = Depends(get_db)
 ):
     """
@@ -36,7 +39,9 @@ def list_appointments(
         end_date=end_date,
         search=search,
         operation=operation,
-        is_handled=is_handled
+        is_handled=is_handled,
+        type_name=type_name,
+        prompt_id=prompt_id
     )
     
     total_pages = math.ceil(total / page_size) if total > 0 else 0

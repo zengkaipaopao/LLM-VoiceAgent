@@ -250,6 +250,9 @@ class ChatService:
                 category=extraction_result.category,
                 summary=extraction_result.summary or extraction_result.appointment_content or "提取的预约信息",
                 operation="create",
+                prompt_id=template.id,
+                type_name=template.category or "general",
+                extracted_data=extraction_result.raw_data,
                 raw_messages={
                     "extraction_source": "llm_chat",
                     "template_code": template_code,

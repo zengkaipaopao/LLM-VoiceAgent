@@ -36,6 +36,11 @@ class Appointment(Base, TimestampMixin):
     
     # Meta
     extra_data = Column(JSONB)
+    
+    # Dynamic Schema Extensions
+    prompt_id = Column(UUID(as_uuid=True), ForeignKey('prompt_templates.id'), index=True)
+    type_name = Column(String(50), index=True)
+    extracted_data = Column(JSONB)
 
     def __repr__(self):
         return f"<Appointment {self.id} - {self.caller_name}>"

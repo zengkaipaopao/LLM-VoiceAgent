@@ -1,7 +1,7 @@
 # LLM Voice Agent - 系统架构文档
 
-**版本**: 2.0  
-**最后更新**: 2026-02-03  
+**版本**: 2.1  
+**最后更新**: 2026-03-04  
 **状态**: 生产就绪路线图
 
 ---
@@ -383,10 +383,10 @@ async def create_call(
 
 ```mermaid
 erDiagram
-    CALL ||--o{ EXTRACTED_INFO : contains
     CALL ||--o{ APPOINTMENT : creates
     CALL }o--|| PROMPT : uses
     CALL }o--|| AGENT_PROFILE : handled_by
+    APPOINTMENT }o--|| PROMPT : extracted_by
     
     CALL {
         uuid id PK
@@ -401,24 +401,18 @@ erDiagram
         jsonb metadata
     }
     
-    EXTRACTED_INFO {
-        uuid id PK
-        uuid call_id FK
-        string field_name
-        string field_value
-        float confidence
-        datetime extracted_at
-    }
-    
     APPOINTMENT {
         uuid id PK
         uuid call_id FK
+        uuid prompt_id FK
+        string type_name
         string customer_name
         string phone
         datetime appointment_time
         string service_type
         string status
         text notes
+        jsonb extracted_data
     }
     
     PROMPT {
@@ -463,38 +457,27 @@ CREATE TABLE calls (
 );
 ```
 
-#### extracted_info表
-
-```sql
-CREATE TABLE extracted_info (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    call_id UUID NOT NULL REFERENCES calls(id) ON DELETE CASCADE,
-    field_name VARCHAR(100) NOT NULL,
-    field_value TEXT NOT NULL,
-    confidence FLOAT CHECK (confidence >= 0 AND confidence <= 1),
-    extracted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_call_id (call_id),
-    INDEX idx_field_name (field_name)
-);
-```
-
 #### appointments表
 
 ```sql
 CREATE TABLE appointments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     call_id UUID REFERENCES calls(id),
+    prompt_id UUID REFERENCES prompt_templates(id),
+    type_name VARCHAR(100),
     customer_name VARCHAR(100) NOT NULL,
     phone VARCHAR(20) NOT NULL,
     appointment_time TIMESTAMP NOT NULL,
     service_type VARCHAR(50) NOT NULL,
     status VARCHAR(20) DEFAULT 'pending',
     notes TEXT,
+    extracted_data JSONB,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_appointment_time (appointment_time),
     INDEX idx_status (status),
-    INDEX idx_phone (phone)
+    INDEX idx_phone (phone),
+    INDEX idx_prompt_id (prompt_id)
 );
 ```
 

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, asc, or_, cast, String
 from typing import List, Optional, Tuple
 from datetime import datetime
+from uuid import UUID
 
 from app.repositories.base_repository import BaseRepository
 from app.models.appointment import Appointment
@@ -27,7 +28,9 @@ class AppointmentRepository(BaseRepository[Appointment]):
         end_date: Optional[datetime] = None,
         search: Optional[str] = None,
         operation: Optional[str] = None,
-        is_handled: Optional[bool] = None
+        is_handled: Optional[bool] = None,
+        type_name: Optional[str] = None,
+        prompt_id: Optional[UUID] = None
     ) -> Tuple[List[Appointment], int]:
         """
         Get paginated appointments with filtering and sorting.
@@ -43,6 +46,12 @@ class AppointmentRepository(BaseRepository[Appointment]):
 
         if is_handled is not None:
             query = query.filter(Appointment.is_handled == is_handled)
+            
+        if type_name:
+            query = query.filter(Appointment.type_name == type_name)
+            
+        if prompt_id:
+            query = query.filter(Appointment.prompt_id == prompt_id)
 
         if start_date:
             query = query.filter(Appointment.timestamp >= start_date)

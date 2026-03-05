@@ -26,6 +26,11 @@ class AppointmentBase(BaseModel):
     operation: Optional[AppointmentOperation] = "create"
     is_handled: bool = False
     extra_data: Optional[dict] = None
+    
+    # Dynamic Schema Extensions
+    prompt_id: Optional[UUID] = None
+    type_name: Optional[str] = None
+    extracted_data: Optional[dict] = None
 
     @field_validator("operation", mode="before")
     @classmethod
