@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback } from 'react';
-import { streamMessage, ChatRequest as ApiChatRequest } from '../api/chat';
 
 /**
  * Message 接口
@@ -99,8 +98,27 @@ export function useChatStream(
         call_id: callId || undefined
       };
 
-      // 发起 SSE 请求并获取生成器
-      const stream = streamMessage(requestBody, abortControllerRef.current.signal);
+      // 发起 SSE 请求并处理流
+      const response = await fetch('/api/v1/chat/stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
+        },
+        body: JSON.stringify(requestBody),
+        signal: abortControllerRef.current.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) {
+        throw new Error('No readable stream available');
+      }
 
       // 创建临时的 assistant 消息
       const assistantMessage: Message = {
@@ -111,42 +129,46 @@ export function useChatStream(
       setMessages(prev => [...prev, assistantMessage]);
 
       let assistantContent = '';
-
-      for await (const event of stream) {
-        if (abortControllerRef.current.signal.aborted) {
-          break;
-        }
-
-        switch (event.type) {
-          case 'call_id':
-            if (event.call_id) {
-              setCallId(event.call_id);
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) break;
+        
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const dataStr = line.substring(6).trim();
+            if (!dataStr) continue;
+            
+            try {
+              const eventResp = JSON.parse(dataStr);
+              
+              if (eventResp.type === 'call_id' && eventResp.call_id) {
+                setCallId(eventResp.call_id);
+              } else if (eventResp.type === 'content' && eventResp.content) {
+                assistantContent += eventResp.content;
+                setMessages(prev => {
+                  const newMessages = [...prev];
+                  newMessages[newMessages.length - 1] = {
+                    ...assistantMessage,
+                    content: assistantContent
+                  };
+                  return newMessages;
+                });
+              } else if (eventResp.type === 'error') {
+                throw new Error(eventResp.error || 'Server stream error');
+              } else if (eventResp.type === 'done') {
+                 if (eventResp.tokens_used) {
+                   setTotalTokens(prev => prev + eventResp.tokens_used!);
+                 }
+              }
+            } catch (e) {
+              // Not JSON or partial chunk, ignore
             }
-            break;
-
-          case 'content':
-            if (event.content) {
-              assistantContent += event.content;
-              setMessages(prev => {
-                const newMessages = [...prev];
-                newMessages[newMessages.length - 1] = {
-                  ...assistantMessage,
-                  content: assistantContent
-                };
-                return newMessages;
-              });
-            }
-            break;
-
-          case 'done':
-            console.log('Stream completed');
-            if (event.tokens_used) {
-              setTotalTokens(prev => prev + event.tokens_used!);
-            }
-            break;
-
-          case 'error':
-            throw new Error(event.error || 'Unknown error');
+          }
         }
       }
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import axios from 'axios';
+import { http } from '../../../api/http';
 import {
   InlineNotification,
   CodeSnippet,
@@ -39,7 +39,6 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const API_BASE = 'http://localhost:8000/api/v1';
 
   // 场景配置
   const scenarios: Scenario[] = [
@@ -82,8 +81,8 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
     setResult(null);
     
     try {
-      const response = await axios.post(
-        `${API_BASE}/calls/simulate/incoming`,
+      const response = await http.post(
+        `/calls/simulate/incoming`,
         null,
         { 
           params: { 
@@ -109,8 +108,8 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
     setResult(null);
     
     try {
-      const response = await axios.post(
-        `${API_BASE}/calls/simulate/batch`,
+      const response = await http.post(
+        `/calls/simulate/batch`,
         null,
         { 
           params: { 
@@ -138,7 +137,7 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
     setResult(null);
     
     try {
-      const response = await axios.delete(`${API_BASE}/calls/simulate/clear-test-data`);
+      const response = await http.delete(`/calls/simulate/clear-test-data`);
       setResult({
         ...response.data,
         _message: t('pages:test.simulation.status.clearSuccess', { count: response.data.deleted_count })

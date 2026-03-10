@@ -34,61 +34,48 @@ class AppointmentService:
         self.db = db
         self.repo = AppointmentRepository(db)
     
-    def list_appointments(
+    def get_paginated_appointments(
         self,
         page: int = 1,
         page_size: int = 20,
-        sort_by: str = "appointment_time",
+        sort_by: str = "timestamp",
         order: str = "desc",
-        status: Optional[str] = None,
         start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None
+        end_date: Optional[datetime] = None,
+        search: Optional[str] = None,
+        operation: Optional[str] = None,
+        is_handled: Optional[bool] = None,
+        type_name: Optional[str] = None,
+        prompt_id: Optional[UUID] = None
     ) -> Tuple[List[Appointment], int]:
         """
         List appointments with pagination and filtering.
-        
-        Args:
-            page: Page number (1-indexed)
-            page_size: Items per page
-            sort_by: Field to sort by
-            order: Sort order (asc/desc)
-            status: Filter by status
-            start_date: Filter by start date (>=)
-            end_date: Filter by end date (<=)
-            
-        Returns:
-            Tuple of (appointments list, total count)
         """
-        # TODO: Add business logic here if needed
-        # - Permission checks
-        # - Logging/audit
-        # - Additional filtering
-        
         return self.repo.get_paginated(
             page=page,
             page_size=page_size,
             sort_by=sort_by,
             order=order,
-            status=status,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
+            search=search,
+            operation=operation,
+            is_handled=is_handled,
+            type_name=type_name,
+            prompt_id=prompt_id
         )
     
     def get_appointment_by_id(self, appointment_id: UUID) -> Optional[Appointment]:
         """
         Get appointment by ID.
-        
-        Args:
-            appointment_id: Appointment UUID
-            
-        Returns:
-            Appointment object or None if not found
         """
-        # TODO: Add business logic here if needed
-        # - Permission checks
-        # - Logging
-        
         return self.repo.get_by_id(appointment_id)
+        
+    def handle_appointment(self, appointment_id: str) -> Optional[Appointment]:
+        """
+        Mark an appointment as handled via service.
+        """
+        return self.repo.mark_as_handled(appointment_id, True)
     
     def get_upcoming_appointments(self, limit: int = 10) -> List[Appointment]:
         """

@@ -27,21 +27,4 @@ SessionLocal = sessionmaker(
 Base = declarative_base()
 
 
-# Dependency for FastAPI
-def get_db():
-    """
-    Database session dependency for FastAPI.
-    
-    Yields:
-        Session: SQLAlchemy database session
-        
-    Example:
-        @router.get("/items")
-        def get_items(db: Session = Depends(get_db)):
-            return db.query(Item).all()
-    """
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+

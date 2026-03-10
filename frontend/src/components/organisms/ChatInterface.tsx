@@ -82,7 +82,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     a.download = `chat-${callId || 'new'}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    URL.revokeObjectURL(url);
   };
 
   return (

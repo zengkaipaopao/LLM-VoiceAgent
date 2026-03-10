@@ -2,9 +2,9 @@
 Call repository for data access.
 """
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, asc, or_, and_, func
+from sqlalchemy import desc, asc, or_, and_
 from typing import List, Optional, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from app.repositories.base_repository import BaseRepository
 from app.models.call import Call, CallStatus
@@ -87,80 +87,7 @@ class CallRepository(BaseRepository[Call]):
             .filter(Call.status == CallStatus.ONGOING)\
             .all()
     
-    def get_paginated(
-        self,
-        page: int = 1,
-        page_size: int = 20,
-        sort_by: str = "started_at",
-        order: str = "desc",
-        status: Optional[str] = None,
-        handler_type: Optional[str] = None,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
-        search: Optional[str] = None
-    ) -> Tuple[List[Call], int]:
-        """
-        Get paginated calls with filtering and sorting.
-        
-        Args:
-            page: Page number (1-indexed)
-            page_size: Items per page
-            sort_by: Field to sort by
-            order: Sort order (asc/desc)
-            status: Filter by status
-            handler_type: Filter by handler type
-            start_date: Filter by start date (>=)
-            end_date: Filter by end date (<=)
-            search: Search in caller_name or counterpart
-            
-        Returns:
-            Tuple of (calls list, total count)
-        """
-        query = self.db.query(Call)
-        
-        # Apply filters
-        if status:
-            if ',' in status:
-                query = query.filter(Call.status.in_(status.split(',')))
-            else:
-                query = query.filter(Call.status == status)
-        
-        if handler_type:
-            if ',' in handler_type:
-                query = query.filter(Call.handler_type.in_(handler_type.split(',')))
-            else:
-                query = query.filter(Call.handler_type == handler_type)
-        
-        if start_date:
-            query = query.filter(Call.started_at >= start_date)
-        
-        if end_date:
-            query = query.filter(Call.started_at <= end_date)
-        
-        if search:
-            search_pattern = f"%{search}%"
-            query = query.filter(
-                or_(
-                    Call.caller_name.ilike(search_pattern),
-                    Call.counterpart.ilike(search_pattern)
-                )
-            )
-        
-        # Get total count before pagination
-        total = query.count()
-        
-        # Apply sorting
-        sort_column = getattr(Call, sort_by, Call.started_at)
-        if order == "asc":
-            query = query.order_by(asc(sort_column))
-        else:
-            query = query.order_by(desc(sort_column))
-        
-        # Apply pagination
-        skip = (page - 1) * page_size
-        calls = query.offset(skip).limit(page_size).all()
-        
-        return calls, total
+
 
     def get_paginated(
         self,

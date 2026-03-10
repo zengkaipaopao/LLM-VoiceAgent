@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 import json
 
-from app.core.database import get_db
+from app.api.deps import get_db
 from app.schemas.chat import (
     ChatRequest,
     ChatResponse,
@@ -63,9 +63,10 @@ async def chat_stream(
     except Exception as e:
         import traceback
         traceback.print_exc()
+        err_msg = str(e)
         # Return a simple error stream if initialized failure
         async def _error_stream():
-            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'error': err_msg})}\n\n"
         return StreamingResponse(
             _error_stream(),
             media_type="text/event-stream"
@@ -83,7 +84,11 @@ async def extract_appointment(
     try:
         service = ChatService(db)
         extraction_data = await service.extract_appointment(request)
-        return ResponseBase(success=True, data=extraction_data)
+        return ResponseBase(
+            success=extraction_data.success,
+            message=extraction_data.message,
+            data=extraction_data
+        )
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

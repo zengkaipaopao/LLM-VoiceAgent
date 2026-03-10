@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from uuid import UUID
 
-from app.core.database import get_db
+from app.api.deps import get_db
 # Use new schemas
 from app.schemas.prompt_template import (
     PromptTemplateCreate,

@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchAgents } from './agents';
 import { fetchCalls, FetchCallsParams } from './calls';
 import { fetchAppointments, submitAppointmentRecord, AppointmentRecordPayload } from './appointments';
-import { fetchAllowedModels, fetchModels, updateAllowedModels } from './models';
 import { createPrompt, deletePrompt, fetchPrompts, updatePrompt } from './prompts';
 import { PromptFormValues, PromptTemplate, ReservationRecord } from '../types/shared';
 
@@ -23,21 +22,6 @@ export function usePromptsQuery() {
   });
 }
 
-export function useModelsQuery() {
-  return useQuery({
-    queryKey: ['models'],
-    queryFn: fetchModels,
-    staleTime: 60_000,
-  });
-}
-
-export function useAllowedModelsQuery() {
-  return useQuery({
-    queryKey: ['models', 'allowed'],
-    queryFn: fetchAllowedModels,
-    staleTime: 60_000,
-  });
-}
 
 export function useAppointmentsQuery() {
   return useQuery({
@@ -91,15 +75,6 @@ export function useDeletePromptMutation() {
   });
 }
 
-export function useUpdateAllowedModelsMutation() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (ids: string[]) => updateAllowedModels(ids),
-    onSuccess: (updated) => {
-      queryClient.setQueryData<string[]>(['models', 'allowed'], updated);
-    },
-  });
-}
 
 export function useCreateAppointmentMutation() {
   const queryClient = useQueryClient();

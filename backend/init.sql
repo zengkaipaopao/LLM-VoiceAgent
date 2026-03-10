@@ -84,7 +84,7 @@ CREATE INDEX IF NOT EXISTS idx_calls_sip_call_id ON calls(sip_call_id);
 -- ========================================
 -- Prompt模板表
 -- ========================================
-CREATE TABLE IF NOT EXISTS prompts (
+CREATE TABLE IF NOT EXISTS prompt_templates (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(100) NOT NULL,
     model_id VARCHAR(50) NOT NULL,
@@ -100,9 +100,9 @@ CREATE TABLE IF NOT EXISTS prompts (
 );
 
 -- 索引
-CREATE INDEX IF NOT EXISTS idx_prompts_name ON prompts(name);
-CREATE INDEX IF NOT EXISTS idx_prompts_model_id ON prompts(model_id);
-CREATE INDEX IF NOT EXISTS idx_prompts_capabilities ON prompts USING GIN (capabilities);
+CREATE INDEX IF NOT EXISTS idx_prompt_templates_name ON prompt_templates(name);
+CREATE INDEX IF NOT EXISTS idx_prompt_templates_model_id ON prompt_templates(model_id);
+CREATE INDEX IF NOT EXISTS idx_prompt_templates_capabilities ON prompt_templates USING GIN (capabilities);
 
 -- ========================================
 -- 预约记录表
@@ -120,7 +120,7 @@ CREATE TABLE IF NOT EXISTS appointments (
     summary TEXT,
     extra_request TEXT,
     raw_messages JSONB,
-    operation VARCHAR(10) CHECK (operation IN ('create', 'update', 'delete')),
+    operation VARCHAR(10) CHECK (operation IN ('create', 'update', 'delete', 'cancel')),
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
@@ -160,7 +160,7 @@ CREATE TABLE IF NOT EXISTS models (
 ALTER TABLE calls 
     ADD CONSTRAINT fk_calls_prompt 
     FOREIGN KEY (prompt_id) 
-    REFERENCES prompts(id) 
+    REFERENCES prompt_templates(id) 
     ON DELETE SET NULL;
 
 -- ========================================
@@ -184,7 +184,7 @@ $$ language 'plpgsql';
 CREATE TRIGGER update_calls_updated_at BEFORE UPDATE ON calls
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_prompts_updated_at BEFORE UPDATE ON prompts
+CREATE TRIGGER update_prompt_templates_updated_at BEFORE UPDATE ON prompt_templates
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_appointments_updated_at BEFORE UPDATE ON appointments
@@ -197,7 +197,7 @@ CREATE TRIGGER update_agents_updated_at BEFORE UPDATE ON agents
 -- 完成
 -- ========================================
 COMMENT ON TABLE calls IS '通话记录表';
-COMMENT ON TABLE prompts IS 'Prompt模板表';
+COMMENT ON TABLE prompt_templates IS 'Prompt模板表';
 COMMENT ON TABLE appointments IS '预约记录表';
 COMMENT ON TABLE agents IS 'Agent配置表';
 COMMENT ON TABLE models IS '支持的LLM模型表';

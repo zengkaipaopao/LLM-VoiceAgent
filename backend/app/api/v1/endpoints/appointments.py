@@ -6,7 +6,7 @@ from uuid import UUID
 import math
 
 from app.api.deps import get_db
-from app.repositories.appointment_repository import AppointmentRepository
+from app.services.appointment_service import AppointmentService
 from app.schemas.appointments import AppointmentsResponse, AppointmentResponse
 
 router = APIRouter()
@@ -29,8 +29,8 @@ def list_appointments(
     """
     List appointments (read-only for simulation results).
     """
-    repo = AppointmentRepository(db)
-    items, total = repo.get_paginated(
+    service = AppointmentService(db)
+    items, total = service.get_paginated_appointments(
         page=page,
         page_size=page_size,
         sort_by=sort_by,
@@ -63,8 +63,8 @@ def handle_appointment(
     """
     Mark an appointment as handled.
     """
-    repo = AppointmentRepository(db)
-    appointment = repo.mark_as_handled(appointment_id, True)
+    service = AppointmentService(db)
+    appointment = service.handle_appointment(appointment_id)
     
     if not appointment:
         from fastapi import HTTPException

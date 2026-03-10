@@ -148,11 +148,17 @@ export function Appointments() {
       }
 
       const response = await fetch(`/api/v1/appointments?${params}`);
-      const data: AppointmentsResponse = await response.json();
+      const data: any = await response.json();
 
-      if (data) {
+      if (data && Array.isArray(data.items)) {
         setAppointments(data.items);
-        setTotal(data.total);
+        setTotal(data.total || 0);
+      } else if (data && data.success && data.data && Array.isArray(data.data.items)) {
+        setAppointments(data.data.items);
+        setTotal(data.data.total || 0);
+      } else {
+        setAppointments([]);
+        setTotal(0);
       }
     } catch (error) {
       console.error('Failed to fetch appointments:', error);

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Button, Loading, InlineNotification } from '@carbon/react';
-import { WatsonHealthTextAnnotationToggle, CheckmarkFilled, WarningFilled } from '@carbon/icons-react';
+import { WatsonHealthTextAnnotationToggle, CheckmarkFilled } from '@carbon/icons-react';
 import { AppointmentCard } from '../molecules/AppointmentCard';
 import styles from './ExtractionPanel.module.scss';
 
@@ -53,14 +53,18 @@ export const ExtractionPanel: React.FC<ExtractionPanelProps> = ({
       }
 
       const result = await response.json();
-      
-      if (!result.success) {
-        throw new Error(result.message || 'Extraction failed');
+
+      // Compatible with both envelope and raw payloads.
+      const payload = result?.data ?? result;
+      const ok = result?.success ?? payload?.success;
+      if (!ok) {
+        throw new Error(result?.message || payload?.message || 'Extraction failed');
       }
 
-      setData(result.extracted_data);
+      const extracted = payload?.extracted_data ?? {};
+      setData(extracted);
       if (onExtractionComplete) {
-        onExtractionComplete(result.extracted_data);
+        onExtractionComplete(extracted);
       }
     } catch (err: any) {
       setError(err.message || 'Unknown error occurred during extraction');
