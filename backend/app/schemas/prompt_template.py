@@ -1,7 +1,7 @@
 """
 Prompt Template Pydantic schemas.
 """
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, ConfigDict, Field, validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from uuid import UUID
@@ -78,8 +78,7 @@ class PromptTemplateResponse(PromptTemplateBase):
     updated_at: datetime
     version: int
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PromptTemplateListResponse(BaseModel):

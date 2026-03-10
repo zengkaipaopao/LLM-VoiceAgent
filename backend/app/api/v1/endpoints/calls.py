@@ -16,13 +16,13 @@ def list_calls(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     sort_by: str = Query("started_at"),
-    order: str = Query("desc", regex="^(asc|desc)$"),
+    order: str = Query("desc", pattern="^(asc|desc)$"),
     status: Optional[str] = None,
     handler_type: Optional[str] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
     search: Optional[str] = None,
-    filter_match: str = Query("and", regex="^(and|or)$"),
+    filter_match: str = Query("and", pattern="^(and|or)$"),
     db: Session = Depends(get_db)
 ):
     """
