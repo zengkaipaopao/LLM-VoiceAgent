@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { fetchAgents } from './agents';
 import { fetchCalls, FetchCallsParams } from './calls';
-import { fetchAppointments, submitAppointmentRecord, AppointmentRecordPayload } from './appointments';
 import { createPrompt, deletePrompt, fetchPrompts, updatePrompt } from './prompts';
 import { PromptFormValues, PromptTemplate, ReservationRecord } from '../types/shared';
 
@@ -22,13 +21,6 @@ export function usePromptsQuery() {
   });
 }
 
-
-export function useAppointmentsQuery() {
-  return useQuery({
-    queryKey: ['appointments'],
-    queryFn: fetchAppointments,
-  });
-}
 
 export function useAgentsQuery() {
   return useQuery({
@@ -76,16 +68,4 @@ export function useDeletePromptMutation() {
 }
 
 
-export function useCreateAppointmentMutation() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (payload: AppointmentRecordPayload) => submitAppointmentRecord(payload),
-    onSuccess: (created) => {
-      queryClient.setQueryData<ReservationRecord[]>(['appointments'], (prev) => {
-        if (!prev) return [created];
-        const filtered = prev.filter((item) => item.id !== created.id);
-        return [created, ...filtered];
-      });
-    },
-  });
-}
+

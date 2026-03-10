@@ -12,7 +12,7 @@ from app.schemas.base import ResponseBase
 
 router = APIRouter()
 
-@router.post("/incoming", response_model=AppointmentRecord)
+@router.post("/incoming", response_model=ResponseBase[AppointmentRecord])
 def simulate_incoming_appointment(
     scenario: str = Query(
         "new",
@@ -26,9 +26,9 @@ def simulate_incoming_appointment(
     service = AppointmentSimulationService(db)
     appt = service.simulate_appointment(scenario)
     
-    return AppointmentRecord.model_validate(appt)
+    return ResponseBase(success=True, data=AppointmentRecord.model_validate(appt))
 
-@router.post("/batch", response_model=List[AppointmentRecord])
+@router.post("/batch", response_model=ResponseBase[List[AppointmentRecord]])
 def simulate_batch_appointments(
     count: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db)
@@ -39,9 +39,9 @@ def simulate_batch_appointments(
     service = AppointmentSimulationService(db)
     appts = service.simulate_batch_appointments(count)
     
-    return [AppointmentRecord.model_validate(appt) for appt in appts]
+    return ResponseBase(success=True, data=[AppointmentRecord.model_validate(appt) for appt in appts])
 
-@router.delete("/clear-test-data", response_model=dict)
+@router.delete("/clear-test-data", response_model=ResponseBase[dict])
 def clear_test_data(db: Session = Depends(get_db)):
     """
     🧹 Clear all simulated appointments.
@@ -49,4 +49,4 @@ def clear_test_data(db: Session = Depends(get_db)):
     service = AppointmentSimulationService(db)
     deleted = service.clear_test_data()
     
-    return {"deleted_count": deleted, "success": True}
+    return ResponseBase(success=True, data={"deleted_count": deleted})

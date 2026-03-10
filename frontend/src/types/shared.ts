@@ -122,7 +122,7 @@ export interface ReservationRecord {
   summary: string;
   extraRequest: string;
   rawMessages: string;
-  operation: 'create' | 'update' | 'delete';
+  operation: 'create' | 'update' | 'delete' | 'cancel';
 }
 
 export interface Appointment {

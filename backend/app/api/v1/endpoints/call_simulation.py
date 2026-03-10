@@ -14,7 +14,7 @@ router = APIRouter()  # 移除prefix,在routes.py中统一管理
 
 
 
-@router.post("/incoming", response_model=CallResponse)
+@router.post("/incoming", response_model=ResponseBase[CallResponse])
 def simulate_incoming_call(
     scenario: str = Query(
         "ai_handled",
@@ -28,10 +28,10 @@ def simulate_incoming_call(
     service = CallSimulationService(db)
     call = service.simulate_incoming_call(scenario)
     
-    return CallResponse.model_validate(call)
+    return ResponseBase(success=True, data=CallResponse.model_validate(call))
 
 
-@router.post("/batch", response_model=List[CallResponse])
+@router.post("/batch", response_model=ResponseBase[List[CallResponse]])
 def simulate_batch_calls(
     count: int = Query(10, ge=1, le=100, description="Number of calls to simulate"),
     enable_reviewer: bool = Query(True, description="Enable AI Reviewer (generate confidence score)"),
@@ -43,10 +43,10 @@ def simulate_batch_calls(
     service = CallSimulationService(db)
     calls = service.simulate_batch_calls(count, enable_reviewer)
     
-    return [CallResponse.model_validate(call) for call in calls]
+    return ResponseBase(success=True, data=[CallResponse.model_validate(call) for call in calls])
 
 
-@router.delete("/clear-test-data", response_model=dict)
+@router.delete("/clear-test-data", response_model=ResponseBase[dict])
 def clear_test_data(db: Session = Depends(get_db)):
     """
     🧹 Clear all simulated test calls.
@@ -60,4 +60,4 @@ def clear_test_data(db: Session = Depends(get_db)):
     
     db.commit()
     
-    return {"deleted_count": deleted, "success": True}
+    return ResponseBase(success=True, data={"deleted_count": deleted})

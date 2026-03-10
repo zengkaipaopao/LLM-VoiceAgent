@@ -22,19 +22,20 @@ class ResponseBase(BaseModel, Generic[DataT]):
     data: Optional[DataT] = None
 
 
+class PaginationMeta(BaseModel):
+    page: int
+    page_size: int
+    total_items: int
+    total_pages: int
+
+class PaginatedMetaWrapper(BaseModel):
+    pagination: PaginationMeta
+
 class PaginatedResponse(BaseModel, Generic[DataT]):
     """
     Paginated response model.
-    
-    Attributes:
-        items: List of items
-        total: Total number of items
-        page: Current page number
-        page_size: Number of items per page
-        total_pages: Total number of pages
     """
-    items: list[DataT]
-    total: int
-    page: int
-    page_size: int
-    total_pages: int
+    success: bool = True
+    message: str = "Success"
+    data: list[DataT]
+    meta: PaginatedMetaWrapper

@@ -7,6 +7,7 @@ import math
 from app.api.deps import get_db
 from app.services.call_service import CallService
 from app.schemas.call import CallListResponse, CallResponse
+from app.schemas.base import PaginationMeta, PaginatedMetaWrapper
 
 router = APIRouter()
 
@@ -47,9 +48,15 @@ def list_calls(
     total_pages = math.ceil(total / page_size) if total > 0 else 0
     
     return CallListResponse(
-        items=[CallResponse.model_validate(item) for item in items],
-        total=total,
-        page=page,
-        page_size=page_size,
-        total_pages=total_pages
+        success=True,
+        message="Success",
+        data=[CallResponse.model_validate(item) for item in items],
+        meta=PaginatedMetaWrapper(
+            pagination=PaginationMeta(
+                page=page,
+                page_size=page_size,
+                total_items=total,
+                total_pages=total_pages
+            )
+        )
     )

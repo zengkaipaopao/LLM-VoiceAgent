@@ -6,10 +6,11 @@ from typing import List, Dict
 
 from app.core.config import settings
 from app.services.llm.factory import LLMFactory
+from app.schemas.base import ResponseBase
 
 router = APIRouter()
 
-@router.get("/models", response_model=Dict[str, List[str]])
+@router.get("/models", response_model=ResponseBase[Dict[str, List[str]]])
 async def list_models(
     provider: str = Query(..., description="LLM provider name (gemini, openai, claude)")
 ):
@@ -25,7 +26,7 @@ async def list_models(
         # Call factory to get models
         models = await LLMFactory.get_models(provider, api_key)
         
-        return {"models": models}
+        return ResponseBase(success=True, data={"models": models})
         
     except ValueError as e:
         raise HTTPException(

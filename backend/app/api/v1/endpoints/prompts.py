@@ -14,12 +14,13 @@ from app.schemas.prompt_template import (
     PromptTemplateResponse,
     PromptTemplateListResponse
 )
+from app.schemas.base import ResponseBase
 from app.services.prompt_service import PromptService
 
 router = APIRouter()
 
 
-@router.get("", response_model=PromptTemplateListResponse)
+@router.get("", response_model=ResponseBase[PromptTemplateListResponse])
 async def list_templates(
     category: Optional[str] = None,
     active_only: bool = True,
@@ -31,13 +32,16 @@ async def list_templates(
     prompt_service = PromptService(db)
     templates = prompt_service.list_templates(category=category, active_only=active_only)
     
-    return PromptTemplateListResponse(
-        templates=[PromptTemplateResponse.from_orm(t) for t in templates],
-        total=len(templates)
+    return ResponseBase(
+        success=True,
+        data=PromptTemplateListResponse(
+            templates=[PromptTemplateResponse.from_orm(t) for t in templates],
+            total=len(templates)
+        )
     )
 
 
-@router.get("/{template_id}", response_model=PromptTemplateResponse)
+@router.get("/{template_id}", response_model=ResponseBase[PromptTemplateResponse])
 async def get_template(
     template_id: UUID,
     db: Session = Depends(get_db)
@@ -54,10 +58,10 @@ async def get_template(
             detail=f"Template {template_id} not found"
         )
     
-    return PromptTemplateResponse.from_orm(template)
+    return ResponseBase(success=True, data=PromptTemplateResponse.from_orm(template))
 
 
-@router.get("/code/{code}", response_model=PromptTemplateResponse)
+@router.get("/code/{code}", response_model=ResponseBase[PromptTemplateResponse])
 async def get_template_by_code(
     code: str,
     db: Session = Depends(get_db)
@@ -74,10 +78,10 @@ async def get_template_by_code(
             detail=f"Template '{code}' not found"
         )
     
-    return PromptTemplateResponse.from_orm(template)
+    return ResponseBase(success=True, data=PromptTemplateResponse.from_orm(template))
 
 
-@router.post("", response_model=PromptTemplateResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ResponseBase[PromptTemplateResponse], status_code=status.HTTP_201_CREATED)
 async def create_template(
     template_in: PromptTemplateCreate,
     db: Session = Depends(get_db)
@@ -95,15 +99,14 @@ async def create_template(
         )
     
     # Create template
-    # Since PromptService.create_template accepts kwargs, we can unpack dict
     template = prompt_service.create_template(
         **template_in.dict()
     )
     
-    return PromptTemplateResponse.from_orm(template)
+    return ResponseBase(success=True, data=PromptTemplateResponse.from_orm(template))
 
 
-@router.put("/{template_id}", response_model=PromptTemplateResponse)
+@router.put("/{template_id}", response_model=ResponseBase[PromptTemplateResponse])
 async def update_template(
     template_id: UUID,
     template_in: PromptTemplateUpdate,
@@ -121,10 +124,6 @@ async def update_template(
             detail=f"Template {template_id} not found"
         )
     
-    # Update fields
-    # We need to implement update in service or do it here
-    # For now, let's do it here or add method to service
-    
     update_data = template_in.dict(exclude_unset=True)
     for field, value in update_data.items():
         setattr(template, field, value)
@@ -132,10 +131,10 @@ async def update_template(
     db.commit()
     db.refresh(template)
     
-    return PromptTemplateResponse.from_orm(template)
+    return ResponseBase(success=True, data=PromptTemplateResponse.from_orm(template))
 
 
-@router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{template_id}", response_model=ResponseBase[None], status_code=status.HTTP_200_OK)
 async def delete_template(
     template_id: UUID,
     db: Session = Depends(get_db)
@@ -152,11 +151,6 @@ async def delete_template(
             detail=f"Template {template_id} not found"
         )
     
-    # Hard delete or soft delete? 
-    # Logic in service usually. Let's implementing delete here or in service.
-    # Given 'is_active' exists, maybe soft delete via update?
-    # But this is DELETE method.
-    
     db.delete(template)
     db.commit()
-    return None
+    return ResponseBase(success=True, message="Template deleted successfully", data=None)

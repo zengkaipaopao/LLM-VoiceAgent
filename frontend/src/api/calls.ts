@@ -20,11 +20,17 @@ type ApiCallLog = {
 };
 
 type PaginatedCallResponse = {
-  items: ApiCallLog[];
-  total: number;
-  page: number;
-  page_size: number;
-  total_pages: number;
+  success: boolean;
+  message: string;
+  data: ApiCallLog[];
+  meta: {
+    pagination: {
+      page: number;
+      page_size: number;
+      total_items: number;
+      total_pages: number;
+    };
+  };
 };
 
 const mapCall = (call: ApiCallLog): CallLog => ({
@@ -77,10 +83,10 @@ export async function fetchCalls(params: FetchCallsParams = {}) {
 
   const response = await http.get<PaginatedCallResponse>(`/calls?${queryParams.toString()}`);
   return {
-    items: response.data.items.map(mapCall),
-    total: response.data.total,
-    page: response.data.page,
-    pageSize: response.data.page_size,
-    totalPages: response.data.total_pages,
+    items: response.data.data.map(mapCall),
+    total: response.data.meta.pagination.total_items,
+    page: response.data.meta.pagination.page,
+    pageSize: response.data.meta.pagination.page_size,
+    totalPages: response.data.meta.pagination.total_pages,
   };
 }

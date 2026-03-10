@@ -3,6 +3,7 @@
  * 获取预约管理Dashboard的实时统计数据（固定最近7天）
  */
 import { useQuery, UseQueryResult } from '@tanstack/react-query';
+import { http } from '../api/http';
 
 export interface DashboardStats {
   calls: {
@@ -39,13 +40,8 @@ export interface DashboardStats {
  * 获取Dashboard统计数据（固定最近7天，天粒度）
  */
 async function fetchDashboardStats(): Promise<DashboardStats> {
-  const response = await fetch('/api/v1/dashboard/stats');
-  
-  if (!response.ok) {
-    throw new Error('Failed to fetch dashboard stats');
-  }
-  
-  return response.json();
+  const response = await http.get('/dashboard/stats');
+  return response.data.data;
 }
 
 /**

@@ -4,17 +4,18 @@ Dashboard API Endpoints
 """
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, case
+from sqlalchemy import func, and_, case, text
 from datetime import datetime, timezone, timedelta
 
 from app.api.deps import get_db
 from app.models.call import Call, CallStatus
 from app.models.appointment import Appointment
+from app.schemas.base import ResponseBase
 
 router = APIRouter()
 
 
-@router.get("/stats")
+@router.get("/stats", response_model=ResponseBase[dict])
 def get_dashboard_stats(db: Session = Depends(get_db)):
     """
     获取Dashboard统计数据 - 固定最近7天，天粒度
@@ -123,28 +124,31 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         "ai_service": {"status": "healthy", "message": "服务正常"}  # TODO: 实际检查AI服务
     }
     
-    return {
-        "calls": {
-            "total": total_calls,
-            "today": today_calls,
-            "avg_duration": avg_duration,
-            "total_duration": total_duration,
-            "trend": calls_trend
-        },
-        "appointments": {
-            "total": total_appointments,
-            "today": today_appointments,
-            "pending": pending_appointments,
-            "new_today": new_today,
-            "cancelled": cancelled_appointments,
-            "rescheduled": rescheduled_appointments,
-            "completed": completed_appointments,
-            "completion_rate": completion_rate,
-            "trend": appointments_trend
-        },
-        "trend": trend_data,
-        "system_status": system_status
-    }
+    return ResponseBase(
+        success=True,
+        data={
+            "calls": {
+                "total": total_calls,
+                "today": today_calls,
+                "avg_duration": avg_duration,
+                "total_duration": total_duration,
+                "trend": calls_trend
+            },
+            "appointments": {
+                "total": total_appointments,
+                "today": today_appointments,
+                "pending": pending_appointments,
+                "new_today": new_today,
+                "cancelled": cancelled_appointments,
+                "rescheduled": rescheduled_appointments,
+                "completed": completed_appointments,
+                "completion_rate": completion_rate,
+                "trend": appointments_trend
+            },
+            "trend": trend_data,
+            "system_status": system_status
+        }
+    )
 
 
 def _format_duration(seconds: int) -> str:
@@ -206,7 +210,7 @@ def _generate_daily_trend(db: Session, start_time: datetime, end_time: datetime)
 def _check_database(db: Session) -> dict:
     """检查数据库连接状态"""
     try:
-        db.execute("SELECT 1")
+        db.execute(text("SELECT 1"))
         return {"status": "healthy", "message": "连接正常"}
     except Exception as e:
         return {"status": "error", "message": str(e)}

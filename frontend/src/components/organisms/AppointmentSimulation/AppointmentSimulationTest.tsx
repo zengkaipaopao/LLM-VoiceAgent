@@ -74,7 +74,7 @@ export const AppointmentSimulationTest: React.FC = () => {
         }
       );
       setResult({
-        ...response.data,
+        ...response.data.data,
         _message: 'Appointment simulated successfully'
       });
     } catch (err: any) {
@@ -97,9 +97,10 @@ export const AppointmentSimulationTest: React.FC = () => {
           params: { count } 
         }
       );
+      const items = response.data.data || [];
       setResult({
-        items: response.data,
-        _message: `Batch ${response.data.length} appointments simulated successfully`
+        items,
+        _message: `Batch ${items.length} appointments simulated successfully`
       });
     } catch (err: any) {
       setError(err.response?.data?.detail || err.response?.data?.message || 'Batch simulation failed');
@@ -118,8 +119,8 @@ export const AppointmentSimulationTest: React.FC = () => {
     try {
       const response = await axios.delete(`${API_BASE}/appointments/simulate/clear-test-data`);
       setResult({
-        ...response.data,
-        _message: `Cleared ${response.data.deleted_count} test appointments`
+        ...response.data.data,
+        _message: `Cleared ${response.data.data?.deleted_count || 0} test appointments`
       });
     } catch (err: any) {
       setError(err.response?.data?.detail || err.response?.data?.message || 'Clear failed');

@@ -92,7 +92,7 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
         }
       );
       setResult({
-        ...response.data,
+        ...response.data.data,
         _message: t('pages:test.simulation.status.success')
       });
     } catch (err: any) {
@@ -118,9 +118,10 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
           } 
         }
       );
+      const items = response.data.data || [];
       setResult({
-        items: response.data,
-        _message: t('pages:test.simulation.status.batchSuccess', { count: response.data.length })
+        items,
+        _message: t('pages:test.simulation.status.batchSuccess', { count: items.length })
       });
     } catch (err: any) {
       setError(err.response?.data?.detail || err.response?.data?.message || t('pages:test.simulation.status.error', '批量模拟失败'));
@@ -139,8 +140,8 @@ export const CallSimulationTest: React.FC<CallSimulationTestProps> = ({ enableRe
     try {
       const response = await http.delete(`/calls/simulate/clear-test-data`);
       setResult({
-        ...response.data,
-        _message: t('pages:test.simulation.status.clearSuccess', { count: response.data.deleted_count })
+        ...response.data.data,
+        _message: t('pages:test.simulation.status.clearSuccess', { count: response.data.data?.deleted_count || 0 })
       });
     } catch (err: any) {
       setError(err.response?.data?.detail || err.response?.data?.message || t('pages:test.simulation.status.error', '清除失败'));

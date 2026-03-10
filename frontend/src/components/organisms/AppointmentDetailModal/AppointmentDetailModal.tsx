@@ -4,6 +4,7 @@ import { DialogueViewer } from '../../molecules/DialogueViewer/DialogueViewer';
 import styles from './AppointmentDetailModal.module.scss';
 import { Appointment } from '../../../types/shared';
 import { formatJapaneseDate } from '../../../utils/formatters';
+import { http } from '../../../api/http';
 
 interface AppointmentDetailModalProps {
   open: boolean;
@@ -26,13 +27,9 @@ export const AppointmentDetailModal: React.FC<AppointmentDetailModalProps> = ({
       onRequestSubmit={async () => {
           if (!appointment) return;
           try {
-              const res = await fetch(`/api/v1/appointments/${appointment.id}/handle`, {
-                  method: 'PATCH'
-              });
-              if (res.ok) {
-                  onSuccess(); 
-                  onClose();
-              }
+              await http.patch(`/appointments/${appointment.id}/handle`);
+              onSuccess(); 
+              onClose();
           } catch (e) {
               console.error(e);
           }

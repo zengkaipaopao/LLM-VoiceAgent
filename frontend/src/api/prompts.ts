@@ -182,14 +182,16 @@ const toCreatePayload = (values: PromptFormValues) => ({
 });
 
 export async function fetchPrompts() {
-  const response = await http.get<{ templates: ApiPrompt[], total: number }>('/prompts');
-  // Backend returns { templates: [], total: number } now
-  return response.data.templates.map(mapPrompt);
+  const response = await http.get('/prompts');
+  // Backend returns ResponseBase[PromptTemplateListResponse]
+  // response.data.data = { templates: ApiPrompt[], total: number }
+  const payload = response.data.data;
+  return (payload.templates || []).map(mapPrompt);
 }
 
 export async function fetchPrompt(id: string) {
-    const response = await http.get<ApiPrompt>(`/prompts/${id}`);
-    return mapPrompt(response.data);
+    const response = await http.get(`/prompts/${id}`);
+    return mapPrompt(response.data.data);
 }
 
 export async function updatePrompt(id: string, payload: Partial<PromptTemplate> | PromptFormValues) {
@@ -211,13 +213,13 @@ export async function updatePrompt(id: string, payload: Partial<PromptTemplate> 
     
     // Add more if needed
     
-  const response = await http.put<ApiPrompt>(`/prompts/${id}`, apiPayload);
-  return mapPrompt(response.data);
+  const response = await http.put(`/prompts/${id}`, apiPayload);
+  return mapPrompt(response.data.data);
 }
 
 export async function createPrompt(payload: PromptFormValues) {
-  const response = await http.post<ApiPrompt>('/prompts', toCreatePayload(payload));
-  return mapPrompt(response.data);
+  const response = await http.post('/prompts', toCreatePayload(payload));
+  return mapPrompt(response.data.data);
 }
 
 export async function deletePrompt(id: string) {
@@ -225,8 +227,8 @@ export async function deletePrompt(id: string) {
 }
 
 export async function fetchModels(provider: string): Promise<string[]> {
-  const response = await http.get<{ models: string[] }>('/llm/models', {
+  const response = await http.get('/llm/models', {
     params: { provider },
   });
-  return response.data.models;
+  return response.data.data.models;
 }

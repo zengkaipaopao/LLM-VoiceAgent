@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Literal, Any, Optional
 
 from pydantic import BaseModel, field_validator
+from app.schemas.base import PaginatedResponse
 
 
 AppointmentOperation = Literal["create", "update", "delete", "cancel"]
@@ -44,12 +45,8 @@ class AppointmentRecord(AppointmentBase):
 class AppointmentResponse(AppointmentRecord):
     pass
 
-class AppointmentsResponse(BaseModel):
-    items: list[AppointmentResponse]
-    total: int
-    page: int
-    page_size: int
-    total_pages: int
+class AppointmentsResponse(PaginatedResponse[AppointmentResponse]):
+    pass
 
 class AppointmentCreateRequest(AppointmentBase):
     pass

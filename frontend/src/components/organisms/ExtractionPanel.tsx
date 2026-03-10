@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Button, Loading, InlineNotification } from '@carbon/react';
 import { WatsonHealthTextAnnotationToggle, CheckmarkFilled } from '@carbon/icons-react';
 import { AppointmentCard } from '../molecules/AppointmentCard';
+import { http } from '../../api/http';
 import styles from './ExtractionPanel.module.scss';
 
 /**
@@ -37,37 +38,22 @@ export const ExtractionPanel: React.FC<ExtractionPanelProps> = ({
     setData(null);
 
     try {
-      const response = await fetch('/api/v1/chat/extract', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          call_id: callId,
-          template_code: templateCode
-        })
+      const response = await http.post('/chat/extract', {
+        call_id: callId,
+        template_code: templateCode
       });
 
-      if (!response.ok) {
-        throw new Error(`Extraction failed: ${response.status}`);
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Extraction failed');
       }
 
-      const result = await response.json();
-
-      // Compatible with both envelope and raw payloads.
-      const payload = result?.data ?? result;
-      const ok = result?.success ?? payload?.success;
-      if (!ok) {
-        throw new Error(result?.message || payload?.message || 'Extraction failed');
-      }
-
-      const extracted = payload?.extracted_data ?? {};
+      const extracted = response.data?.data?.extracted_data ?? {};
       setData(extracted);
       if (onExtractionComplete) {
         onExtractionComplete(extracted);
       }
     } catch (err: any) {
-      setError(err.message || 'Unknown error occurred during extraction');
+      setError(err.response?.data?.message || err.message || 'Unknown error occurred during extraction');
     } finally {
       setLoading(false);
     }

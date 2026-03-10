@@ -8,6 +8,7 @@ import math
 from app.api.deps import get_db
 from app.services.appointment_service import AppointmentService
 from app.schemas.appointments import AppointmentsResponse, AppointmentResponse
+from app.schemas.base import ResponseBase, PaginationMeta, PaginatedMetaWrapper
 
 router = APIRouter()
 
@@ -47,15 +48,21 @@ def list_appointments(
     total_pages = math.ceil(total / page_size) if total > 0 else 0
     
     return AppointmentsResponse(
-        items=[AppointmentResponse.model_validate(item) for item in items],
-        total=total,
-        page=page,
-        page_size=page_size,
-        total_pages=total_pages
+        success=True,
+        message="Success",
+        data=[AppointmentResponse.model_validate(item) for item in items],
+        meta=PaginatedMetaWrapper(
+            pagination=PaginationMeta(
+                page=page,
+                page_size=page_size,
+                total_items=total,
+                total_pages=total_pages   
+            )
+        )
     )
 
 
-@router.patch("/{appointment_id}/handle", response_model=AppointmentResponse)
+@router.patch("/{appointment_id}/handle", response_model=ResponseBase[AppointmentResponse])
 def handle_appointment(
     appointment_id: str,
     db: Session = Depends(get_db)
@@ -70,4 +77,4 @@ def handle_appointment(
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Appointment not found")
         
-    return AppointmentResponse.model_validate(appointment)
+    return ResponseBase(success=True, data=AppointmentResponse.model_validate(appointment))

@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { http } from '../api/http';
 import { SmartDataTable } from '../components/organisms/DataTable/SmartDataTable';
 import {
   Button,
@@ -24,35 +25,31 @@ export function Appointments() {
   
   // State for available prompts
   const [availablePrompts, setAvailablePrompts] = useState<PromptTemplate[]>([]);
+  const [promptsLoaded, setPromptsLoaded] = useState(false);
+  const latestRequestRef = useRef(0);
 
   // Fetch prompts on mount
   useEffect(() => {
     const fetchPrompts = async () => {
       try {
-        const response = await fetch('/api/v1/prompts');
-        const data = await response.json();
-        // API returns { templates: [...], total: ... }
-        if (data && Array.isArray(data.templates)) {
-          setAvailablePrompts(data.templates);
+        const response = await http.get('/prompts');
+        const templates = response.data?.data?.templates || [];
+        
+        if (templates.length > 0) {
+          setAvailablePrompts(templates);
           
           // Auto-select base_appointment or the first available prompt
-          const basePrompt = data.templates.find((p: any) => p.code === 'base_appointment');
+          const basePrompt = templates.find((p: any) => p.code === 'base_appointment');
           if (basePrompt) {
             setSelectedPromptId(basePrompt.id);
-          } else if (data.templates.length > 0) {
-            setSelectedPromptId(data.templates[0].id);
+          } else {
+            setSelectedPromptId(templates[0].id);
           }
-        } else if (data && Array.isArray(data.data)) {
-          setAvailablePrompts(data.data);
-          
-          if (data.data.length > 0) setSelectedPromptId(data.data[0].id);
-        } else if (Array.isArray(data)) {
-          setAvailablePrompts(data);
-          
-          if (data.length > 0) setSelectedPromptId(data[0].id);
         }
       } catch (error) {
         console.error('Failed to fetch prompts:', error);
+      } finally {
+        setPromptsLoaded(true);
       }
     };
     fetchPrompts();
@@ -106,74 +103,73 @@ export function Appointments() {
 
   // Fetch appointments
   const fetchAppointments = async () => {
+    if (!selectedPromptId) {
+      setAppointments([]);
+      setTotal(0);
+      setLoading(false);
+      return;
+    }
+
+    const requestId = ++latestRequestRef.current;
     setLoading(true);
     try {
-      const params = new URLSearchParams({
+      const params: Record<string, any> = {
         page: page.toString(),
         page_size: pageSize.toString(),
         sort_by: sortBy,
         order: sortOrder,
-      });
+      };
 
-      if (searchQuery) params.append('search', searchQuery);
-      
-      // Apply filters
-      if (selectedFilters.operation?.length) {
-        params.append('operation', selectedFilters.operation.join(','));
-      }
-      
-      if (selectedFilters.is_handled?.length === 1) {
-          params.append('is_handled', selectedFilters.is_handled[0]);
-      }
-      
-      if (selectedPromptId) {
-          params.append('prompt_id', selectedPromptId);
-      }
+      if (searchQuery) params.search = searchQuery;
+      if (selectedFilters.operation?.length) params.operation = selectedFilters.operation.join(',');
+      if (selectedFilters.is_handled?.length === 1) params.is_handled = selectedFilters.is_handled[0];
+      params.prompt_id = selectedPromptId;
 
-      // Handle Date Range
       if (selectedFilters.timestamp?.length === 2) {
         const [start, end] = selectedFilters.timestamp;
-        
         if (start) {
           const startDate = new Date(start);
           startDate.setHours(0, 0, 0, 0);
-          params.append('start_date', startDate.toISOString());
+          params.start_date = startDate.toISOString();
         }
-        
         if (end) {
           const endDate = new Date(end);
           endDate.setHours(23, 59, 59, 999);
-          params.append('end_date', endDate.toISOString());
+          params.end_date = endDate.toISOString();
         }
       }
 
-      const response = await fetch(`/api/v1/appointments?${params}`);
-      const data: any = await response.json();
+      const response = await http.get('/appointments', { params });
+      const payload = response.data;
 
-      if (data && Array.isArray(data.items)) {
-        setAppointments(data.items);
-        setTotal(data.total || 0);
-      } else if (data && data.success && data.data && Array.isArray(data.data.items)) {
-        setAppointments(data.data.items);
-        setTotal(data.data.total || 0);
+      // Ignore stale responses to prevent old unfiltered data overwriting latest selection.
+      if (requestId !== latestRequestRef.current) return;
+
+      if (payload && Array.isArray(payload.data)) {
+        setAppointments(payload.data);
+        setTotal(payload.meta?.pagination?.total_items || 0);
       } else {
         setAppointments([]);
         setTotal(0);
       }
     } catch (error) {
-      console.error('Failed to fetch appointments:', error);
+        console.error('Failed to fetch appointments:', error);
     } finally {
-      setLoading(false);
+      if (requestId === latestRequestRef.current) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
+    if (!promptsLoaded) return;
+
     // Avoid fetching if date range is incomplete (user is still selecting)
     if (selectedFilters.timestamp && selectedFilters.timestamp.length === 1) {
       return;
     }
     fetchAppointments();
-  }, [page, pageSize, searchQuery, selectedFilters, sortBy, sortOrder, selectedPromptId]);
+  }, [page, pageSize, searchQuery, selectedFilters, sortBy, sortOrder, selectedPromptId, promptsLoaded]);
 
 
 
@@ -194,6 +190,7 @@ export function Appointments() {
   // Dynamically compute headers
   const headers = useMemo(() => {
     const dynamicKeys = new Set<string>();
+    let hasPromptSchema = false;
     
     // 1. Try to get keys from the selected prompt's schema (even if data is empty)
     const selectedPrompt = availablePrompts.find(p => p.id === selectedPromptId);
@@ -201,20 +198,23 @@ export function Appointments() {
        const schema: any = (selectedPrompt as any).extraction_schema || selectedPrompt.extractionSchema;
        if (schema && schema.fields && Array.isArray(schema.fields)) {
            schema.fields.forEach((f: any) => dynamicKeys.add(f.name));
+           hasPromptSchema = dynamicKeys.size > 0;
        } else if (schema && schema.properties) {
            Object.keys(schema.properties).forEach(key => dynamicKeys.add(key));
+           hasPromptSchema = dynamicKeys.size > 0;
        }
     }
 
-    // 2. Fallback: get keys from actual data
-    appointments.forEach(appt => {
-      if (appt.extracted_data) {
-        Object.keys(appt.extracted_data).forEach(key => {
-          // Skip internal or duplicate keys if necessary
-          dynamicKeys.add(key);
-        });
-      }
-    });
+    // 2. Fallback: only when prompt has no schema, infer keys from current data
+    if (!hasPromptSchema) {
+      appointments.forEach(appt => {
+        if (appt.extracted_data) {
+          Object.keys(appt.extracted_data).forEach(key => {
+            dynamicKeys.add(key);
+          });
+        }
+      });
+    }
     
     const dynamicHeaders = Array.from(dynamicKeys).map(key => ({
       key: `dynamic_${key}`,

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 from enum import Enum
+from app.schemas.base import PaginatedResponse
 
 
 class CallDirection(str, Enum):
@@ -86,10 +87,6 @@ class CallResponse(CallBase):
         return v
 
 
-class CallListResponse(BaseModel):
+class CallListResponse(PaginatedResponse[CallResponse]):
     """Schema for paginated call list."""
-    items: list[CallResponse]
-    total: int
-    page: int
-    page_size: int
-    total_pages: int
+    pass
