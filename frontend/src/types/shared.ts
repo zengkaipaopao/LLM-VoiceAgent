@@ -72,6 +72,7 @@ export interface PromptFormValues {
   
   systemPrompt: string;
   extractionPrompt?: string;
+  extractionSchema?: string; // String for editor
   
   responseFormat?: 'text' | 'json_object';
   outputSchema?: string; // String for editor

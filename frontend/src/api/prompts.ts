@@ -121,65 +121,42 @@ const mapPrompt = (prompt: ApiPrompt): PromptTemplate => ({
 });
 
 const toApiPayload = (payload: Partial<PromptTemplate> | PromptFormValues) => {
-    // If it's a FormValues, construct API payload
-    // We need to handle Partial<PromptTemplate> vs PromptFormValues
-    
-    // Common fields
+    const rawOutputSchema = (payload as any).outputSchema;
+    const parsedOutputSchema =
+      typeof rawOutputSchema === 'string' ? tryParseJson(rawOutputSchema) : rawOutputSchema;
+
+    const rawExtractionSchema = (payload as any).extractionSchema;
+    const parsedExtractionSchema =
+      typeof rawExtractionSchema === 'string' ? tryParseJson(rawExtractionSchema) : rawExtractionSchema;
+
+    // Prefer dedicated extraction schema; fallback to output schema for backward compatibility.
+    const extractionSchema = parsedExtractionSchema ?? parsedOutputSchema;
+
     const apiPayload: any = {
         name: payload.name,
-        code: (payload as any).code, // code might be in both
+        code: (payload as any).code,
         description: (payload as any).description,
         category: (payload as any).category,
-        
+
         llm_provider: (payload as any).llmProvider,
         llm_model: (payload as any).llmModel,
         temperature: (payload as any).temperature,
         max_tokens: (payload as any).maxTokens,
-        
+
         system_prompt: (payload as any).systemPrompt,
         extraction_prompt: (payload as any).extractionPrompt,
-        // extraction_schema  (payload as any).extractionSchema ?? undefined
-        
+        extraction_schema: extractionSchema,
+
         response_format: (payload as any).responseFormat,
-        output_schema: typeof (payload as any).outputSchema === 'string' 
-            ? tryParseJson((payload as any).outputSchema) 
-            : (payload as any).outputSchema,
-        
+        output_schema: parsedOutputSchema,
+
         voice_provider: (payload as any).voiceProvider,
         voice_id: (payload as any).voiceId,
-        // voice_settings
-        
-        // Legacy mapping if needed? Backend handles new fields.
-        // We might want to clear old fields if they exist?
     };
-    
-    // Cleanup undefined
-    Object.keys(apiPayload).forEach(key => apiPayload[key] === undefined && delete apiPayload[key]);
-    
+
+    Object.keys(apiPayload).forEach((key) => apiPayload[key] === undefined && delete apiPayload[key]);
     return apiPayload;
 };
-
-// Simplified Payload Creator for Create/Update
-const toCreatePayload = (values: PromptFormValues) => ({
-    name: values.name,
-    code: values.code,
-    description: values.description,
-    category: values.category,
-    
-    llm_provider: values.llmProvider,
-    llm_model: values.llmModel,
-    temperature: values.temperature,
-    max_tokens: values.maxTokens,
-    
-    system_prompt: values.systemPrompt,
-    extraction_prompt: values.extractionPrompt,
-    
-    response_format: values.responseFormat,
-    output_schema: values.outputSchema ? tryParseJson(values.outputSchema) : undefined,
-    
-    voice_provider: values.voiceProvider,
-    voice_id: values.voiceId,
-});
 
 export async function fetchPrompts() {
   const response = await http.get('/prompts');
@@ -195,30 +172,13 @@ export async function fetchPrompt(id: string) {
 }
 
 export async function updatePrompt(id: string, payload: Partial<PromptTemplate> | PromptFormValues) {
-    // For partial update, we just map fields. 
-    // Simplified mapping for now, assuming only new fields matter mostly.
-    const apiPayload: any = {};
-    if (payload.name) apiPayload.name = payload.name;
-    if (payload.llmProvider) apiPayload.llm_provider = payload.llmProvider;
-    if (payload.llmModel) apiPayload.llm_model = payload.llmModel;
-    if (payload.temperature !== undefined) apiPayload.temperature = payload.temperature;
-    if (payload.maxTokens !== undefined) apiPayload.max_tokens = payload.maxTokens;
-    if (payload.systemPrompt) apiPayload.system_prompt = payload.systemPrompt;
-    if (payload.responseFormat) apiPayload.response_format = payload.responseFormat;
-    if (payload.outputSchema) {
-        apiPayload.output_schema = typeof payload.outputSchema === 'string'
-            ? tryParseJson(payload.outputSchema)
-            : payload.outputSchema;
-    }
-    
-    // Add more if needed
-    
+  const apiPayload = toApiPayload(payload);
   const response = await http.put(`/prompts/${id}`, apiPayload);
   return mapPrompt(response.data.data);
 }
 
 export async function createPrompt(payload: PromptFormValues) {
-  const response = await http.post('/prompts', toCreatePayload(payload));
+  const response = await http.post('/prompts', toApiPayload(payload));
   return mapPrompt(response.data.data);
 }
 

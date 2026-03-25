@@ -37,6 +37,7 @@ const defaultValues: PromptFormValues = {
   maxTokens: 2048,
   systemPrompt: 'You are a helpful AI assistant.',
   extractionPrompt: '',
+  extractionSchema: '',
   responseFormat: 'text',
   outputSchema: '',
   voiceProvider: '',
@@ -68,8 +69,11 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
         maxTokens: prompt.maxTokens,
         systemPrompt: prompt.systemPrompt,
         extractionPrompt: prompt.extractionPrompt,
+        extractionSchema: prompt.extractionSchema ? JSON.stringify(prompt.extractionSchema, null, 2) : '',
         responseFormat: prompt.responseFormat || 'text',
-        outputSchema: prompt.outputSchema ? JSON.stringify(prompt.outputSchema, null, 2) : '',
+        outputSchema: prompt.outputSchema
+          ? JSON.stringify(prompt.outputSchema, null, 2)
+          : (prompt.extractionSchema ? JSON.stringify(prompt.extractionSchema, null, 2) : ''),
         voiceProvider: prompt.voiceProvider,
         voiceId: prompt.voiceId,
         // Legacy fields ignored for editing if new ones exist
@@ -104,6 +108,24 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
   };
 
   const handleSave = async () => {
+    if (form.outputSchema?.trim()) {
+      try {
+        JSON.parse(form.outputSchema);
+      } catch {
+        alert('Output JSON Schema is invalid JSON.');
+        return;
+      }
+    }
+
+    if (form.extractionSchema?.trim()) {
+      try {
+        JSON.parse(form.extractionSchema);
+      } catch {
+        alert('Extraction JSON Schema is invalid JSON.');
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       if (prompt) {
@@ -273,6 +295,16 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
                     onChange={(e) => handleChange('extractionPrompt', e.target.value)}
                     rows={5}
                     helperText={t('prompts.editor.fields.extractionPromptHelper')}
+                />
+                <TextArea
+                    id="extractionSchema"
+                    labelText="Extraction JSON Schema (for table/extraction)"
+                    value={form.extractionSchema || ''}
+                    onChange={(e) => handleChange('extractionSchema', e.target.value)}
+                    rows={8}
+                    placeholder={'{\n  "fields": [\n    {"name": "caller_name", "label": "Caller"},\n    {"name": "pickup_address", "label": "Address"}\n  ]\n}'}
+                    helperText="Define extraction fields for appointment table columns."
+                    enableCounter
                 />
              </Stack>
           </TabPanel>

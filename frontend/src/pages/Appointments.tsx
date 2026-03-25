@@ -189,57 +189,44 @@ export function Appointments() {
 
   // Dynamically compute headers
   const headers = useMemo(() => {
-    const dynamicKeys = new Set<string>();
-    let hasPromptSchema = false;
-    
-    // 1. Try to get keys from the selected prompt's schema (even if data is empty)
     const selectedPrompt = availablePrompts.find(p => p.id === selectedPromptId);
-    if (selectedPrompt) {
-       const schema: any = (selectedPrompt as any).extraction_schema || selectedPrompt.extractionSchema;
-       if (schema && schema.fields && Array.isArray(schema.fields)) {
-           schema.fields.forEach((f: any) => dynamicKeys.add(f.name));
-           hasPromptSchema = dynamicKeys.size > 0;
-       } else if (schema && schema.properties) {
-           Object.keys(schema.properties).forEach(key => dynamicKeys.add(key));
-           hasPromptSchema = dynamicKeys.size > 0;
-       }
+    const schema: any = (selectedPrompt as any)?.extraction_schema || selectedPrompt?.extractionSchema;
+    const schemaFields = Array.isArray(schema?.fields)
+      ? schema.fields
+          .map((f: any) => (typeof f === 'string' ? { name: f } : f))
+          .filter((f: any) => typeof f?.name === 'string' && f.name.trim() !== '')
+      : [];
+    const hasFieldConfig = schemaFields.length > 0;
+
+    const actionHeader = baseHeaders.find(h => h.key === 'actions');
+    let otherHeaders = baseHeaders.filter(h => h.key !== 'actions');
+
+    // A prompt is considered "custom table mode" only when fields are explicitly defined.
+    if (hasFieldConfig) {
+      const essentialKeys = ['timestamp', 'operation', 'is_handled'];
+      otherHeaders = otherHeaders.filter(h => essentialKeys.includes(h.key));
     }
 
-    // 2. Fallback: only when prompt has no schema, infer keys from current data
-    if (!hasPromptSchema) {
-      appointments.forEach(appt => {
-        if (appt.extracted_data) {
-          Object.keys(appt.extracted_data).forEach(key => {
-            dynamicKeys.add(key);
-          });
-        }
-      });
-    }
-    
-    const dynamicHeaders = Array.from(dynamicKeys).map(key => ({
-      key: `dynamic_${key}`,
-      header: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' '),
-    }));
-    
-    // Insert dynamic headers before the 'actions' column
-    const actionHeader = baseHeaders.find(h => h.key === 'actions');
-    
-    // If a specific prompt is selected (not 'all' and not base_appointment), might optionally hide some legacy base headers.
-    let otherHeaders = baseHeaders.filter(h => h.key !== 'actions');
-    
-    // For specific scenarios like hotel or flight, we only want timestamp, operation, and the dynamic ones.
-    const isCustomPrompt = availablePrompts.find(p => p.id === selectedPromptId && p.code !== 'base_appointment');
-          
-    if (isCustomPrompt) {
-        // Keep only essential system fields. Hide legacy base appointment fields like category, amount, etc.
-        const essentialKeys = ['timestamp', 'operation', 'is_handled'];
-        otherHeaders = otherHeaders.filter(h => essentialKeys.includes(h.key));
-    }
-    
-    return actionHeader 
-      ? [...otherHeaders, ...dynamicHeaders, actionHeader] 
-      : [...baseHeaders, ...dynamicHeaders];
-  }, [baseHeaders, appointments, availablePrompts, selectedPromptId]);
+    const staticHeaderKeys = new Set(otherHeaders.map(h => h.key));
+    const seenDynamicKeys = new Set<string>();
+    const dynamicHeaders = hasFieldConfig
+      ? schemaFields
+          .map((field: any) => {
+            const name = field.name.trim();
+            if (!name || staticHeaderKeys.has(name) || seenDynamicKeys.has(name)) return null;
+            seenDynamicKeys.add(name);
+            return {
+              key: `dynamic_${name}`,
+              header: field.label || name.charAt(0).toUpperCase() + name.slice(1).replace(/_/g, ' '),
+            };
+          })
+          .filter((h: any) => !!h)
+      : [];
+
+    return actionHeader
+      ? [...otherHeaders, ...dynamicHeaders, actionHeader]
+      : [...otherHeaders, ...dynamicHeaders];
+  }, [baseHeaders, availablePrompts, selectedPromptId]);
 
   const tableRows = appointments.map((appt) => {
     const rowContent: any = {
@@ -263,6 +250,37 @@ export function Appointments() {
         rowContent[`dynamic_${key}`] = typeof value === 'object' ? JSON.stringify(value) : value;
       });
     }
+
+    // Backward compatibility: many historical rows only have legacy columns, not extracted_data.
+    // Fill dynamic_* from legacy fields so custom field-configured tables can still show old records.
+    const legacyFallback: Record<string, any> = {
+      caller_name: appt.caller_name,
+      company: appt.company,
+      category: appt.category,
+      amount: appt.amount,
+      address: appt.address,
+      summary: appt.summary,
+      extra_request: appt.extra_request,
+      appointment: appt.appointment,
+      operation: appt.operation,
+      is_handled: appt.is_handled,
+
+      // New schema aliases commonly used by custom prompts
+      pickup_address: appt.address,
+      appointment_time: appt.appointment,
+      appointment_content: appt.summary,
+      special_notes: appt.extra_request,
+      request_type: appt.operation,
+      estimated_volume_m3: appt.amount,
+      waste_type: appt.category,
+    };
+
+    Object.entries(legacyFallback).forEach(([key, value]) => {
+      const dynamicKey = `dynamic_${key}`;
+      if (rowContent[dynamicKey] !== undefined) return;
+      if (value === undefined || value === null || value === '') return;
+      rowContent[dynamicKey] = typeof value === 'object' ? JSON.stringify(value) : value;
+    });
     
     return rowContent;
   });
