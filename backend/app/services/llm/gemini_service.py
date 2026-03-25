@@ -2,6 +2,7 @@
 Google Gemini LLM service implementation.
 """
 import json
+import logging
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from google import genai
@@ -9,6 +10,8 @@ from google.genai import types
 
 from .base import BaseLLMService
 from .exceptions import LLMAPIError, LLMInvalidResponseError, LLMRateLimitError
+
+logger = logging.getLogger(__name__)
 
 
 class GeminiService(BaseLLMService):
@@ -35,9 +38,103 @@ class GeminiService(BaseLLMService):
         if response_format == "json_object":
             config["response_mime_type"] = "application/json"
             if output_schema:
-                config["response_schema"] = output_schema
+                normalized_schema = self._normalize_schema_for_gemini(output_schema)
+                if normalized_schema:
+                    config["response_schema"] = normalized_schema
 
         return types.GenerateContentConfig(**config)
+
+    @staticmethod
+    def _map_schema_type(raw_type: Any) -> Optional[str]:
+        if not isinstance(raw_type, str):
+            return None
+        mapping = {
+            "string": "STRING",
+            "number": "NUMBER",
+            "integer": "INTEGER",
+            "boolean": "BOOLEAN",
+            "array": "ARRAY",
+            "object": "OBJECT",
+            "null": "NULL",
+            "type_unspecified": "TYPE_UNSPECIFIED",
+        }
+        return mapping.get(raw_type.lower(), raw_type.upper())
+
+    @classmethod
+    def _normalize_schema_node(cls, node: Any) -> Any:
+        if isinstance(node, list):
+            return [cls._normalize_schema_node(item) for item in node]
+        if not isinstance(node, dict):
+            return node
+
+        normalized: Dict[str, Any] = {}
+        nullable = False
+
+        raw_type = node.get("type")
+        if isinstance(raw_type, list):
+            mapped_types = [cls._map_schema_type(item) for item in raw_type if isinstance(item, str)]
+            mapped_types = [item for item in mapped_types if item]
+            if "NULL" in mapped_types:
+                nullable = True
+                mapped_types = [item for item in mapped_types if item != "NULL"]
+            if mapped_types:
+                normalized["type"] = mapped_types[0]
+            elif nullable:
+                normalized["type"] = "NULL"
+        elif raw_type is not None:
+            mapped_type = cls._map_schema_type(raw_type)
+            if mapped_type:
+                normalized["type"] = mapped_type
+
+        if nullable:
+            normalized["nullable"] = True
+
+        for key, value in node.items():
+            if key in {"type", "$schema"}:
+                continue
+
+            normalized_key = key
+            if key == "$ref":
+                normalized_key = "ref"
+            elif key == "$defs":
+                normalized_key = "defs"
+
+            if normalized_key in {"properties", "defs"} and isinstance(value, dict):
+                normalized[normalized_key] = {
+                    prop_name: cls._normalize_schema_node(prop_schema)
+                    for prop_name, prop_schema in value.items()
+                }
+                continue
+
+            if normalized_key in {"items", "additionalProperties", "additional_properties"} and isinstance(value, dict):
+                normalized[normalized_key] = cls._normalize_schema_node(value)
+                continue
+
+            if normalized_key in {"anyOf", "any_of"} and isinstance(value, list):
+                normalized[normalized_key] = [cls._normalize_schema_node(item) for item in value]
+                continue
+
+            if normalized_key == "required" and isinstance(value, list):
+                normalized[normalized_key] = [item for item in value if isinstance(item, str)]
+                continue
+
+            normalized[normalized_key] = value
+
+        return normalized
+
+    @classmethod
+    def _normalize_schema_for_gemini(cls, schema: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        try:
+            normalized = cls._normalize_schema_node(schema)
+            if not isinstance(normalized, dict):
+                return None
+
+            # Validate compatibility against SDK schema model before sending request.
+            validated = types.Schema(**normalized)
+            return validated.model_dump(mode="json", by_alias=True, exclude_none=True)
+        except Exception as exc:
+            logger.warning("Failed to normalize Gemini response schema; fallback to no schema: %s", exc)
+            return None
 
     @staticmethod
     def _is_rate_limit_error(error: Exception) -> bool:

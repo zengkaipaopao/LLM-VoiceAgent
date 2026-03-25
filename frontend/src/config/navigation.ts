@@ -8,16 +8,13 @@ import {
   Network_3,
   PhoneVoice,
   WatsonHealthAiStatus,
-  User,
 } from '@carbon/icons-react';
 import type { ComponentType } from 'react';
 import { 
-  CallSimulationTabContent,
+  UnifiedTestLabTabContent,
   ReviewerTabContent, 
-  AppointmentTabContent, 
   WebSocketTabContent, 
-  TwilioTabContent,
-  ChatTabContent
+  TwilioTabContent
 } from '../components/organisms/TestTabs';
 
 export const navLinks = [
@@ -46,22 +43,10 @@ export interface TestTabConfig {
 // 单一数据源：Test Page 的所有 Tab 配置（包含组件）
 export const testTabs: TestTabConfig[] = [
   { 
-    id: 'call-simulation', 
+    id: 'simulation', 
     label: 'simulation', 
     icon: Phone,
-    component: CallSimulationTabContent
-  },
-  { 
-    id: 'appointment', 
-    label: 'appointment', 
-    icon: User,
-    component: AppointmentTabContent
-  },
-  { 
-    id: 'chat', 
-    label: 'chat', 
-    icon: WatsonHealthAiStatus,
-    component: ChatTabContent
+    component: UnifiedTestLabTabContent
   },
   { 
     id: 'reviewer', 

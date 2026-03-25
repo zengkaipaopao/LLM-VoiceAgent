@@ -3,9 +3,7 @@
  * 
  * 导出所有Test Page的Tab内容组件
  */
-export { CallSimulationTabContent } from './CallSimulationTabContent';
+export { UnifiedTestLabTabContent } from './UnifiedTestLabTabContent';
 export { ReviewerTabContent } from './ReviewerTabContent';
-export { AppointmentTabContent } from './AppointmentTabContent';
 export { WebSocketTabContent } from './WebSocketTabContent';
 export { TwilioTabContent } from './TwilioTabContent';
-export { ChatTabContent } from './ChatTabContent';

@@ -181,16 +181,88 @@
   },
   "test": {
     "title": "Real-time Debug Lab",
-    "subtitle": "Experience WebSocket and Twilio WebCall in a single interface for easy comparison.",
+    "subtitle": "Use the Unified Test Lab to simulate prompt-driven calls with data persistence, while keeping WebSocket and Twilio debugging in the same workspace.",
     "emptyState": "Test features under development",
     "emptyDescription": "This page will provide real-time debugging for WebSocket and Twilio WebCall.",
     "tabs": {
       "ariaLabel": "Test Options",
-      "simulation": "Call Simulation",
+      "simulation": "Unified Test Lab",
       "appointment": "Appointment Sim",
       "reviewer": "Reviewer Mode",
       "websocket": "WebSocket",
       "twilio": "Twilio WebCall"
+    },
+    "unified": {
+      "sections": {
+        "chatTitle": "Conversation Workspace",
+        "chatDescription": "Send messages to test prompt behavior, action triggering, and extraction quality in one flow.",
+        "setupTitle": "Session Setup",
+        "setupDescription": "Choose a prompt and create a simulation session before or during chat.",
+        "detailsTitle": "Session Details",
+        "detailsDescription": "Track current model, call metadata, and token usage for this test run.",
+        "noSession": "No active session yet. Start a session to display metadata."
+      },
+      "status": {
+        "notStarted": "Not started",
+        "active": "Active",
+        "completed": "Completed"
+      },
+      "form": {
+        "promptLabel": "Select Prompt Model",
+        "callerLabel": "Simulated Caller Name",
+        "callerPlaceholder": "Test Caller"
+      },
+      "actions": {
+        "newSession": "New Session",
+        "startSession": "Start Session",
+        "finalize": "Finalize & Extract",
+        "clearPanel": "Clear Panel",
+        "viewCalls": "View Calls",
+        "viewAppointments": "View Appointments"
+      },
+      "meta": {
+        "currentModel": "Model: {{provider}}/{{model}} · Temp {{temperature}}",
+        "callIdLabel": "Call ID",
+        "phoneLabel": "Simulated Phone",
+        "templateLabel": "Template",
+        "tokensLabel": "Total Tokens",
+        "callTag": "Call: {{value}}",
+        "phoneTag": "Phone: {{value}}",
+        "templateTag": "Template: {{value}}",
+        "tokensTag": "Tokens: {{value}}"
+      },
+      "notifications": {
+        "errorTitle": "Request failed",
+        "successTitle": "Success"
+      },
+      "chat": {
+        "closedPlaceholder": "This session is closed. Click \"New Session\" to continue testing.",
+        "inputPlaceholder": "Type a message to test prompt behavior and action extraction..."
+      },
+      "records": {
+        "title": "Record Linkage",
+        "description": "Test data is written to Calls/Appointments and can be reviewed immediately.",
+        "currentAppointment": " Current appointment ID: {{id}}"
+      },
+      "errors": {
+        "loadPrompts": "Failed to load prompt list. Please check backend connection.",
+        "noPromptSelected": "Please select a prompt first",
+        "createSessionFailed": "Failed to create session",
+        "requestFailedWithStatus": "Request failed: {{status}}",
+        "streamFailed": "Streaming response failed",
+        "sendMessageFailed": "Failed to send message",
+        "noActiveSession": "Please create a test session first",
+        "finalizeFailed": "Failed to finalize session"
+      },
+      "info": {
+        "sessionCreated": "Test session created: {{phone}}",
+        "sessionFinalized": "Session finalized and extraction completed"
+      },
+      "messages": {
+        "finalized": "Session ended. Status: {{status}}. {{appointmentMessage}}",
+        "appointmentSaved": "Appointment saved: {{appointmentId}}",
+        "noAppointment": "No appointment was created"
+      }
     },
     "appointment": {
       "description": "Appointment simulation feature under development..."
@@ -232,7 +304,7 @@
     },
     "reviewer": {
       "title": "AI Reviewer Mode",
-      "description": "When enabled, the system will automatically evaluate call quality using LLM after each call. This generates a 'Confidence Score' and detailed call summary. This setting applies to all test cases in 'Call Simulation'.",
+      "description": "When enabled, the system will automatically evaluate call quality using LLM after each call. This generates a 'Confidence Score' and detailed call summary. This setting applies to all simulated sessions in the Unified Test Lab.",
       "toggle": {
         "label": "Enable Auto-Evaluation",
         "on": "On",

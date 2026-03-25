@@ -15,7 +15,7 @@ import styles from './Test.module.scss';
 /**
  * TestPage - 实时调试实验室页面
  * 
- * 用于测试Call模拟、WebSocket和Twilio WebCall等链路
+ * 用于统一测试台、WebSocket 和 Twilio WebCall 等链路调试
  * 
  * 设计特点:
  * - 完全声明式配置，所有Tab内容在 navigation.ts 中定义

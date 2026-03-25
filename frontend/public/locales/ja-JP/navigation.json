@@ -16,7 +16,7 @@
     "mainNav": "メインナビゲーション"
   },
   "test": {
-    "simulation": "通話シミュレーション",
+    "simulation": "統合テストラボ",
     "appointment": "予約シミュレーション",
     "reviewer": "レビュアーモード",
     "websocket": "WebSocket",

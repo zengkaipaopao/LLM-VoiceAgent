@@ -45,6 +45,42 @@ class ExtractionResponse(BaseModel):
     message: str = Field(..., description="Status message")
 
 
+class TestSessionStartRequest(BaseModel):
+    """Request to create a unified test session."""
+    template_code: str = Field(default="general_appointment", description="Prompt template code")
+    provider: Optional[str] = Field(None, description="LLM provider override")
+    model: Optional[str] = Field(None, description="LLM model override")
+    caller_name: Optional[str] = Field(None, description="Simulated caller name")
+
+
+class TestSessionStartResponse(BaseModel):
+    """Response returned after creating a test session."""
+    call_id: UUID = Field(..., description="Created call ID")
+    simulated_phone: str = Field(..., description="Generated simulated phone number")
+    started_at: datetime = Field(..., description="Session start time")
+    template_code: str = Field(..., description="Bound prompt template code")
+    llm_provider: str = Field(..., description="LLM provider in use")
+    llm_model: str = Field(..., description="LLM model in use")
+
+
+class TestSessionFinalizeRequest(BaseModel):
+    """Request to finalize a test session."""
+    call_id: UUID = Field(..., description="Call ID to finalize")
+    template_code: Optional[str] = Field(None, description="Template code override for extraction")
+    run_extraction: bool = Field(True, description="Whether to run extraction on finalize")
+
+
+class TestSessionFinalizeResponse(BaseModel):
+    """Response returned after finalizing a test session."""
+    call_id: UUID = Field(..., description="Finalized call ID")
+    status: str = Field(..., description="Final call status")
+    ended_at: datetime = Field(..., description="Session end time")
+    duration_seconds: int = Field(..., description="Computed call duration")
+    appointment_id: Optional[UUID] = Field(None, description="Created or existing appointment ID")
+    extraction: Optional[ExtractionResponse] = Field(None, description="Extraction details")
+    already_extracted: bool = Field(False, description="Whether appointment already existed")
+
+
 class PromptTemplateResponse(BaseModel):
     """Prompt template response."""
     id: UUID

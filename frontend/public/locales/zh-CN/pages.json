@@ -181,17 +181,89 @@
   },
   "test": {
     "title": "实时调试实验室",
-    "subtitle": "在单一界面体验 WebSocket 以及 Twilio WebCall 等链路,方便比对。",
+    "subtitle": "通过统一测试台模拟 Prompt 驱动通话并落库，同时在同一页保留 WebSocket 与 Twilio 调试链路。",
     "emptyState": "测试功能开发中",
     "emptyDescription": "此页面将提供WebSocket和Twilio WebCall的实时调试功能。",
     "tabs": {
       "ariaLabel": "测试选项",
-      "simulation": "通话模拟",
+      "simulation": "统一测试台",
       "appointment": "预约模拟",
       "chat": "LLM 对话",
       "reviewer": "审查员模式",
       "websocket": "WebSocket",
       "twilio": "Twilio WebCall"
+    },
+    "unified": {
+      "sections": {
+        "chatTitle": "对话工作区",
+        "chatDescription": "在一条测试链路中验证 Prompt 应答风格、动作触发与提取质量。",
+        "setupTitle": "会话配置",
+        "setupDescription": "选择 Prompt 并创建模拟会话，可先建会话也可边聊边自动创建。",
+        "detailsTitle": "会话详情",
+        "detailsDescription": "跟踪当前模型、通话元数据与 Token 消耗，便于复盘调试。",
+        "noSession": "当前还没有激活会话，开始会话后会显示详细元数据。"
+      },
+      "status": {
+        "notStarted": "未开始",
+        "active": "进行中",
+        "completed": "已完成"
+      },
+      "form": {
+        "promptLabel": "选择 Prompt 模型",
+        "callerLabel": "模拟来电姓名",
+        "callerPlaceholder": "Test Caller"
+      },
+      "actions": {
+        "newSession": "新建会话",
+        "startSession": "开始会话",
+        "finalize": "结束并提取",
+        "clearPanel": "清空面板",
+        "viewCalls": "查看通话记录",
+        "viewAppointments": "查看预约记录"
+      },
+      "meta": {
+        "currentModel": "当前模型: {{provider}}/{{model}} · 温度 {{temperature}}",
+        "callIdLabel": "通话 ID",
+        "phoneLabel": "模拟号码",
+        "templateLabel": "模板代号",
+        "tokensLabel": "累计 Tokens",
+        "callTag": "Call: {{value}}",
+        "phoneTag": "Phone: {{value}}",
+        "templateTag": "Template: {{value}}",
+        "tokensTag": "Tokens: {{value}}"
+      },
+      "notifications": {
+        "errorTitle": "请求失败",
+        "successTitle": "操作成功"
+      },
+      "chat": {
+        "closedPlaceholder": "当前会话已结束，请点击“新建会话”继续测试。",
+        "inputPlaceholder": "输入消息，测试 Prompt 对话与动作输出..."
+      },
+      "records": {
+        "title": "记录联动",
+        "description": "测试数据会写入 Calls/Appointments，可直接跳转查看。",
+        "currentAppointment": " 当前预约ID: {{id}}"
+      },
+      "errors": {
+        "loadPrompts": "加载 Prompt 列表失败，请检查后端连接。",
+        "noPromptSelected": "请先选择 Prompt",
+        "createSessionFailed": "创建会话失败",
+        "requestFailedWithStatus": "请求失败: {{status}}",
+        "streamFailed": "流式响应失败",
+        "sendMessageFailed": "发送消息失败",
+        "noActiveSession": "请先创建测试会话",
+        "finalizeFailed": "结束会话失败"
+      },
+      "info": {
+        "sessionCreated": "测试会话已创建：{{phone}}",
+        "sessionFinalized": "会话已结束并完成提取"
+      },
+      "messages": {
+        "finalized": "会话已结束。状态: {{status}}。{{appointmentMessage}}",
+        "appointmentSaved": "预约已入库: {{appointmentId}}",
+        "noAppointment": "未生成预约记录"
+      }
     },
     "appointment": {
       "description": "预约模拟测试功能开发中..."
@@ -234,7 +306,7 @@
     },
     "reviewer": {
       "title": "AI 审查员模式 (Reviewer Mode)",
-      "description": "开启审查员模式后，系统会在通话结束后自动调用 LLM 对通话质量、用户情绪和解决率进行评估。这将生成'信赖度'分数和详细的通话摘要。此设置将应用于'Call Simulation'中的所有测试用例。",
+      "description": "开启审查员模式后，系统会在通话结束后自动调用 LLM 对通话质量、用户情绪和解决率进行评估。这将生成“信赖度”分数和详细的通话摘要。此设置将应用于统一测试台中的所有模拟会话。",
       "toggle": {
         "label": "启用自动评估",
         "on": "已开启",

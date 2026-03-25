@@ -16,7 +16,7 @@
     "mainNav": "Main navigation"
   },
   "test": {
-    "simulation": "Call Simulation",
+    "simulation": "Unified Test Lab",
     "appointment": "Appointment Sim",
     "reviewer": "Reviewer Mode",
     "websocket": "WebSocket",

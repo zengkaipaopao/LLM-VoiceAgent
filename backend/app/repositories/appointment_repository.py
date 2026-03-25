@@ -86,6 +86,17 @@ class AppointmentRepository(BaseRepository[Appointment]):
 
         return items, total
 
+    async def get_by_call_id(self, call_id: UUID) -> Optional[Appointment]:
+        """Get most recent appointment linked to a call."""
+        stmt = (
+            select(Appointment)
+            .where(Appointment.call_id == call_id)
+            .order_by(desc(Appointment.created_at))
+            .limit(1)
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def mark_as_handled(self, appointment_id: str, is_handled: bool = True) -> Optional[Appointment]:
         appointment = await self.get(appointment_id)
         if appointment:

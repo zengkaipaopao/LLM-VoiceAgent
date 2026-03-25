@@ -9,7 +9,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
 from app.schemas.base import ResponseBase
-from app.schemas.chat import ChatRequest, ChatResponse, ExtractionRequest, ExtractionResponse
+from app.schemas.chat import (
+    ChatRequest,
+    ChatResponse,
+    ExtractionRequest,
+    ExtractionResponse,
+    TestSessionFinalizeRequest,
+    TestSessionFinalizeResponse,
+    TestSessionStartRequest,
+    TestSessionStartResponse,
+)
 from app.services.chat_service import ChatService
 
 router = APIRouter()
@@ -27,6 +36,51 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Chat error: {str(e)}")
+
+
+@router.post("/test/start", response_model=ResponseBase[TestSessionStartResponse], status_code=status.HTTP_200_OK)
+async def start_test_session(request: TestSessionStartRequest, db: AsyncSession = Depends(get_db)):
+    """Start a unified test session with generated simulated phone number."""
+    try:
+        service = ChatService(db)
+        result = await service.start_test_session(
+            template_code=request.template_code,
+            provider=request.provider,
+            model=request.model,
+            caller_name=request.caller_name,
+        )
+        return ResponseBase(success=True, data=result)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Start test session error: {str(e)}",
+        )
+
+
+@router.post(
+    "/test/finalize",
+    response_model=ResponseBase[TestSessionFinalizeResponse],
+    status_code=status.HTTP_200_OK,
+)
+async def finalize_test_session(request: TestSessionFinalizeRequest, db: AsyncSession = Depends(get_db)):
+    """Finalize test session and optionally extract appointment (idempotent)."""
+    try:
+        service = ChatService(db)
+        result = await service.finalize_test_session(
+            call_id=request.call_id,
+            template_code=request.template_code,
+            run_extraction=request.run_extraction,
+        )
+        return ResponseBase(success=True, data=result)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Finalize test session error: {str(e)}",
+        )
 
 
 @router.post("/stream")

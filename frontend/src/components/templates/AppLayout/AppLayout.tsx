@@ -40,7 +40,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const collapseNav = () => setSideNavExpanded(false);
   const activeTestTab =
     location.pathname === '/test'
-      ? new URLSearchParams(location.search).get('tab') ?? 'websocket'
+      ? new URLSearchParams(location.search).get('tab') ?? testNavItems[0]?.tab ?? 'simulation'
       : null;
 
   // 路由切换后默认收起，防止状态滞留

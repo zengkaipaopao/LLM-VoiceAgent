@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     default_llm_model: str = "gemini-2.0-flash"
     llm_temperature: float = 0.7
     llm_max_tokens: int = 2048
+    llm_show_quota_notice_as_reply: bool = True
     
     # Database
     database_url: str = "postgresql://dev_user:dev_password@localhost:5432/llm_voice_agent"

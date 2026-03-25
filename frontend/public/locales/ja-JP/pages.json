@@ -181,16 +181,88 @@
   },
   "test": {
     "title": "リアルタイムデバッグラボ",
-    "subtitle": "WebSocketとTwilio WebCallを1つのインターフェースで体験し、簡単に比較できます。",
+    "subtitle": "統合テストラボで Prompt 駆動の通話をシミュレーションして DB 連携を確認しつつ、同じ画面で WebSocket と Twilio のデバッグも実行できます。",
     "emptyState": "テスト機能は開発中",
     "emptyDescription": "このページでは、WebSocketとTwilio WebCallのリアルタイムデバッグ機能を提供します。",
     "tabs": {
       "ariaLabel": "テストオプション",
-      "simulation": "通話シミュレーション",
+      "simulation": "統合テストラボ",
       "appointment": "予約シミュレーション",
       "reviewer": "レビュアーモード",
       "websocket": "WebSocket",
       "twilio": "Twilio WebCall"
+    },
+    "unified": {
+      "sections": {
+        "chatTitle": "会話ワークスペース",
+        "chatDescription": "1つのテストフローで Prompt 応答、アクション発火、抽出品質をまとめて検証します。",
+        "setupTitle": "セッション設定",
+        "setupDescription": "Prompt を選択してシミュレーションセッションを作成します。チャット中の自動作成も可能です。",
+        "detailsTitle": "セッション詳細",
+        "detailsDescription": "現在モデル、通話メタデータ、Token 使用量を追跡して検証効率を高めます。",
+        "noSession": "アクティブなセッションがありません。開始するとメタデータが表示されます。"
+      },
+      "status": {
+        "notStarted": "未開始",
+        "active": "進行中",
+        "completed": "完了"
+      },
+      "form": {
+        "promptLabel": "Prompt モデルを選択",
+        "callerLabel": "疑似発信者名",
+        "callerPlaceholder": "Test Caller"
+      },
+      "actions": {
+        "newSession": "新規セッション",
+        "startSession": "セッション開始",
+        "finalize": "終了して抽出",
+        "clearPanel": "パネルをクリア",
+        "viewCalls": "通話記録を見る",
+        "viewAppointments": "予約記録を見る"
+      },
+      "meta": {
+        "currentModel": "現在モデル: {{provider}}/{{model}} · 温度 {{temperature}}",
+        "callIdLabel": "通話 ID",
+        "phoneLabel": "疑似電話番号",
+        "templateLabel": "テンプレートコード",
+        "tokensLabel": "累計 Tokens",
+        "callTag": "Call: {{value}}",
+        "phoneTag": "Phone: {{value}}",
+        "templateTag": "Template: {{value}}",
+        "tokensTag": "Tokens: {{value}}"
+      },
+      "notifications": {
+        "errorTitle": "リクエスト失敗",
+        "successTitle": "成功"
+      },
+      "chat": {
+        "closedPlaceholder": "このセッションは終了しています。「新規セッション」を押して続行してください。",
+        "inputPlaceholder": "メッセージを入力して、Prompt 応答と動作抽出をテスト..."
+      },
+      "records": {
+        "title": "記録連携",
+        "description": "テストデータは Calls/Appointments に保存され、すぐに確認できます。",
+        "currentAppointment": " 現在の予約ID: {{id}}"
+      },
+      "errors": {
+        "loadPrompts": "Prompt 一覧の読み込みに失敗しました。バックエンド接続を確認してください。",
+        "noPromptSelected": "先に Prompt を選択してください",
+        "createSessionFailed": "セッション作成に失敗しました",
+        "requestFailedWithStatus": "リクエスト失敗: {{status}}",
+        "streamFailed": "ストリーミング応答に失敗しました",
+        "sendMessageFailed": "メッセージ送信に失敗しました",
+        "noActiveSession": "先にテストセッションを作成してください",
+        "finalizeFailed": "セッション終了に失敗しました"
+      },
+      "info": {
+        "sessionCreated": "テストセッションを作成しました: {{phone}}",
+        "sessionFinalized": "セッションを終了し、抽出を完了しました"
+      },
+      "messages": {
+        "finalized": "セッションを終了しました。状態: {{status}}。{{appointmentMessage}}",
+        "appointmentSaved": "予約を保存しました: {{appointmentId}}",
+        "noAppointment": "予約レコードは作成されませんでした"
+      }
     },
     "appointment": {
       "description": "予約シミュレーション機能は開発中..."
@@ -232,7 +304,7 @@
     },
     "reviewer": {
       "title": "AI審査員モード (Reviewer Mode)",
-      "description": "審査員モードを有効にすると、通話終了後にシステムが自動的にLLMを呼び出し、通話品質、ユーザー感情、解決率を評価します。これにより「信頼度スコア」と詳細な通話要約が生成されます。",
+      "description": "レビュアーモードを有効にすると、通話終了後にシステムが自動で LLM を呼び出し、通話品質・感情・解決率を評価します。これにより「信頼度スコア」と詳細な通話要約が生成され、この設定は統合テストラボの全シミュレーションに適用されます。",
       "toggle": {
         "label": "自動評価を有効化",
         "on": "有効",
