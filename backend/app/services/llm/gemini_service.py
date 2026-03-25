@@ -2,28 +2,51 @@
 Google Gemini LLM service implementation.
 """
 import json
-import google.generativeai as genai
-from typing import AsyncIterator, Dict, Any, Optional, List
+from typing import Any, AsyncIterator, Dict, List, Optional
+
+from google import genai
+from google.genai import types
 
 from .base import BaseLLMService
-from .exceptions import LLMAPIError, LLMRateLimitError, LLMInvalidResponseError
+from .exceptions import LLMAPIError, LLMInvalidResponseError, LLMRateLimitError
 
 
 class GeminiService(BaseLLMService):
     """Google Gemini LLM service implementation."""
-    
+
     def __init__(self, api_key: str, model: str = "gemini-2.0-flash"):
-        """
-        Initialize Gemini service.
-        
-        Args:
-            api_key: Google API key
-            model: Gemini model name
-        """
         super().__init__(api_key, model)
-        genai.configure(api_key=api_key)
-        self.client = genai.GenerativeModel(model)
-    
+        self.client = genai.Client(api_key=api_key)
+
+    def _build_generation_config(
+        self,
+        temperature: float,
+        max_tokens: Optional[int],
+        response_format: str,
+        output_schema: Optional[Dict[str, Any]],
+    ) -> types.GenerateContentConfig:
+        config: Dict[str, Any] = {
+            "temperature": temperature,
+        }
+
+        if max_tokens:
+            config["max_output_tokens"] = max_tokens
+
+        if response_format == "json_object":
+            config["response_mime_type"] = "application/json"
+            if output_schema:
+                config["response_schema"] = output_schema
+
+        return types.GenerateContentConfig(**config)
+
+    @staticmethod
+    def _is_rate_limit_error(error: Exception) -> bool:
+        text = str(error).lower()
+        return any(
+            keyword in text
+            for keyword in ["quota", "rate", "429", "resource exhausted", "too many requests"]
+        )
+
     async def chat_completion(
         self,
         messages: List[Dict[str, str]],
@@ -31,38 +54,31 @@ class GeminiService(BaseLLMService):
         max_tokens: Optional[int] = None,
         response_format: str = "text",
         output_schema: Optional[Dict[str, Any]] = None,
-        **kwargs
+        **kwargs,
     ) -> str:
         """Get complete chat response from Gemini."""
         try:
-            # Convert messages to Gemini format
             prompt = self._convert_messages(messages)
-            
-            # Configure generation
-            generation_config = {
-                "temperature": temperature,
-            }
-            if max_tokens:
-                generation_config["max_output_tokens"] = max_tokens
-            
-            if response_format == "json_object":
-                generation_config["response_mime_type"] = "application/json"
-                if output_schema:
-                    generation_config["response_schema"] = output_schema
-            
-            # Generate response
-            response = await self.client.generate_content_async(
-                prompt,
-                generation_config=generation_config
+            config = self._build_generation_config(
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format=response_format,
+                output_schema=output_schema,
             )
-            
-            return response.text
-            
+
+            response = await self.client.aio.models.generate_content(
+                model=self.model,
+                contents=prompt,
+                config=config,
+            )
+
+            return response.text or ""
+
         except Exception as e:
-            if "quota" in str(e).lower() or "rate" in str(e).lower():
+            if self._is_rate_limit_error(e):
                 raise LLMRateLimitError(f"Gemini rate limit exceeded: {e}")
             raise LLMAPIError(f"Gemini API error: {e}")
-    
+
     async def chat_stream(
         self,
         messages: List[Dict[str, str]],
@@ -70,112 +86,94 @@ class GeminiService(BaseLLMService):
         max_tokens: Optional[int] = None,
         response_format: str = "text",
         output_schema: Optional[Dict[str, Any]] = None,
-        **kwargs
+        **kwargs,
     ) -> AsyncIterator[str]:
         """Get streaming chat response from Gemini."""
         try:
-            # Convert messages to Gemini format
             prompt = self._convert_messages(messages)
-            
-            # Configure generation
-            generation_config = {
-                "temperature": temperature,
-            }
-            if max_tokens:
-                generation_config["max_output_tokens"] = max_tokens
-            
-            if response_format == "json_object":
-                generation_config["response_mime_type"] = "application/json"
-                if output_schema:
-                    generation_config["response_schema"] = output_schema
-            
-            # Generate streaming response
-            response = await self.client.generate_content_async(
-                prompt,
-                generation_config=generation_config,
-                stream=True
+            config = self._build_generation_config(
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format=response_format,
+                output_schema=output_schema,
             )
-            
-            async for chunk in response:
-                if chunk.text:
-                    yield chunk.text
-                    
+
+            stream = await self.client.aio.models.generate_content_stream(
+                model=self.model,
+                contents=prompt,
+                config=config,
+            )
+
+            async for chunk in stream:
+                text = chunk.text or ""
+                if text:
+                    yield text
+
         except Exception as e:
-            if "quota" in str(e).lower() or "rate" in str(e).lower():
+            if self._is_rate_limit_error(e):
                 raise LLMRateLimitError(f"Gemini rate limit exceeded: {e}")
             raise LLMAPIError(f"Gemini API error: {e}")
-    
+
     async def chat_with_json(
         self,
         messages: List[Dict[str, str]],
         schema: Optional[Dict[str, Any]] = None,
         temperature: float = 0.7,
-        **kwargs
+        **kwargs,
     ) -> Dict[str, Any]:
         """Get JSON-formatted response from Gemini."""
         try:
-            # Convert messages to Gemini format
-            prompt = self._convert_messages(messages)
-            
-            # Configure for JSON output
-            generation_config = {
-                "temperature": temperature,
-                "response_mime_type": "application/json"
-            }
-            
-            # Generate response
-            response = await self.client.generate_content_async(
-                prompt,
-                generation_config=generation_config
+            response_text = await self.chat_completion(
+                messages=messages,
+                temperature=temperature,
+                response_format="json_object",
+                output_schema=schema,
             )
-            
-            # Parse JSON
-            try:
-                return json.loads(response.text)
-            except json.JSONDecodeError as e:
-                raise LLMInvalidResponseError(f"Invalid JSON response: {e}")
-                
+            return json.loads(response_text)
+
+        except json.JSONDecodeError as e:
+            raise LLMInvalidResponseError(f"Invalid JSON response: {e}")
         except LLMInvalidResponseError:
             raise
         except Exception as e:
-            if "quota" in str(e).lower() or "rate" in str(e).lower():
+            if self._is_rate_limit_error(e):
                 raise LLMRateLimitError(f"Gemini rate limit exceeded: {e}")
             raise LLMAPIError(f"Gemini API error: {e}")
 
     async def list_models(self) -> List[str]:
-        """
-        List available Gemini models.
-        """
+        """List available Gemini models."""
         try:
-            models = []
-            for m in genai.list_models():
-                if 'generateContent' in m.supported_generation_methods:
-                    # Filter for gemini models (optional, but good practice)
-                    if "gemini" in m.name.lower():
-                        # m.name is like 'models/gemini-pro', we want just 'gemini-pro'
-                        name = m.name.replace("models/", "")
-                        models.append(name)
-            return sorted(models)
+            pager = await self.client.aio.models.list()
+            models: List[str] = []
+
+            async for model in pager:
+                name = (model.name or "").replace("models/", "")
+                if not name or "gemini" not in name.lower():
+                    continue
+
+                supported_actions = model.supported_actions or []
+                if supported_actions and "generateContent" not in supported_actions:
+                    continue
+
+                models.append(name)
+
+            return sorted(set(models))
         except Exception as e:
-             raise LLMAPIError(f"Gemini list models error: {e}")
-    
+            raise LLMAPIError(f"Gemini list models error: {e}")
+
     def _convert_messages(self, messages: List[Dict[str, str]]) -> str:
-        """
-        Convert standard message format to Gemini prompt format.
-        
-        Gemini uses a simple string prompt, so we concatenate messages.
-        """
-        prompt_parts = []
-        
+        """Convert standard message format to a single Gemini prompt."""
+        prompt_parts: List[str] = []
+
         for msg in messages:
             role = msg.get("role", "user")
             content = msg.get("content", "")
-            
+
             if role == "system":
                 prompt_parts.append(f"System: {content}")
             elif role == "user":
                 prompt_parts.append(f"User: {content}")
             elif role == "assistant":
                 prompt_parts.append(f"Assistant: {content}")
-        
+
         return "\n\n".join(prompt_parts)

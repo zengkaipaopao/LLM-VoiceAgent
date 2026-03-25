@@ -1,18 +1,20 @@
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
-from typing import Optional, List
 from datetime import datetime
+from typing import Optional
+
 import math
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
-from app.services.call_service import CallService
+from app.schemas.base import PaginatedMetaWrapper, PaginationMeta
 from app.schemas.call import CallListResponse, CallResponse
-from app.schemas.base import PaginationMeta, PaginatedMetaWrapper
+from app.services.call_service import CallService
 
 router = APIRouter()
 
+
 @router.get("", response_model=CallListResponse)
-def list_calls(
+async def list_calls(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     sort_by: str = Query("started_at"),
@@ -23,16 +25,10 @@ def list_calls(
     end_date: Optional[datetime] = None,
     search: Optional[str] = None,
     filter_match: str = Query("and", pattern="^(and|or)$"),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    List calls (read-only for simulation results).
-    
-    Uses CallService layer for business logic.
-    """
-    # Use Service layer instead of direct Repository access
     service = CallService(db)
-    items, total = service.list_calls(
+    items, total = await service.list_calls(
         page=page,
         page_size=page_size,
         sort_by=sort_by,
@@ -42,11 +38,11 @@ def list_calls(
         start_date=start_date,
         end_date=end_date,
         search=search,
-        filter_match=filter_match
+        filter_match=filter_match,
     )
-    
+
     total_pages = math.ceil(total / page_size) if total > 0 else 0
-    
+
     return CallListResponse(
         success=True,
         message="Success",
@@ -56,7 +52,7 @@ def list_calls(
                 page=page,
                 page_size=page_size,
                 total_items=total,
-                total_pages=total_pages
+                total_pages=total_pages,
             )
-        )
+        ),
     )

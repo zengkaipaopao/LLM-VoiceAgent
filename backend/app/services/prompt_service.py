@@ -3,104 +3,68 @@ Prompt template service.
 
 Manages prompt templates for different scenarios.
 """
-from typing import Optional, Dict, Any, List
-from sqlalchemy.orm import Session
+from typing import Any, Dict, List, Optional
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.prompt_template import PromptTemplate
 
 
 class PromptService:
     """Service for managing prompt templates."""
-    
-    def __init__(self, db: Session):
-        """
-        Initialize prompt service.
-        
-        Args:
-            db: Database session
-        """
+
+    def __init__(self, db: AsyncSession):
         self.db = db
-    
-    def get_template(self, code: str) -> Optional[PromptTemplate]:
-        """
-        Get template by code.
-        
-        Args:
-            code: Template code (e.g., 'hotel_booking')
-            
-        Returns:
-            Template if found, None otherwise
-        """
-        return self.db.query(PromptTemplate).filter(
+
+    async def get_template(self, code: str) -> Optional[PromptTemplate]:
+        stmt = select(PromptTemplate).where(
             PromptTemplate.code == code,
-            PromptTemplate.is_active == True
-        ).first()
-    
-    def get_template_by_id(self, template_id: str) -> Optional[PromptTemplate]:
-        """
-        Get template by ID.
-        
-        Args:
-            template_id: Template UUID
-            
-        Returns:
-            Template if found, None otherwise
-        """
-        return self.db.query(PromptTemplate).filter(
+            PromptTemplate.is_active.is_(True),
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_template_by_id(self, template_id: str) -> Optional[PromptTemplate]:
+        stmt = select(PromptTemplate).where(
             PromptTemplate.id == template_id,
-            PromptTemplate.is_active == True
-        ).first()
-    
-    def list_templates(
+            PromptTemplate.is_active.is_(True),
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def list_templates(
         self,
         category: Optional[str] = None,
-        active_only: bool = True
+        active_only: bool = True,
     ) -> List[PromptTemplate]:
-        """
-        List all templates.
-        
-        Args:
-            category: Filter by category (optional)
-            active_only: Only return active templates
-            
-        Returns:
-            List of templates
-        """
-        query = self.db.query(PromptTemplate)
-        
+        stmt = select(PromptTemplate)
+
         if active_only:
-            query = query.filter(PromptTemplate.is_active == True)
-        
+            stmt = stmt.where(PromptTemplate.is_active.is_(True))
+
         if category:
-            query = query.filter(PromptTemplate.category == category)
-        
-        return query.order_by(PromptTemplate.name).all()
-    
+            stmt = stmt.where(PromptTemplate.category == category)
+
+        stmt = stmt.order_by(PromptTemplate.name)
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
     def render_prompt(
         self,
         template: PromptTemplate,
-        variables: Optional[Dict[str, Any]] = None
+        variables: Optional[Dict[str, Any]] = None,
     ) -> str:
-        """
-        Render prompt with variables.
-        
-        Args:
-            template: Prompt template
-            variables: Variables to substitute
-            
-        Returns:
-            Rendered prompt
-        """
         prompt = template.system_prompt
-        
+
         if variables:
             for key, value in variables.items():
                 placeholder = f"{{{key}}}"
                 prompt = prompt.replace(placeholder, str(value))
-        
+
         return prompt
-    
-    def create_template(
+
+    async def create_template(
         self,
         name: str,
         code: str,
@@ -109,24 +73,8 @@ class PromptService:
         description: Optional[str] = None,
         extraction_prompt: Optional[str] = None,
         extraction_schema: Optional[Dict] = None,
-        **kwargs
+        **kwargs,
     ) -> PromptTemplate:
-        """
-        Create a new template.
-        
-        Args:
-            name: Template name
-            code: Unique code
-            system_prompt: System prompt text
-            category: Category
-            description: Description
-            extraction_prompt: Extraction prompt
-            extraction_schema: JSON schema for extraction
-            **kwargs: Additional fields
-            
-        Returns:
-            Created template
-        """
         template = PromptTemplate(
             name=name,
             code=code,
@@ -135,11 +83,11 @@ class PromptService:
             description=description,
             extraction_prompt=extraction_prompt,
             extraction_schema=extraction_schema,
-            **kwargs
+            **kwargs,
         )
-        
+
         self.db.add(template)
-        self.db.commit()
-        self.db.refresh(template)
-        
+        await self.db.commit()
+        await self.db.refresh(template)
+
         return template

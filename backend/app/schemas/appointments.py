@@ -4,6 +4,7 @@ from typing import Literal, Any, Optional
 
 from pydantic import BaseModel, field_validator
 from app.schemas.base import PaginatedResponse
+from app.utils.datetime_utils import to_tokyo_aware
 
 
 AppointmentOperation = Literal["create", "update", "delete", "cancel"]
@@ -38,6 +39,11 @@ class AppointmentBase(BaseModel):
     def coerce_operation(cls, v: Any) -> str:
         """将数据库中的 NULL operation 归一化为默认值 'create'"""
         return v if v in ("create", "update", "delete", "cancel") else "create"
+
+    @field_validator("timestamp", "appointment")
+    @classmethod
+    def ensure_tokyo_datetime(cls, v: datetime) -> datetime:
+        return to_tokyo_aware(v) or v
 
 class AppointmentRecord(AppointmentBase):
     id: UUID

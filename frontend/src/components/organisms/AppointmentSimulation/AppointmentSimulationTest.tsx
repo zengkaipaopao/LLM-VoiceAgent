@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import axios from 'axios';
+import { http } from '../../../api/http';
 import {
   InlineNotification,
   CodeSnippet,
@@ -29,8 +29,6 @@ export const AppointmentSimulationTest: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const API_BASE = '/api/v1'; // Using proxy in Vite
 
   // 临时使用硬编码的翻译，后续可以添加到 locales
   const scenarios: Scenario[] = [
@@ -66,8 +64,8 @@ export const AppointmentSimulationTest: React.FC = () => {
     setResult(null);
     
     try {
-      const response = await axios.post(
-        `${API_BASE}/appointments/simulate/incoming`,
+      const response = await http.post(
+        '/appointments/simulate/incoming',
         null,
         { 
           params: { scenario } 
@@ -90,8 +88,8 @@ export const AppointmentSimulationTest: React.FC = () => {
     setResult(null);
     
     try {
-      const response = await axios.post(
-        `${API_BASE}/appointments/simulate/batch`,
+      const response = await http.post(
+        '/appointments/simulate/batch',
         null,
         { 
           params: { count } 
@@ -117,7 +115,7 @@ export const AppointmentSimulationTest: React.FC = () => {
     setResult(null);
     
     try {
-      const response = await axios.delete(`${API_BASE}/appointments/simulate/clear-test-data`);
+      const response = await http.delete('/appointments/simulate/clear-test-data');
       setResult({
         ...response.data.data,
         _message: `Cleared ${response.data.data?.deleted_count || 0} test appointments`

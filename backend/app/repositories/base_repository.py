@@ -3,167 +3,91 @@ Base Repository for data access layer.
 
 Provides generic CRUD operations for all repositories.
 """
-from typing import Generic, TypeVar, Type, Optional, List, Dict, Any
-from sqlalchemy.orm import Session
-from sqlalchemy import func
+from typing import Any, Dict, Generic, List, Optional, Type, TypeVar
+
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models.base import Base
 
 ModelType = TypeVar("ModelType", bound=Base)
 
 
 class BaseRepository(Generic[ModelType]):
-    """
-    Base repository with generic CRUD operations.
-    
-    Type Parameters:
-        ModelType: SQLAlchemy model type
-        
-    Example:
-        class CallRepository(BaseRepository[Call]):
-            def __init__(self, db: Session):
-                super().__init__(Call, db)
-    """
-    
-    def __init__(self, model: Type[ModelType], db: Session):
-        """
-        Initialize repository.
-        
-        Args:
-            model: SQLAlchemy model class
-            db: Database session
-        """
+    """Base repository with generic async CRUD operations."""
+
+    def __init__(self, model: Type[ModelType], db: AsyncSession):
         self.model = model
         self.db = db
-    
-    def get(self, id: Any) -> Optional[ModelType]:
-        """
-        Get a single record by ID.
-        
-        Args:
-            id: Record ID
-            
-        Returns:
-            Model instance or None if not found
-        """
-        return self.db.query(self.model).filter(self.model.id == id).first()
-    
-    def get_multi(
-        self, 
-        *, 
-        skip: int = 0, 
+
+    async def get(self, id: Any) -> Optional[ModelType]:
+        stmt = select(self.model).where(self.model.id == id)
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_by_id(self, id: Any) -> Optional[ModelType]:
+        """Backward-compatible alias for get()."""
+        return await self.get(id)
+
+    async def get_multi(
+        self,
+        *,
+        skip: int = 0,
         limit: int = 100,
-        filters: Optional[Dict[str, Any]] = None
+        filters: Optional[Dict[str, Any]] = None,
     ) -> List[ModelType]:
-        """
-        Get multiple records with pagination.
-        
-        Args:
-            skip: Number of records to skip
-            limit: Maximum number of records to return
-            filters: Optional filters as dict
-            
-        Returns:
-            List of model instances
-        """
-        query = self.db.query(self.model)
-        
+        stmt = select(self.model)
+
         if filters:
             for key, value in filters.items():
                 if hasattr(self.model, key):
-                    query = query.filter(getattr(self.model, key) == value)
-        
-        return query.offset(skip).limit(limit).all()
-    
-    def count(self, filters: Optional[Dict[str, Any]] = None) -> int:
-        """
-        Count records.
-        
-        Args:
-            filters: Optional filters as dict
-            
-        Returns:
-            Number of records
-        """
-        query = self.db.query(func.count(self.model.id))
-        
+                    stmt = stmt.where(getattr(self.model, key) == value)
+
+        stmt = stmt.offset(skip).limit(limit)
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def count(self, filters: Optional[Dict[str, Any]] = None) -> int:
+        stmt = select(func.count(self.model.id))
+
         if filters:
             for key, value in filters.items():
                 if hasattr(self.model, key):
-                    query = query.filter(getattr(self.model, key) == value)
-        
-        return query.scalar()
-    
-    def create(self, obj_in: Dict[str, Any]) -> ModelType:
-        """
-        Create a new record.
-        
-        Args:
-            obj_in: Data to create record from
-            
-        Returns:
-            Created model instance
-        """
+                    stmt = stmt.where(getattr(self.model, key) == value)
+
+        result = await self.db.execute(stmt)
+        return int(result.scalar() or 0)
+
+    async def create(self, obj_in: Dict[str, Any]) -> ModelType:
         db_obj = self.model(**obj_in)
         self.db.add(db_obj)
-        self.db.commit()
-        self.db.refresh(db_obj)
+        await self.db.commit()
+        await self.db.refresh(db_obj)
         return db_obj
-    
-    def update(
-        self, 
-        id: Any, 
-        obj_in: Dict[str, Any]
-    ) -> Optional[ModelType]:
-        """
-        Update a record.
-        
-        Args:
-            id: Record ID
-            obj_in: Data to update
-            
-        Returns:
-            Updated model instance or None if not found
-        """
-        db_obj = self.get(id)
+
+    async def update(self, id: Any, obj_in: Dict[str, Any]) -> Optional[ModelType]:
+        db_obj = await self.get(id)
         if not db_obj:
             return None
-        
+
         for field, value in obj_in.items():
             if hasattr(db_obj, field):
                 setattr(db_obj, field, value)
-        
-        self.db.commit()
-        self.db.refresh(db_obj)
+
+        await self.db.commit()
+        await self.db.refresh(db_obj)
         return db_obj
-    
-    def delete(self, id: Any) -> bool:
-        """
-        Delete a record.
-        
-        Args:
-            id: Record ID
-            
-        Returns:
-            True if deleted, False if not found
-        """
-        db_obj = self.get(id)
+
+    async def delete(self, id: Any) -> bool:
+        db_obj = await self.get(id)
         if not db_obj:
             return False
-        
-        self.db.delete(db_obj)
-        self.db.commit()
+
+        await self.db.delete(db_obj)
+        await self.db.commit()
         return True
-    
-    def exists(self, id: Any) -> bool:
-        """
-        Check if a record exists.
-        
-        Args:
-            id: Record ID
-            
-        Returns:
-            True if exists, False otherwise
-        """
-        return self.db.query(
-            self.db.query(self.model).filter(self.model.id == id).exists()
-        ).scalar()
+
+    async def exists(self, id: Any) -> bool:
+        stmt = select(self.model.id).where(self.model.id == id).limit(1)
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none() is not None

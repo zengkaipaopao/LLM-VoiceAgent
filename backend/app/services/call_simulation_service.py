@@ -5,49 +5,30 @@ This service simulates real call scenarios for testing purposes.
 In production, these will be triggered by SIP events.
 """
 import random
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from uuid import uuid4
-from sqlalchemy.orm import Session
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.call import Call, CallDirection, CallStatus, HandlerType
-from app.repositories.call_repository import CallRepository
+from app.utils.datetime_utils import now_tokyo_naive
 
 
 class CallSimulationService:
     """Service for simulating call scenarios."""
-    
-    def __init__(self, db: Session):
-        self.repo = CallRepository(db)
+
+    def __init__(self, db: AsyncSession):
         self.db = db
-    
-    def simulate_incoming_call(self, scenario: str = "ai_handled", enable_reviewer: bool = True) -> Call:
-        """
-        Simulate an incoming call with different scenarios.
-        
-        Args:
-            scenario: Type of scenario to simulate
-            enable_reviewer: Whether to enable AI reviewer mode (generate confidence score)
-        """
-        # Generate realistic test data
-        phone_numbers = [
-            "+1234567890",
-            "+0987654321", 
-            "+1111222233",
-            "+8613800138000"
-        ]
-        
-        caller_names = [
-            "张三",
-            "李四",
-            "王五",
-            "John Smith"
-        ]
-        
-        # Create base call
-        now = datetime.now(timezone.utc)
+
+    async def simulate_incoming_call(self, scenario: str = "ai_handled", enable_reviewer: bool = True) -> Call:
+        """Simulate an incoming call with different scenarios."""
+        phone_numbers = ["+1234567890", "+0987654321", "+1111222233", "+8613800138000"]
+        caller_names = ["张三", "李四", "王五", "John Smith"]
+
+        now = now_tokyo_naive()
         caller_phone = random.choice(phone_numbers)
         receiver_phone = "+1-800-COMPANY"
-        
+
         call = Call(
             id=uuid4(),
             direction=CallDirection.INBOUND,
@@ -62,11 +43,10 @@ class CallSimulationService:
             extra_data={
                 "simulation": True,
                 "scenario": scenario,
-                "simulated_at": datetime.now(timezone.utc).isoformat()
-            }
+                "simulated_at": now_tokyo_naive().isoformat(),
+            },
         )
-        
-        # Simulate different scenarios
+
         if scenario == "ai_handled":
             self._simulate_ai_handled(call, now, enable_reviewer)
         elif scenario == "transferred":
@@ -77,36 +57,30 @@ class CallSimulationService:
             self._simulate_failed(call, now)
         else:
             self._simulate_ai_handled(call, now, enable_reviewer)
-        
-        # Save to database
+
         self.db.add(call)
-        self.db.commit()
-        self.db.refresh(call)
-        
+        await self.db.commit()
+        await self.db.refresh(call)
+
         return call
-    
+
     def _simulate_ai_handled(self, call: Call, start_time: datetime, enable_reviewer: bool = True):
-        """Simulate AI successfully handling the call."""
-        # Answer after 3-8 seconds
         wait_seconds = random.randint(3, 8)
         call.answered_at = start_time + timedelta(seconds=wait_seconds)
         call.is_answered = True
         call.status = CallStatus.COMPLETED
-        
-        # Call duration 1-5 minutes
+
         duration = random.randint(60, 300)
         call.ended_at = call.answered_at + timedelta(seconds=duration)
         call.duration_seconds = duration + wait_seconds
-        
-        # AI handled successfully
+
         call.handler_type = HandlerType.AI
-        
+
         if enable_reviewer:
             call.ai_confidence = random.randint(85, 100)
         else:
             call.ai_confidence = None
-        
-        # Generate realistic transcript
+
         call.transcript = """客户: 你好,我想咨询一下你们的产品价格。
 AI: 您好!我是智能客服助手。很高兴为您服务。请问您想了解哪款产品的价格呢?
 客户: 就是那个新出的智能手表。
@@ -115,41 +89,36 @@ AI: 好的,我们最新的智能手表有三个版本:基础版售价1999元,标
 AI: 标准版包含基本的健康监测和运动追踪功能,而旗舰版额外增加了血氧监测、心电图功能,以及更长的续航时间。
 客户: 好的,我了解了,谢谢!
 AI: 不客气!如果您还有其他问题,随时欢迎咨询。祝您生活愉快!"""
-        
+
         call.summary = "客户咨询智能手表价格和功能差异,AI成功解答客户疑问。"
-    
+
     def _simulate_transferred(self, call: Call, start_time: datetime, enable_reviewer: bool = True):
-        """Simulate call transferred to human."""
-        # AI answers first
         wait_seconds = random.randint(3, 8)
         call.answered_at = start_time + timedelta(seconds=wait_seconds)
         call.is_answered = True
-        
-        # AI handles for 1-2 minutes
+
         ai_duration = random.randint(60, 120)
         call.transferred_at = call.answered_at + timedelta(seconds=ai_duration)
-        
-        # Then transferred to human
+
         call.handler_type = HandlerType.TRANSFERRED
         call.transfer_reason = random.choice([
             "客户要求人工客服",
             "需要查询订单详情",
             "复杂问题需要专业解答",
-            "客户情绪激动,需要人工安抚"
+            "客户情绪激动,需要人工安抚",
         ])
-        
+
         if enable_reviewer:
             call.ai_confidence = random.randint(60, 80)
         else:
             call.ai_confidence = None
-        
-        # Human handles for 2-5 minutes
+
         human_duration = random.randint(120, 300)
         total_duration = ai_duration + human_duration
         call.ended_at = call.answered_at + timedelta(seconds=total_duration)
         call.duration_seconds = total_duration + wait_seconds
         call.status = CallStatus.COMPLETED
-        
+
         call.transcript = """客户: 你好,我的订单什么时候能到?
 AI: 您好!请问您的订单号是多少?
 客户: 我不记得了,你帮我查一下。
@@ -160,51 +129,33 @@ AI: 为了更准确地为您服务,我为您转接人工客服。请稍候...
 人工客服: 您好,我是人工客服小王。我来帮您查询订单。
 客户: 好的,我的手机号是...
 人工客服: 好的,我查到了您的订单,预计明天下午送达。"""
-        
+
         call.summary = f"客户咨询订单信息,AI无法直接查询,转人工处理。转接原因:{call.transfer_reason}"
-    
+
     def _simulate_no_answer(self, call: Call, start_time: datetime):
-        """Simulate unanswered call."""
-        # Ring for 30-60 seconds then no answer
         ring_duration = random.randint(30, 60)
         call.ended_at = start_time + timedelta(seconds=ring_duration)
         call.duration_seconds = ring_duration
         call.status = CallStatus.NO_ANSWER
         call.is_answered = False
         call.summary = "客户未接听"
-    
+
     def _simulate_failed(self, call: Call, start_time: datetime):
-        """Simulate failed call."""
-        # Fail quickly
         call.ended_at = start_time + timedelta(seconds=5)
         call.duration_seconds = 5
         call.status = CallStatus.FAILED
         call.is_answered = False
         call.summary = "呼叫失败"
-        call.extra_data["failure_reason"] = random.choice([
-            "网络错误",
-            "SIP服务器无响应",
-            "号码不存在"
-        ])
-    
-    def simulate_batch_calls(self, count: int = 10, enable_reviewer: bool = True) -> list[Call]:
-        """
-        Simulate multiple calls for testing.
-        
-        Args:
-            count: Number of calls to simulate
-            enable_reviewer: Whether to enable AI reviewer mode
-            
-        Returns:
-            List of simulated calls
-        """
+        call.extra_data["failure_reason"] = random.choice(["网络错误", "SIP服务器无响应", "号码不存在"])
+
+    async def simulate_batch_calls(self, count: int = 10, enable_reviewer: bool = True) -> list[Call]:
         scenarios = ["ai_handled", "transferred", "no_answer", "failed"]
-        weights = [0.6, 0.25, 0.1, 0.05]  # 60% AI handled, 25% transferred, etc.
-        
+        weights = [0.6, 0.25, 0.1, 0.05]
+
         calls = []
         for _ in range(count):
             scenario = random.choices(scenarios, weights=weights)[0]
-            call = self.simulate_incoming_call(scenario, enable_reviewer=enable_reviewer)
+            call = await self.simulate_incoming_call(scenario, enable_reviewer=enable_reviewer)
             calls.append(call)
-        
+
         return calls

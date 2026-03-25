@@ -1,52 +1,44 @@
 """
 Appointment simulation API endpoints.
 """
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
 from typing import List
 
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import get_db
-from app.services.appointment_simulation_service import AppointmentSimulationService
 from app.schemas.appointments import AppointmentRecord
 from app.schemas.base import ResponseBase
+from app.services.appointment_simulation_service import AppointmentSimulationService
 
 router = APIRouter()
 
+
 @router.post("/incoming", response_model=ResponseBase[AppointmentRecord])
-def simulate_incoming_appointment(
-    scenario: str = Query(
-        "new",
-        description="Scenario type: new (新预约), update (预约变更), cancel (取消预约)"
-    ),
-    db: Session = Depends(get_db)
+async def simulate_incoming_appointment(
+    scenario: str = Query("new", description="Scenario type: new (新预约), update (预约变更), cancel (取消预约)"),
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    🧪 Simulate an incoming appointment.
-    """
     service = AppointmentSimulationService(db)
-    appt = service.simulate_appointment(scenario)
-    
+    appt = await service.simulate_appointment(scenario)
+
     return ResponseBase(success=True, data=AppointmentRecord.model_validate(appt))
 
+
 @router.post("/batch", response_model=ResponseBase[List[AppointmentRecord]])
-def simulate_batch_appointments(
+async def simulate_batch_appointments(
     count: int = Query(10, ge=1, le=100),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    🧪 Simulate multiple appointments.
-    """
     service = AppointmentSimulationService(db)
-    appts = service.simulate_batch_appointments(count)
-    
+    appts = await service.simulate_batch_appointments(count)
+
     return ResponseBase(success=True, data=[AppointmentRecord.model_validate(appt) for appt in appts])
 
+
 @router.delete("/clear-test-data", response_model=ResponseBase[dict])
-def clear_test_data(db: Session = Depends(get_db)):
-    """
-    🧹 Clear all simulated appointments.
-    """
+async def clear_test_data(db: AsyncSession = Depends(get_db)):
     service = AppointmentSimulationService(db)
-    deleted = service.clear_test_data()
-    
+    deleted = await service.clear_test_data()
+
     return ResponseBase(success=True, data={"deleted_count": deleted})

@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
+import { API_BASE_URL } from '../api/http';
 
 /**
  * Message 接口
@@ -32,6 +33,28 @@ interface SSEEvent {
   tokens_used?: number;
 }
 
+function parseSSEEvent(rawEvent: string): SSEEvent | null {
+  const dataLines = rawEvent
+    .split('\n')
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice(5).trimStart());
+
+  if (!dataLines.length) {
+    return null;
+  }
+
+  const payload = dataLines.join('\n').trim();
+  if (!payload) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(payload) as SSEEvent;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * useChatStream Hook 返回值
  */
@@ -51,7 +74,7 @@ interface UseChatStreamReturn {
  * useChatStream - 处理 LLM 对话流式响应的自定义 Hook
  */
 export function useChatStream(
-  defaultProvider: string = 'gemini',
+  defaultProvider?: string,
   defaultTemplate: string = 'general_appointment'
 ): UseChatStreamReturn {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -92,14 +115,14 @@ export function useChatStream(
       const requestBody: ChatRequest = {
         message: content,
         template_code: options.template_code || defaultTemplate,
-        provider: options.provider,
+        provider: options.provider ?? defaultProvider,
         model: options.model,
         temperature: options.temperature,
-        call_id: callId || undefined
+        call_id: options.call_id || callId || undefined
       };
 
       // 发起 SSE 请求并处理流
-      const response = await fetch('/api/v1/chat/stream', {
+      const response = await fetch(`${API_BASE_URL}/chat/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -129,46 +152,52 @@ export function useChatStream(
       setMessages(prev => [...prev, assistantMessage]);
 
       let assistantContent = '';
+      let buffer = '';
       
       while (true) {
         const { done, value } = await reader.read();
-        
-        if (done) break;
-        
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\\n');
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const dataStr = line.substring(6).trim();
-            if (!dataStr) continue;
-            
-            try {
-              const eventResp = JSON.parse(dataStr);
-              
-              if (eventResp.type === 'call_id' && eventResp.call_id) {
-                setCallId(eventResp.call_id);
-              } else if (eventResp.type === 'content' && eventResp.content) {
-                assistantContent += eventResp.content;
-                setMessages(prev => {
-                  const newMessages = [...prev];
-                  newMessages[newMessages.length - 1] = {
-                    ...assistantMessage,
-                    content: assistantContent
-                  };
-                  return newMessages;
-                });
-              } else if (eventResp.type === 'error') {
-                throw new Error(eventResp.error || 'Server stream error');
-              } else if (eventResp.type === 'done') {
-                 if (eventResp.tokens_used) {
-                   setTotalTokens(prev => prev + eventResp.tokens_used!);
-                 }
-              }
-            } catch (e) {
-              // Not JSON or partial chunk, ignore
+
+        const decodedChunk = decoder.decode(value || new Uint8Array(), { stream: !done });
+        buffer += decodedChunk.replace(/\r\n/g, '\n');
+
+        let boundaryIndex = buffer.indexOf('\n\n');
+        while (boundaryIndex !== -1) {
+          const rawEvent = buffer.slice(0, boundaryIndex);
+          buffer = buffer.slice(boundaryIndex + 2);
+
+          const eventResp = parseSSEEvent(rawEvent);
+          if (eventResp) {
+            if (eventResp.type === 'call_id' && eventResp.call_id) {
+              setCallId(eventResp.call_id);
+            } else if (eventResp.type === 'content' && typeof eventResp.content === 'string') {
+              assistantContent += eventResp.content;
+              setMessages(prev => {
+                const newMessages = [...prev];
+                newMessages[newMessages.length - 1] = {
+                  ...assistantMessage,
+                  content: assistantContent
+                };
+                return newMessages;
+              });
+            } else if (eventResp.type === 'error') {
+              throw new Error(eventResp.error || 'Server stream error');
+            } else if (eventResp.type === 'done' && typeof eventResp.tokens_used === 'number') {
+              setTotalTokens(prev => prev + eventResp.tokens_used);
             }
           }
+
+          boundaryIndex = buffer.indexOf('\n\n');
+        }
+
+        if (done) {
+          const lastEvent = parseSSEEvent(buffer);
+          if (lastEvent?.type === 'error') {
+            throw new Error(lastEvent.error || 'Server stream error');
+          }
+          if (lastEvent?.type === 'done' && typeof lastEvent.tokens_used === 'number') {
+            setTotalTokens(prev => prev + lastEvent.tokens_used);
+          }
+          break;
         }
       }
 
@@ -188,8 +217,11 @@ export function useChatStream(
           timestamp: new Date()
         };
         setMessages(prev => {
-          // 移除最后一条空的 assistant 消息
-          const newMessages = prev.slice(0, -1);
+          const newMessages = [...prev];
+          const last = newMessages[newMessages.length - 1];
+          if (last?.role === 'assistant' && !last.content) {
+            newMessages.pop();
+          }
           return [...newMessages, errorMsg];
         });
       }

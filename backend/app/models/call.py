@@ -4,11 +4,11 @@ Call model for database.
 from sqlalchemy import Column, String, Integer, DateTime, Text, Enum as SQLEnum, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from datetime import datetime
 import uuid
 import enum
 
 from app.models.base import Base, TimestampMixin
+from app.utils.datetime_utils import now_tokyo_naive
 
 
 class CallDirection(str, enum.Enum):
@@ -88,7 +88,7 @@ class Call(Base, TimestampMixin):
     caller_name = Column(String(100))
     
     # 时间信息
-    started_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    started_at = Column(DateTime, nullable=False, default=now_tokyo_naive, index=True)
     answered_at = Column(DateTime)
     ended_at = Column(DateTime)
     duration_seconds = Column(Integer, default=0)

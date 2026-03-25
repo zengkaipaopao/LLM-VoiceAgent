@@ -1,5 +1,5 @@
 export type CallDirection = 'inbound' | 'outbound';
-export type CallStatus = 'ongoing' | 'completed' | 'failed';
+export type CallStatus = 'ringing' | 'ongoing' | 'completed' | 'failed' | 'no_answer' | 'busy';
 
 export interface CallLog {
   id: string;

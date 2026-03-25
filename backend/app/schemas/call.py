@@ -2,11 +2,12 @@
 Call schemas for request/response validation.
 """
 from pydantic import BaseModel, Field, ConfigDict, field_validator
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 from enum import Enum
 from app.schemas.base import PaginatedResponse
+from app.utils.datetime_utils import to_tokyo_aware
 
 
 class CallDirection(str, Enum):
@@ -81,10 +82,8 @@ class CallResponse(CallBase):
 
     @field_validator("started_at", "answered_at", "ended_at", "transferred_at", "created_at", "updated_at")
     @classmethod
-    def ensure_utc(cls, v: Optional[datetime]) -> Optional[datetime]:
-        if v and v.tzinfo is None:
-            return v.replace(tzinfo=timezone.utc)
-        return v
+    def ensure_tokyo(cls, v: Optional[datetime]) -> Optional[datetime]:
+        return to_tokyo_aware(v)
 
 
 class CallListResponse(PaginatedResponse[CallResponse]):

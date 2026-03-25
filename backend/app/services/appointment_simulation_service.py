@@ -2,35 +2,30 @@
 Appointment simulation service for testing.
 """
 import random
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from uuid import uuid4
-from sqlalchemy.orm import Session
+
+from sqlalchemy import delete
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.appointment import Appointment
-from app.models.call import Call, CallDirection, CallStatus, HandlerType
 from app.services.call_simulation_service import CallSimulationService
+from app.utils.datetime_utils import now_tokyo_naive
+
 
 class AppointmentSimulationService:
     """Service for simulating appointment scenarios."""
-    
-    def __init__(self, db: Session):
+
+    def __init__(self, db: AsyncSession):
         self.db = db
         self.call_service = CallSimulationService(db)
-    
-    def simulate_appointment(self, scenario: str = "confirmed") -> Appointment:
-        """
-        Simulate an appointment with different scenarios.
-        
-        Args:
-            scenario: Type of scenario (confirmed, cancelled, pending, emergency)
-        """
-        # First stimulate a call
-        call = self.call_service.simulate_incoming_call(scenario="ai_handled", enable_reviewer=True)
-        
-        # Base data
-        now = datetime.now(timezone.utc)
+
+    async def simulate_appointment(self, scenario: str = "confirmed") -> Appointment:
+        call = await self.call_service.simulate_incoming_call(scenario="ai_handled", enable_reviewer=True)
+
+        now = now_tokyo_naive()
         appt_date = now + timedelta(days=random.randint(1, 14))
-        
+
         appointment = Appointment(
             id=uuid4(),
             call_id=call.id,
@@ -43,13 +38,9 @@ class AppointmentSimulationService:
             amount=random.choice([f"{random.randint(10, 200)}kg", f"{random.randint(1, 10)}m³"]),
             summary=call.summary,
             operation="create",
-            extra_data={
-                "simulation": True,
-                "scenario": scenario
-            }
+            extra_data={"simulation": True, "scenario": scenario},
         )
 
-        # Apply scenario specific logic
         if scenario == "new":
             self._apply_new(appointment)
         elif scenario == "update":
@@ -58,11 +49,11 @@ class AppointmentSimulationService:
             self._apply_cancel(appointment)
         else:
             self._apply_new(appointment)
-            
+
         self.db.add(appointment)
-        self.db.commit()
-        self.db.refresh(appointment)
-        
+        await self.db.commit()
+        await self.db.refresh(appointment)
+
         return appointment
 
     def _generate_random_address(self) -> str:
@@ -85,20 +76,18 @@ class AppointmentSimulationService:
         appt.summary = "客户表示不需要服务了，取消预约。"
         appt.extra_request = "无"
 
-    def simulate_batch_appointments(self, count: int = 10) -> list[Appointment]:
+    async def simulate_batch_appointments(self, count: int = 10) -> list[Appointment]:
         scenarios = ["new", "update", "cancel"]
         weights = [0.7, 0.2, 0.1]
-        
+
         results = []
         for _ in range(count):
             scenario = random.choices(scenarios, weights=weights)[0]
-            results.append(self.simulate_appointment(scenario))
+            results.append(await self.simulate_appointment(scenario))
         return results
 
-    def clear_test_data(self) -> int:
-        from app.models.appointment import Appointment
-        deleted = self.db.query(Appointment).filter(
-            Appointment.extra_data['simulation'].astext == 'true'
-        ).delete(synchronize_session=False)
-        self.db.commit()
-        return deleted
+    async def clear_test_data(self) -> int:
+        stmt = delete(Appointment).where(Appointment.extra_data["simulation"].astext == "true")
+        result = await self.db.execute(stmt)
+        await self.db.commit()
+        return int(result.rowcount or 0)

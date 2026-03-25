@@ -32,8 +32,24 @@ export function Dashboard() {
   // 获取Dashboard统计数据（固定最近7天）
   const { data: stats, isLoading, error } = useDashboardStats();
 
-  // Loading状态
-  if (isLoading || !stats) {
+  // Error状态
+  if (error && !stats) {
+    return (
+      <PageTemplate
+        title={t('pages:dashboard.title')}
+        subtitle={t('pages:dashboard.subtitle')}
+      >
+        <Tile>
+          <p style={{ color: 'var(--cds-text-error)' }}>
+            加载Dashboard数据失败: {error.message}
+          </p>
+        </Tile>
+      </PageTemplate>
+    );
+  }
+
+  // Loading状态（仅首次加载且无缓存数据时显示骨架）
+  if (isLoading && !stats) {
     return (
       <PageTemplate
         title={t('pages:dashboard.title')}
@@ -56,17 +72,15 @@ export function Dashboard() {
     );
   }
 
-  // Error状态
-  if (error) {
+  // 空数据兜底（防止异常状态导致空白）
+  if (!stats) {
     return (
       <PageTemplate
         title={t('pages:dashboard.title')}
         subtitle={t('pages:dashboard.subtitle')}
       >
         <Tile>
-          <p style={{ color: 'var(--cds-text-error)' }}>
-            加载Dashboard数据失败: {error.message}
-          </p>
+          <p style={{ color: 'var(--cds-text-secondary)' }}>暂无Dashboard数据</p>
         </Tile>
       </PageTemplate>
     );
