@@ -237,7 +237,15 @@
       },
       "chat": {
         "closedPlaceholder": "This session is closed. Click \"New Session\" to continue testing.",
-        "inputPlaceholder": "Type a message to test prompt behavior and action extraction..."
+        "inputPlaceholder": "Type a message to test prompt behavior and action extraction...",
+        "quickInputLabel": "Quick Input",
+        "quickExamples": {
+          "companyIntro": "This is CCC from ABC company.",
+          "dateRequest": "I want bulky waste collection on April 1, 2026.",
+          "address": "The pickup address is 2-4-33 Kanda, Chiyoda-ku, Tokyo.",
+          "items": "Two office desks and four chairs, around 2 cubic meters.",
+          "confirmation": "Yes, please proceed with that reservation."
+        }
       },
       "records": {
         "title": "Record Linkage",

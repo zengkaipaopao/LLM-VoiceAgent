@@ -16,7 +16,7 @@
     "mainNav": "主要导航"
   },
   "test": {
-    "simulation": "统一测试台",
+    "simulation": "文字对话测试台",
     "appointment": "预约模拟",
     "reviewer": "审查员模式",
     "websocket": "WebSocket",

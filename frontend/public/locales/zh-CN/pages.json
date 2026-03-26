@@ -181,12 +181,12 @@
   },
   "test": {
     "title": "实时调试实验室",
-    "subtitle": "通过统一测试台模拟 Prompt 驱动通话并落库，同时在同一页保留 WebSocket 与 Twilio 调试链路。",
+    "subtitle": "通过文字对话测试台模拟 Prompt 驱动通话并落库，同时在同一页保留 WebSocket 与 Twilio 调试链路。",
     "emptyState": "测试功能开发中",
     "emptyDescription": "此页面将提供WebSocket和Twilio WebCall的实时调试功能。",
     "tabs": {
       "ariaLabel": "测试选项",
-      "simulation": "统一测试台",
+      "simulation": "文字对话测试台",
       "appointment": "预约模拟",
       "chat": "LLM 对话",
       "reviewer": "审查员模式",
@@ -238,7 +238,15 @@
       },
       "chat": {
         "closedPlaceholder": "当前会话已结束，请点击“新建会话”继续测试。",
-        "inputPlaceholder": "输入消息，测试 Prompt 对话与动作输出..."
+        "inputPlaceholder": "输入消息，测试 Prompt 对话与动作输出...",
+        "quickInputLabel": "快捷输入",
+        "quickExamples": {
+          "companyIntro": "ABC会社のCCCです。",
+          "dateRequest": "2026年4月1日に粗大ゴミを回収してほしいです。",
+          "address": "回収先は東京都千代田区神田2-4-33です。",
+          "items": "オフィス机2台と椅子4脚で、量はおよそ2立方メートルです。",
+          "confirmation": "はい、その内容で予約をお願いします。"
+        }
       },
       "records": {
         "title": "记录联动",
@@ -306,7 +314,7 @@
     },
     "reviewer": {
       "title": "AI 审查员模式 (Reviewer Mode)",
-      "description": "开启审查员模式后，系统会在通话结束后自动调用 LLM 对通话质量、用户情绪和解决率进行评估。这将生成“信赖度”分数和详细的通话摘要。此设置将应用于统一测试台中的所有模拟会话。",
+      "description": "开启审查员模式后，系统会在通话结束后自动调用 LLM 对通话质量、用户情绪和解决率进行评估。这将生成“信赖度”分数和详细的通话摘要。此设置将应用于文字对话测试台中的所有模拟会话。",
       "toggle": {
         "label": "启用自动评估",
         "on": "已开启",

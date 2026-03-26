@@ -237,7 +237,15 @@
       },
       "chat": {
         "closedPlaceholder": "このセッションは終了しています。「新規セッション」を押して続行してください。",
-        "inputPlaceholder": "メッセージを入力して、Prompt 応答と動作抽出をテスト..."
+        "inputPlaceholder": "メッセージを入力して、Prompt 応答と動作抽出をテスト...",
+        "quickInputLabel": "クイック入力",
+        "quickExamples": {
+          "companyIntro": "ABC会社のCCCです。",
+          "dateRequest": "2026年4月1日に粗大ゴミを回収してほしいです。",
+          "address": "回収先は東京都千代田区神田2-4-33です。",
+          "items": "オフィス机2台と椅子4脚で、量はおよそ2立方メートルです。",
+          "confirmation": "はい、その内容で予約をお願いします。"
+        }
       },
       "records": {
         "title": "記録連携",

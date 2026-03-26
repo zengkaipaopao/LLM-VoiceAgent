@@ -61,6 +61,19 @@ async def list_appointments(
     )
 
 
+@router.get("/by-call/{call_id}", response_model=ResponseBase[AppointmentResponse])
+async def get_appointment_by_call_id(
+    call_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    service = AppointmentService(db)
+    appointment = await service.get_appointment_by_call_id(call_id)
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Appointment not found for call")
+
+    return ResponseBase(success=True, data=AppointmentResponse.model_validate(appointment))
+
+
 @router.patch("/{appointment_id}/handle", response_model=ResponseBase[AppointmentResponse])
 async def handle_appointment(
     appointment_id: str,

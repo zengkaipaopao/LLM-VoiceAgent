@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -36,6 +36,13 @@ type StreamEvent = {
   error?: string;
   tokens_used?: number;
 };
+
+function sanitizeAssistantPrefix(text: string): string {
+  return text.replace(
+    /^\s*(?:assistant|ai\s*assistant|ai助手|助手|アシスタント|aiアシスタント)\s*[:：]\s*/i,
+    ''
+  );
+}
 
 function parseSSEEvent(rawEvent: string): StreamEvent | null {
   const dataLines = rawEvent
@@ -81,6 +88,28 @@ export function UnifiedTestLabTabContent() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const activeTemplateCode = session?.template_code || selectedPromptCode;
   const selectedPrompt = prompts.find((item) => item.code === activeTemplateCode);
+  const quickMessages = useMemo(
+    () => [
+      t('pages:test.unified.chat.quickExamples.companyIntro', 'ABC会社のCCCです。'),
+      t(
+        'pages:test.unified.chat.quickExamples.dateRequest',
+        '2026年4月1日に粗大ゴミを回収してほしいです。'
+      ),
+      t(
+        'pages:test.unified.chat.quickExamples.address',
+        '回収場所は東京都千代田区神田2-4-33です。'
+      ),
+      t(
+        'pages:test.unified.chat.quickExamples.items',
+        'オフィス机2台と椅子4脚で、量はおよそ2立方メートルです。'
+      ),
+      t(
+        'pages:test.unified.chat.quickExamples.confirmation',
+        'はい、その内容で予約をお願いします。'
+      ),
+    ],
+    [t]
+  );
 
   useEffect(() => {
     const loadPrompts = async () => {
@@ -259,12 +288,13 @@ export function UnifiedTestLabTabContent() {
 
             if (eventPayload.type === 'content' && typeof eventPayload.content === 'string') {
               assistantContent += eventPayload.content;
+              const sanitizedAssistantContent = sanitizeAssistantPrefix(assistantContent);
               setMessages((prev) => {
                 const next = [...prev];
                 if (next.length > 0) {
                   next[next.length - 1] = {
                     ...assistantMessage,
-                    content: assistantContent,
+                    content: sanitizedAssistantContent,
                   };
                 }
                 return next;
@@ -339,28 +369,6 @@ export function UnifiedTestLabTabContent() {
         result.extraction?.message ||
           t('pages:test.unified.info.sessionFinalized', 'Session finalized and extraction completed')
       );
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: t(
-            'pages:test.unified.messages.finalized',
-            'Session ended. Status: {{status}}. {{appointmentMessage}}',
-            {
-              status: result.status,
-              appointmentMessage: result.appointment_id
-                ? t(
-                    'pages:test.unified.messages.appointmentSaved',
-                    'Appointment saved: {{appointmentId}}',
-                    { appointmentId: result.appointment_id }
-                  )
-                : t('pages:test.unified.messages.noAppointment', 'No appointment was created'),
-            }
-          ),
-          timestamp: new Date(),
-        },
-      ]);
     } catch (finalizeError: any) {
       setError(
         finalizeError?.response?.data?.detail ||
@@ -442,6 +450,8 @@ export function UnifiedTestLabTabContent() {
                 void handleSendMessage(value);
               }}
               disabled={!selectedPromptCode || isStarting || isSending || isFinalizing || sessionClosed}
+              quickMessages={quickMessages}
+              quickMessagesLabel={t('pages:test.unified.chat.quickInputLabel', '快捷输入')}
               placeholder={
                 sessionClosed
                   ? t(

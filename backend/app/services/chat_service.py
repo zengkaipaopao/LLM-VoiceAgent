@@ -42,6 +42,15 @@ def count_tokens(text: str, model: str = "gpt-3.5-turbo") -> int:
 class ChatService:
     """Service for handling chat orchestration and appointment extraction."""
 
+    _ASSISTANT_PREFIX_PATTERN = re.compile(
+        r"^\s*(?:assistant|ai\s*assistant|ai助手|助手|アシスタント|aiアシスタント)\s*[:：]\s*",
+        flags=re.IGNORECASE,
+    )
+    _AMOUNT_PATTERN = re.compile(
+        r"([0-9０-９]+(?:[.,．][0-9０-９]+)?\s*(?:kg|ｋｇ|キロ(?:グラム)?|g|ｇ|グラム|トン|ton(?:s)?|m[3３]|m³|㎥|立方メートル|立米|袋|点|個|台|脚|本|箱|枚))",
+        flags=re.IGNORECASE,
+    )
+
     def __init__(self, db: AsyncSession):
         self.db = db
         self.call_repo = CallRepository(db)
@@ -100,6 +109,194 @@ class ChatService:
             "⚠️ 当前 Gemini 配额不足（429 RESOURCE_EXHAUSTED），暂时无法调用真实模型。"
             f"{retry_text} 请检查 Google AI Studio 项目的配额与计费设置。"
         )
+
+    @classmethod
+    def _sanitize_assistant_response(cls, text: str) -> str:
+        if not text:
+            return ""
+        normalized = text.lstrip("\ufeff")
+        return cls._ASSISTANT_PREFIX_PATTERN.sub("", normalized, count=1)
+
+    @classmethod
+    def _normalize_messages(cls, raw_messages: Any) -> list[dict[str, str]]:
+        """Normalize stored messages into a safe role/content list."""
+        if not isinstance(raw_messages, list):
+            return []
+
+        normalized: list[dict[str, str]] = []
+        for item in raw_messages:
+            if not isinstance(item, dict):
+                continue
+            role_raw = str(item.get("role", "")).strip().lower()
+            role = {
+                "human": "user",
+                "customer": "user",
+                "ai": "assistant",
+                "bot": "assistant",
+                "model": "assistant",
+                "助手": "assistant",
+                "アシスタント": "assistant",
+            }.get(role_raw, role_raw)
+            if role not in {"user", "assistant", "system"}:
+                continue
+            content = str(item.get("content", "")).strip()
+            if role == "assistant":
+                content = cls._sanitize_assistant_response(content).strip()
+            if not role or not content:
+                continue
+            normalized.append({"role": role, "content": content})
+        return normalized
+
+    @classmethod
+    def _parse_messages_from_transcript(cls, transcript: Optional[str]) -> list[dict[str, str]]:
+        """Fallback: parse transcript text into message list."""
+        if not transcript:
+            return []
+
+        pattern = re.compile(r"(用户|助手):\s*(.*?)(?=\n(?:用户|助手):\s*|\Z)", flags=re.S)
+        parsed: list[dict[str, str]] = []
+        for speaker, content in pattern.findall(transcript):
+            cleaned = content.strip()
+            if speaker == "助手":
+                cleaned = cls._sanitize_assistant_response(cleaned).strip()
+            if not cleaned:
+                continue
+            parsed.append(
+                {
+                    "role": "user" if speaker == "用户" else "assistant",
+                    "content": cleaned,
+                }
+            )
+        return parsed
+
+    @staticmethod
+    def _resolve_chat_response_mode(call: Call, template: Any) -> tuple[str, Optional[dict[str, Any]]]:
+        """
+        Decide runtime response format for chat.
+
+        Unified test tab expects conversational text, so force text mode there
+        even if prompt template has json_object configured for extraction workflows.
+        """
+        response_format = getattr(template, "response_format", None) or "text"
+        output_schema = getattr(template, "output_schema", None)
+
+        source = (call.extra_data or {}).get("source")
+        if source == "test_lab" and response_format == "json_object":
+            return "text", None
+
+        return response_format, output_schema
+
+    @staticmethod
+    def _first_non_empty(*values: Any) -> Optional[str]:
+        for value in values:
+            if value is None:
+                continue
+            text = str(value).strip()
+            if text:
+                return text
+        return None
+
+    @classmethod
+    def _extract_amount_from_text(cls, text: Optional[str]) -> Optional[str]:
+        normalized = cls._first_non_empty(text)
+        if not normalized:
+            return None
+        match = cls._AMOUNT_PATTERN.search(normalized)
+        if not match:
+            return None
+        return match.group(1).strip()
+
+    @classmethod
+    def _resolve_amount(cls, raw_data: dict[str, Any], *fallback_texts: Optional[str]) -> Optional[str]:
+        direct_amount = cls._first_non_empty(
+            raw_data.get("amount"),
+            raw_data.get("quantity"),
+            raw_data.get("volume"),
+            raw_data.get("weight"),
+        )
+        if direct_amount:
+            return direct_amount
+
+        weight_kg = raw_data.get("estimated_weight_kg")
+        if isinstance(weight_kg, (int, float)):
+            value = int(weight_kg) if float(weight_kg).is_integer() else weight_kg
+            return f"{value} kg"
+
+        weight_text = cls._first_non_empty(raw_data.get("weight_kg"))
+        if weight_text:
+            if re.fullmatch(r"[0-9０-９]+(?:[.,．][0-9０-９]+)?", weight_text):
+                return f"{weight_text} kg"
+            return weight_text
+
+        volume = raw_data.get("estimated_volume_m3")
+        if isinstance(volume, (int, float)):
+            value = int(volume) if float(volume).is_integer() else volume
+            return f"{value} m3"
+
+        volume_text = cls._first_non_empty(volume)
+        if volume_text:
+            return f"{volume_text} m3"
+
+        for candidate_text in (
+            raw_data.get("summary"),
+            raw_data.get("appointment_content"),
+            raw_data.get("special_notes"),
+            *fallback_texts,
+        ):
+            extracted = cls._extract_amount_from_text(cls._first_non_empty(candidate_text))
+            if extracted:
+                return extracted
+
+        return None
+
+    @classmethod
+    def _resolve_address(cls, raw_data: dict[str, Any]) -> Optional[str]:
+        return cls._first_non_empty(
+            raw_data.get("pickup_address"),
+            raw_data.get("address"),
+            raw_data.get("location"),
+        )
+
+    @classmethod
+    def _resolve_extra_request(cls, raw_data: dict[str, Any]) -> Optional[str]:
+        special_notes = cls._first_non_empty(raw_data.get("special_notes"), raw_data.get("extra_request"))
+        time_window = cls._first_non_empty(raw_data.get("preferred_time_window"))
+        floor = cls._first_non_empty(raw_data.get("floor"))
+        elevator = raw_data.get("elevator")
+
+        fragments: list[str] = []
+        if special_notes:
+            fragments.append(f"備考: {special_notes}")
+        if time_window:
+            fragments.append(f"希望時間帯: {time_window}")
+        if floor:
+            fragments.append(f"階数: {floor}")
+        if elevator is True:
+            fragments.append("エレベーター: あり")
+        elif elevator is False:
+            fragments.append("エレベーター: なし")
+
+        return " / ".join(fragments) if fragments else None
+
+    @classmethod
+    def _resolve_category(cls, extraction_category: Optional[str], raw_data: dict[str, Any]) -> Optional[str]:
+        direct = cls._first_non_empty(extraction_category, raw_data.get("category"))
+        if direct:
+            return direct
+
+        waste_type = raw_data.get("waste_type")
+        if isinstance(waste_type, list):
+            items = [str(item).strip() for item in waste_type if str(item).strip()]
+            if items:
+                return "、".join(items)
+
+        items = raw_data.get("items")
+        if isinstance(items, list):
+            item_names = [str(item).strip() for item in items if str(item).strip()]
+            if item_names:
+                return "、".join(item_names)
+
+        return None
 
     async def _resolve_template(self, template_code: str):
         template = await self.prompt_service.get_template(template_code)
@@ -275,7 +472,7 @@ class ChatService:
             model=llm_model,
         )
 
-        messages = extra_data.get("messages", [])
+        messages = self._normalize_messages(extra_data.get("messages"))
 
         system_prompt = ""
         if template:
@@ -317,8 +514,7 @@ class ChatService:
         messages.append({"role": "user", "content": request.message})
 
         temperature = request.temperature if request.temperature is not None else (getattr(template, "temperature", None) or 0.7)
-        resp_format = getattr(template, "response_format", None) or "text"
-        out_schema = getattr(template, "output_schema", None)
+        resp_format, out_schema = self._resolve_chat_response_mode(call, template)
         quota_notice_reason: Optional[str] = None
 
         if not settings.google_api_key:
@@ -348,10 +544,11 @@ class ChatService:
                 quota_notice_reason = str(llm_error)
                 response = self._build_quota_notice_reply(quota_notice_reason)
 
+        response = self._sanitize_assistant_response(response)
         messages.append({"role": "assistant", "content": response})
 
-        extra_data = call.extra_data or {}
-        extra_data["messages"] = messages
+        extra_data = dict(call.extra_data or {})
+        extra_data["messages"] = self._normalize_messages(messages)
         extra_data["template_code"] = context["template_code"]
         extra_data["llm_provider"] = context["llm_provider"]
         extra_data["llm_model"] = context["llm_model"]
@@ -398,8 +595,7 @@ class ChatService:
             messages.append({"role": "user", "content": request.message})
 
             temperature = request.temperature if request.temperature is not None else (getattr(template, "temperature", None) or 0.7)
-            resp_format = getattr(template, "response_format", None) or "text"
-            out_schema = getattr(template, "output_schema", None)
+            resp_format, out_schema = self._resolve_chat_response_mode(call, template)
 
             full_response = ""
             quota_notice_reason: Optional[str] = None
@@ -441,10 +637,11 @@ class ChatService:
                         full_response = notice
                     yield f"data: {json.dumps({'type': 'content', 'content': notice})}\n\n"
 
+            full_response = self._sanitize_assistant_response(full_response)
             messages.append({"role": "assistant", "content": full_response})
 
-            extra_data = call.extra_data or {}
-            extra_data["messages"] = messages
+            extra_data = dict(call.extra_data or {})
+            extra_data["messages"] = self._normalize_messages(messages)
             extra_data["template_code"] = context["template_code"]
             extra_data["llm_provider"] = context["llm_provider"]
             extra_data["llm_model"] = context["llm_model"]
@@ -496,7 +693,13 @@ class ChatService:
                 )
 
             extra_data = call.extra_data or {}
-            messages = extra_data.get("messages", [])
+            messages = self._normalize_messages(extra_data.get("messages"))
+            if not messages:
+                messages = self._parse_messages_from_transcript(call.transcript)
+                if messages:
+                    extra_data["messages"] = messages
+                    call.extra_data = dict(extra_data)
+                    await self.db.commit()
 
             if not messages:
                 raise ValueError("No conversation found in call")
@@ -520,6 +723,15 @@ class ChatService:
             )
 
             appt_time = self._parse_appointment_time(extraction_result.appointment_time)
+            raw_data = extraction_result.raw_data or {}
+            resolved_amount = self._resolve_amount(
+                raw_data,
+                extraction_result.summary,
+                extraction_result.appointment_content,
+            )
+            resolved_address = self._resolve_address(raw_data)
+            resolved_extra_request = self._resolve_extra_request(raw_data)
+            resolved_category = self._resolve_category(extraction_result.category, raw_data)
 
             appointment_extra_data = {
                 "simulation": bool(extra_data.get("simulation", False)),
@@ -535,19 +747,22 @@ class ChatService:
                 caller_name=extraction_result.caller_name or call.caller_name or "Unknown",
                 company=extraction_result.company,
                 appointment=appt_time,
-                category=extraction_result.category,
+                category=resolved_category,
+                amount=resolved_amount,
+                address=resolved_address,
                 summary=extraction_result.summary or extraction_result.appointment_content or "提取的预约信息",
+                extra_request=resolved_extra_request,
                 operation="create",
                 prompt_id=template.id if template else None,
                 type_name=template.category if template else "general",
-                extracted_data=extraction_result.raw_data,
+                extracted_data=raw_data,
                 extra_data=appointment_extra_data,
                 raw_messages={
                     "extraction_source": "llm_chat",
                     "template_code": template_code,
                     "confidence": extraction_result.confidence,
                     "conversation": messages,
-                    "extracted_data": extraction_result.raw_data,
+                    "extracted_data": raw_data,
                 },
             )
 

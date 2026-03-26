@@ -18,6 +18,7 @@ import {
 import { PageTemplate } from '../components/templates/PageTemplate';
 import { AppointmentDetailModal } from '../components/organisms/AppointmentDetailModal/AppointmentDetailModal';
 import { formatJapaneseDate, formatCallTime } from '../utils/formatters';
+import { resolveAppointmentAmount } from '../utils/appointmentFields';
 import { Appointment, AppointmentsResponse, PromptTemplate } from '../types/shared';
 
 export function Appointments() {
@@ -229,6 +230,15 @@ export function Appointments() {
   }, [baseHeaders, availablePrompts, selectedPromptId]);
 
   const tableRows = appointments.map((appt) => {
+    const extracted = (appt.extracted_data || {}) as Record<string, any>;
+    const resolvedAmount = resolveAppointmentAmount({
+      amount: appt.amount,
+      extractedData: extracted,
+      summary: appt.summary,
+      appointmentContent: extracted.appointment_content,
+    });
+    const resolvedAddress = appt.address || extracted.pickup_address || extracted.address || '-';
+
     const rowContent: any = {
       id: appt.id,
       timestamp: appt.timestamp,
@@ -238,8 +248,8 @@ export function Appointments() {
       caller_name: appt.caller_name,
       company: appt.company || '-',
       category: appt.category || '-',
-      amount: appt.amount || '-',
-      address: appt.address || '-',
+      amount: resolvedAmount,
+      address: resolvedAddress,
       summary: appt.summary || '-',
       extra_request: appt.extra_request || '-',
       raw: appt

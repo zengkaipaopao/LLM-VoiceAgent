@@ -28,6 +28,10 @@
   &.assistant {
     justify-content: flex-start;
   }
+
+  &.system {
+    justify-content: center;
+  }
 }
 
 .bubble {
@@ -51,6 +55,14 @@
     border-bottom-left-radius: 2px;
     background-color: #f4f4f4; // Carbon Gray 10
     color: #161616;
+  }
+
+  &.system {
+    max-width: 92%;
+    border-radius: 0.5rem;
+    background-color: #e8f1ff;
+    color: #262626;
+    border: 1px solid #a6c8ff;
   }
 }
 

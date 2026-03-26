@@ -54,6 +54,9 @@ class AppointmentService:
     async def get_appointment_by_id(self, appointment_id: UUID) -> Optional[Appointment]:
         return await self.repo.get_by_id(appointment_id)
 
+    async def get_appointment_by_call_id(self, call_id: UUID) -> Optional[Appointment]:
+        return await self.repo.get_by_call_id(call_id)
+
     async def handle_appointment(self, appointment_id: str) -> Optional[Appointment]:
         return await self.repo.mark_as_handled(appointment_id, True)
 

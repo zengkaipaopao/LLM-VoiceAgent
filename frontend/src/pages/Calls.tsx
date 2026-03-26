@@ -18,6 +18,7 @@ import { PageTemplate } from '../components/templates/PageTemplate';
 import { CallLog } from '../types/shared';
 // Import dynamically to avoid circle if needed, or static is fine. Using static for cleanliness if possible, but the plan used import(). Stick to dynamic or standard import. Standard is better.
 import { fetchCalls } from '../api/calls';
+import { http } from '../api/http';
 
 export function Calls() {
   const { t } = useTranslation(['pages', 'common']);
@@ -67,6 +68,8 @@ export function Calls() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [selectedCall, setSelectedCall] = useState<CallLog | null>(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [linkedAppointmentId, setLinkedAppointmentId] = useState<string | null>(null);
+  const [loadingLinkedAppointment, setLoadingLinkedAppointment] = useState(false);
 
   // Fetch calls
   const loadCalls = async () => {
@@ -121,6 +124,30 @@ export function Calls() {
     }
     loadCalls();
   }, [page, pageSize, searchQuery, selectedFilters, sortBy, sortOrder]);
+
+  useEffect(() => {
+    const fetchLinkedAppointment = async () => {
+      if (!detailModalOpen || !selectedCall?.id) {
+        setLinkedAppointmentId(null);
+        return;
+      }
+
+      setLoadingLinkedAppointment(true);
+      try {
+        const response = await http.get(`/appointments/by-call/${selectedCall.id}`);
+        setLinkedAppointmentId(response.data?.data?.id || null);
+      } catch (error: any) {
+        if (error?.response?.status !== 404) {
+          console.error('Failed to fetch linked appointment:', error);
+        }
+        setLinkedAppointmentId(null);
+      } finally {
+        setLoadingLinkedAppointment(false);
+      }
+    };
+
+    void fetchLinkedAppointment();
+  }, [detailModalOpen, selectedCall?.id]);
 
   // Formatters
   const formatDuration = (seconds: number): string => {
@@ -282,9 +309,20 @@ export function Calls() {
         passiveModal
       >
         {selectedCall && (
+          <>
+            <div style={{ marginBottom: '1rem' }}>
+              <div>
+                <strong>Call ID:</strong> {selectedCall.id}
+              </div>
+              <div>
+                <strong>Linked Appointment ID:</strong>{' '}
+                {loadingLinkedAppointment ? 'Loading...' : linkedAppointmentId || '-'}
+              </div>
+            </div>
             <pre style={{ whiteSpace: 'pre-wrap' }}>
-                {JSON.stringify(selectedCall, null, 2)}
+              {JSON.stringify(selectedCall, null, 2)}
             </pre>
+          </>
         )}
       </Modal>
     </PageTemplate>

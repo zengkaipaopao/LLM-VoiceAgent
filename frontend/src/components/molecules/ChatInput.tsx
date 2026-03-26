@@ -10,6 +10,8 @@ interface ChatInputProps {
   onSend: (message: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  quickMessages?: string[];
+  quickMessagesLabel?: string;
 }
 
 /**
@@ -24,7 +26,9 @@ interface ChatInputProps {
 export const ChatInput: React.FC<ChatInputProps> = ({ 
   onSend, 
   disabled = false,
-  placeholder = '输入消息...'
+  placeholder = '输入消息...',
+  quickMessages = [],
+  quickMessagesLabel = '快捷输入'
 }) => {
   const [input, setInput] = useState('');
 
@@ -73,6 +77,26 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           发送 (Ctrl+Enter)
         </Button>
       </div>
+
+      {quickMessages.length > 0 && (
+        <div className={styles.quickSection}>
+          <span className={styles.quickLabel}>{quickMessagesLabel}</span>
+          <div className={styles.quickButtons}>
+            {quickMessages.map((message) => (
+              <button
+                key={message}
+                type="button"
+                className={styles.quickButton}
+                disabled={disabled}
+                onClick={() => setInput(message)}
+                title={message}
+              >
+                {message}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -15,6 +15,7 @@ from uuid import UUID
 
 class AppointmentBase(BaseModel):
     model_config = {"from_attributes": True}
+    call_id: Optional[UUID] = None
     timestamp: datetime
     caller_name: str
     company: Optional[str] = None

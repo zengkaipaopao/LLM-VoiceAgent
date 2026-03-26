@@ -4,6 +4,7 @@ import { DialogueViewer } from '../../molecules/DialogueViewer/DialogueViewer';
 import styles from './AppointmentDetailModal.module.scss';
 import { Appointment } from '../../../types/shared';
 import { formatJapaneseDate } from '../../../utils/formatters';
+import { resolveAppointmentAmount } from '../../../utils/appointmentFields';
 import { http } from '../../../api/http';
 
 interface AppointmentDetailModalProps {
@@ -19,6 +20,20 @@ export const AppointmentDetailModal: React.FC<AppointmentDetailModalProps> = ({
   onSuccess,
   appointment
 }) => {
+  const extracted = (appointment?.extracted_data || {}) as Record<string, any>;
+  const resolvedAddress =
+    appointment?.address ||
+    extracted.pickup_address ||
+    extracted.address ||
+    '-';
+
+  const resolvedAmount = resolveAppointmentAmount({
+    amount: appointment?.amount,
+    extractedData: extracted,
+    summary: appointment?.summary,
+    appointmentContent: extracted.appointment_content,
+  });
+
   return (
     <Modal
       open={open}
@@ -57,9 +72,9 @@ export const AppointmentDetailModal: React.FC<AppointmentDetailModalProps> = ({
             <div><strong>姓名:</strong> {appointment.caller_name}</div>
             <div><strong>公司:</strong> {appointment.company}</div>
             <div><strong>类别:</strong> {appointment.category}</div>
-            <div><strong>数量:</strong> {appointment.amount}</div>
+            <div><strong>数量:</strong> {resolvedAmount}</div>
           </div>
-          <div><strong>地址:</strong> {appointment.address}</div>
+          <div><strong>地址:</strong> {resolvedAddress}</div>
           
           <hr className={styles.divider} />
           
