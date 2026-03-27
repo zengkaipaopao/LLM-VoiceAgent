@@ -14,6 +14,15 @@ class Settings(BaseSettings):
     llm_temperature: float = 0.7
     llm_max_tokens: int = 2048
     llm_show_quota_notice_as_reply: bool = True
+
+    # Twilio WebCall
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_api_key_sid: str = ""
+    twilio_api_key_secret: str = ""
+    twilio_twiml_app_sid: str = ""
+    twilio_phone_number: str = ""
+    twilio_default_identity: str = "webcall-tester"
     
     # Database
     database_url: str = "postgresql://dev_user:dev_password@localhost:5432/llm_voice_agent"

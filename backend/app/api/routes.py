@@ -9,7 +9,8 @@ from app.api.v1.endpoints import (
     dashboard,
     chat,
     prompts,
-    llm
+    llm,
+    twilio,
 )
 
 api_router = APIRouter()
@@ -26,4 +27,4 @@ api_router.include_router(calls.router, prefix="/calls", tags=["calls"])
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
 api_router.include_router(prompts.router, prefix="/prompts", tags=["prompts"])
 api_router.include_router(llm.router, prefix="/llm", tags=["llm"])
-
+api_router.include_router(twilio.router, prefix="/twilio", tags=["twilio"])
