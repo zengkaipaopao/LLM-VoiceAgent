@@ -50,34 +50,6 @@ src/
 ├── main.tsx         # 应用入口
 └── styles.css       # 全局样式
 ```
-│       ├── components/
-│       ├── hooks/
-│       └── utils/
-│
-├── hooks/           # 全局自定义Hooks
-│   └── (业务相关的Hooks)
-│
-├── api/             # API客户端
-│   ├── calls.ts
-│   ├── appointments.ts
-│   └── prompts.ts
-│
-├── types/           # TypeScript类型定义
-│   └── index.ts
-│
-├── config/          # 配置文件
-│   ├── i18n.ts     # 国际化配置
-│   └── navigation.ts
-│
-├── utils/           # 工具函数
-│   └── (通用工具函数)
-│
-├── styles/          # 样式文件
-│   └── styles.css
-│
-├── App.tsx          # 根组件
-└── main.tsx         # 应用入口
-```
 
 ## 📝 文件夹说明
 
@@ -187,5 +159,5 @@ src/
 ## 📚 参考
 
 详细说明请查看:
-- [前端开发指南](../docs/FRONTEND_DEVELOPMENT_GUIDE.md)
+- [前端开发指南](./DEVELOPMENT_GUIDE.md)
 - [原子化设计文档](./ATOMIC_DESIGN.md)

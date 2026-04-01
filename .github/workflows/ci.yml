@@ -28,6 +28,9 @@ jobs:
       - name: Install dependencies
         run: poetry install --with dev
 
+      - name: Lint (critical)
+        run: poetry run ruff check app --select F,E9
+
       - name: Run tests
         run: poetry run pytest -q
 

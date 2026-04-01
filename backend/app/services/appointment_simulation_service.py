@@ -2,7 +2,7 @@
 Appointment simulation service for testing.
 """
 import random
-from datetime import datetime, timedelta
+from datetime import timedelta
 from uuid import uuid4
 
 from sqlalchemy import delete

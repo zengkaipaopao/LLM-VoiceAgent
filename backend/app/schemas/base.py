@@ -1,25 +1,18 @@
-"""
-Base schemas for Pydantic models.
-"""
-from pydantic import BaseModel
-from typing import Optional, Any, Generic, TypeVar
+"""Base response schemas."""
+from typing import Any, Generic, TypeVar
+
+from pydantic import BaseModel, Field
 
 
-DataT = TypeVar('DataT')
+DataT = TypeVar("DataT")
 
 
-class ResponseBase(BaseModel, Generic[DataT]):
-    """
-    Base response model for all API responses.
-    
-    Attributes:
-        success: Whether the request was successful
-        message: Response message
-        data: Response data
-    """
-    success: bool = True
-    message: str = "Success"
-    data: Optional[DataT] = None
+class ApiError(BaseModel):
+    """Standardized API error payload."""
+
+    code: str
+    message: str
+    details: Any | None = None
 
 
 class PaginationMeta(BaseModel):
@@ -28,13 +21,29 @@ class PaginationMeta(BaseModel):
     total_items: int
     total_pages: int
 
+
 class PaginatedMetaWrapper(BaseModel):
     pagination: PaginationMeta
 
+
+class ResponseMeta(BaseModel):
+    request_id: str | None = None
+
+
+class ResponseBase(BaseModel, Generic[DataT]):
+    """Base response model for all API responses."""
+
+    success: bool = True
+    data: DataT | None = None
+    meta: ResponseMeta | dict[str, Any] | None = None
+    error: ApiError | None = None
+    # Backward compatible field; prefer error.message for failures.
+    message: str | None = Field(default="Success")
+
+
 class PaginatedResponse(BaseModel, Generic[DataT]):
-    """
-    Paginated response model.
-    """
+    """Paginated response model."""
+
     success: bool = True
     message: str = "Success"
     data: list[DataT]

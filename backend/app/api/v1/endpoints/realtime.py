@@ -12,6 +12,7 @@ from google import genai
 from google.genai import types
 from starlette.websockets import WebSocketState
 
+from app.api.deps import verify_websocket_api_key
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.services.prompt_service import PromptService
@@ -86,7 +87,7 @@ async def _safe_forward_realtime_input(
         await _safe_send_json(
             websocket,
             lock,
-            {"type": "warning", "message": f"Live input rejected ({input_name}): {exc}"},
+            {"type": "warning", "message": f"Live input rejected ({input_name})."},
         )
         return False
 
@@ -170,6 +171,17 @@ async def live_websocket(
     frontend <-> backend websocket <-> Gemini Live session.
     """
     await websocket.accept()
+
+    is_authorized, auth_error = verify_websocket_api_key(websocket)
+    if not is_authorized:
+        await websocket.send_json(
+            {
+                "type": "error",
+                "error": auth_error or "Unauthorized websocket request.",
+            }
+        )
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
 
     if not settings.google_api_key:
         await websocket.send_json(
@@ -452,7 +464,7 @@ async def live_websocket(
                     await _safe_send_json(
                         websocket,
                         send_lock,
-                        {"type": "warning", "message": f"Live receive loop closed: {exc}"},
+                        {"type": "warning", "message": "Live receive loop closed."},
                     )
 
             await asyncio.gather(client_to_live(), live_to_client())
@@ -462,5 +474,9 @@ async def live_websocket(
     except Exception as exc:
         logger.exception("Live websocket error: %s", exc)
         if websocket.client_state == WebSocketState.CONNECTED:
-            await _safe_send_json(websocket, send_lock, {"type": "error", "error": str(exc)})
+            await _safe_send_json(
+                websocket,
+                send_lock,
+                {"type": "error", "error": "Live websocket processing failed."},
+            )
             await websocket.close(code=status.WS_1011_INTERNAL_ERROR)

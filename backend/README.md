@@ -34,12 +34,28 @@ poetry install
 ### 4. 运行服务
 
 ```bash
+# 初始化/升级数据库结构（唯一真相源：Alembic）
+poetry run alembic upgrade head
+
 # 开发模式
 poetry run uvicorn app.main:app --reload
 
 # 访问
 # API: http://localhost:8000
 # 文档: http://localhost:8000/docs
+```
+
+### 5. 安全相关环境变量（建议）
+
+```bash
+# 仅允许的前端来源（逗号分隔）
+CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+
+# 非 local 环境默认启用 API Key 鉴权
+APP_API_KEY=replace-with-a-strong-secret
+
+# Twilio Webhook 签名校验（生产建议开启）
+TWILIO_VALIDATE_WEBHOOKS=true
 ```
 
 ---

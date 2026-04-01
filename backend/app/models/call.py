@@ -1,7 +1,7 @@
 """
 Call model for database.
 """
-from sqlalchemy import Column, String, Integer, DateTime, Text, Enum as SQLEnum, Boolean
+from sqlalchemy import Column, String, Integer, DateTime, Text, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 import uuid

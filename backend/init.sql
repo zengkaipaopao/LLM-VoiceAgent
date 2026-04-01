@@ -86,23 +86,35 @@ CREATE INDEX IF NOT EXISTS idx_calls_sip_call_id ON calls(sip_call_id);
 -- ========================================
 CREATE TABLE IF NOT EXISTS prompt_templates (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name VARCHAR(100) NOT NULL,
-    model_id VARCHAR(50) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    code VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT,
+    category VARCHAR(50),
     system_prompt TEXT NOT NULL,
-    instructions TEXT,
-    welcome_message TEXT,
-    closing_message TEXT,
-    capabilities JSONB NOT NULL DEFAULT '{"appointment_logging": false, "tts_enabled": false}'::jsonb,
-    voice_config JSONB,
-    version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    extraction_prompt TEXT,
+    variables JSONB,
+    example_conversations JSONB,
+    extraction_schema JSONB,
+    response_format VARCHAR(50) DEFAULT 'text',
+    output_schema JSONB,
+    llm_provider VARCHAR(50) DEFAULT 'gemini',
+    llm_model VARCHAR(100) DEFAULT 'gemini-2.0-flash',
+    temperature FLOAT DEFAULT 0.7,
+    max_tokens INTEGER DEFAULT 2048,
+    voice_provider VARCHAR(50),
+    voice_id VARCHAR(100),
+    voice_settings JSONB,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    version INTEGER DEFAULT 1,
+    created_by VARCHAR(255),
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 -- 索引
-CREATE INDEX IF NOT EXISTS idx_prompt_templates_name ON prompt_templates(name);
-CREATE INDEX IF NOT EXISTS idx_prompt_templates_model_id ON prompt_templates(model_id);
-CREATE INDEX IF NOT EXISTS idx_prompt_templates_capabilities ON prompt_templates USING GIN (capabilities);
+CREATE INDEX IF NOT EXISTS idx_prompt_templates_code ON prompt_templates(code);
+CREATE INDEX IF NOT EXISTS idx_prompt_templates_category ON prompt_templates(category);
+CREATE INDEX IF NOT EXISTS idx_prompt_templates_active ON prompt_templates(is_active);
 
 -- ========================================
 -- 预约记录表
@@ -113,14 +125,19 @@ CREATE TABLE IF NOT EXISTS appointments (
     timestamp TIMESTAMP NOT NULL,
     caller_name VARCHAR(100) NOT NULL,
     company VARCHAR(200),
-    appointment TEXT NOT NULL,
+    appointment TIMESTAMP NOT NULL,
     category VARCHAR(50),
-    amount DECIMAL(10, 2),
+    amount VARCHAR(100),
     address TEXT,
     summary TEXT,
     extra_request TEXT,
     raw_messages JSONB,
     operation VARCHAR(10) CHECK (operation IN ('create', 'update', 'delete', 'cancel')),
+    is_handled BOOLEAN NOT NULL DEFAULT FALSE,
+    extra_data JSONB,
+    prompt_id UUID,
+    type_name VARCHAR(50),
+    extracted_data JSONB,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
@@ -129,6 +146,8 @@ CREATE TABLE IF NOT EXISTS appointments (
 CREATE INDEX IF NOT EXISTS idx_appointments_call_id ON appointments(call_id);
 CREATE INDEX IF NOT EXISTS idx_appointments_timestamp ON appointments(timestamp);
 CREATE INDEX IF NOT EXISTS idx_appointments_caller_name ON appointments(caller_name);
+CREATE INDEX IF NOT EXISTS idx_appointments_prompt_id ON appointments(prompt_id);
+CREATE INDEX IF NOT EXISTS idx_appointments_type_name ON appointments(type_name);
 
 -- ========================================
 -- Agent配置表
@@ -161,6 +180,12 @@ ALTER TABLE calls
     ADD CONSTRAINT fk_calls_prompt 
     FOREIGN KEY (prompt_id) 
     REFERENCES prompt_templates(id) 
+    ON DELETE SET NULL;
+
+ALTER TABLE appointments
+    ADD CONSTRAINT fk_appointments_prompt
+    FOREIGN KEY (prompt_id)
+    REFERENCES prompt_templates(id)
     ON DELETE SET NULL;
 
 -- ========================================

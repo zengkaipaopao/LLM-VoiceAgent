@@ -1,58 +1,114 @@
+import { z } from 'zod';
+
 import { http } from './http';
 import { PromptFormValues, PromptTemplate, VoiceConfig } from '../types/shared';
 
-type ApiPrompt = {
-  id: string;
-  name: string;
-  code: string;
-  description?: string;
-  category?: string;
-  
-  // LLM Config
-  llm_provider?: string;
-  llm_model?: string;
-  temperature?: number;
-  max_tokens?: number;
-  
-  // Content
-  system_prompt: string;
-  extraction_prompt?: string;
-  extraction_schema?: Record<string, any>;
-  
-  // Output Config
-  response_format?: 'text' | 'json_object';
-  output_schema?: Record<string, any>;
-  
-  // Voice Config
-  voice_provider?: string;
-  voice_id?: string;
-  voice_settings?: Record<string, any>; // JSON
-  
-  // Legacy / Mapped
-  instructions?: string;
-  welcome_message?: string;
-  closing_message?: string;
-  
-  capabilities?: {
-    appointment_logging?: boolean;
-    tts_enabled?: boolean;
-  };
-  
-  // Legacy direct fields
-  enable_appointment_logging?: boolean; // Some old APIs might have this
-  voice_config?: {
-    voice?: string;
-    speaking_rate?: number;
-    noise_suppression?: boolean;
-  };
-  
-  version: number;
-  updated_at: string;
-  is_active: boolean;
+const JsonObjectSchema = z.record(z.string(), z.unknown());
+
+const parseJsonObject = (value: unknown): Record<string, unknown> | undefined => {
+  if (value === null || value === undefined || value === '') {
+    return undefined;
+  }
+
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return undefined;
+    }
+    return undefined;
+  }
+
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+
+  return undefined;
 };
 
-const mapVoiceConfig = (config?: ApiPrompt['voice_config']): VoiceConfig | undefined => {
-  if (!config) return undefined;
+const OptionalJsonObjectSchema = z.preprocess(
+  (value) => parseJsonObject(value),
+  JsonObjectSchema.optional()
+);
+
+const ApiVoiceConfigSchema = z
+  .object({
+    voice: z.string().optional(),
+    speaking_rate: z.number().optional(),
+    noise_suppression: z.boolean().optional(),
+  })
+  .optional();
+
+const ApiPromptSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  code: z.string(),
+  description: z.string().optional().nullable(),
+  category: z.string().optional().nullable(),
+  llm_provider: z.string().optional().nullable(),
+  llm_model: z.string().optional().nullable(),
+  temperature: z.number().optional().nullable(),
+  max_tokens: z.number().optional().nullable(),
+  system_prompt: z.string(),
+  extraction_prompt: z.string().optional().nullable(),
+  extraction_schema: OptionalJsonObjectSchema,
+  response_format: z.enum(['text', 'json_object']).optional().nullable(),
+  output_schema: OptionalJsonObjectSchema,
+  voice_provider: z.string().optional().nullable(),
+  voice_id: z.string().optional().nullable(),
+  voice_settings: OptionalJsonObjectSchema,
+  instructions: z.string().optional().nullable(),
+  welcome_message: z.string().optional().nullable(),
+  closing_message: z.string().optional().nullable(),
+  capabilities: z
+    .object({
+      appointment_logging: z.boolean().optional(),
+      tts_enabled: z.boolean().optional(),
+    })
+    .optional()
+    .nullable(),
+  enable_appointment_logging: z.boolean().optional().nullable(),
+  voice_config: ApiVoiceConfigSchema,
+  version: z.number().nullable().optional(),
+  updated_at: z.string(),
+  is_active: z.boolean(),
+});
+
+const PromptListPayloadSchema = z.object({
+  templates: z.array(ApiPromptSchema),
+  total: z.number().optional(),
+});
+
+const PromptModelsPayloadSchema = z.object({
+  models: z.array(z.string()),
+});
+
+type ApiPrompt = z.infer<typeof ApiPromptSchema>;
+type PromptPayloadInput = {
+  name?: string;
+  code?: string;
+  description?: string;
+  category?: string;
+  llmProvider?: string;
+  llmModel?: string;
+  temperature?: number;
+  maxTokens?: number;
+  systemPrompt?: string;
+  extractionPrompt?: string;
+  extractionSchema?: unknown;
+  responseFormat?: 'text' | 'json_object';
+  outputSchema?: unknown;
+  voiceProvider?: string;
+  voiceId?: string;
+};
+
+const mapVoiceConfig = (config?: z.infer<typeof ApiVoiceConfigSchema>): VoiceConfig | undefined => {
+  if (!config) {
+    return undefined;
+  }
   return {
     voice: config.voice ?? undefined,
     speakingRate: config.speaking_rate ?? undefined,
@@ -60,52 +116,25 @@ const mapVoiceConfig = (config?: ApiPrompt['voice_config']): VoiceConfig | undef
   };
 };
 
-const toApiVoiceConfig = (config?: VoiceConfig) => {
-  if (!config) return undefined;
-  return {
-    voice: config.voice,
-    speaking_rate: config.speakingRate,
-    noise_suppression: config.noiseSuppression,
-  };
-};
-
-const tryParseJson = (str: string | undefined | null) => {
-    if (!str) return undefined;
-    try {
-        return JSON.parse(str);
-    } catch (e) {
-        return undefined;
-    }
-}
-
 const mapPrompt = (prompt: ApiPrompt): PromptTemplate => ({
   id: prompt.id,
   name: prompt.name,
   code: prompt.code,
-  description: prompt.description,
-  category: prompt.category,
-  
-  // LLM Config
+  description: prompt.description ?? undefined,
+  category: prompt.category ?? undefined,
   llmProvider: prompt.llm_provider || 'gemini',
   llmModel: prompt.llm_model || 'gemini-2.0-flash',
-  temperature: prompt.temperature || 0.7,
-  maxTokens: prompt.max_tokens || 2048,
-  
-  // Content
+  temperature: prompt.temperature ?? 0.7,
+  maxTokens: prompt.max_tokens ?? 2048,
   systemPrompt: prompt.system_prompt,
-  extractionPrompt: prompt.extraction_prompt,
+  extractionPrompt: prompt.extraction_prompt ?? undefined,
   extractionSchema: prompt.extraction_schema,
-  
-  responseFormat: prompt.response_format,
+  responseFormat: prompt.response_format ?? undefined,
   outputSchema: prompt.output_schema,
-  
-  // Voice Config
-  voiceProvider: prompt.voice_provider,
-  voiceId: prompt.voice_id,
+  voiceProvider: prompt.voice_provider ?? undefined,
+  voiceId: prompt.voice_id ?? undefined,
   voiceSettings: prompt.voice_settings,
-  
-  // Legacy
-  modelId: prompt.llm_model || 'gemini-2.0-flash', // Legacy mapping
+  modelId: prompt.llm_model || 'gemini-2.0-flash',
   instructions: prompt.instructions ?? prompt.system_prompt,
   welcomeMessage: prompt.welcome_message ?? undefined,
   closingMessage: prompt.closing_message ?? undefined,
@@ -115,80 +144,76 @@ const mapPrompt = (prompt: ApiPrompt): PromptTemplate => ({
     ttsEnabled: prompt.capabilities?.tts_enabled ?? false,
   },
   voiceConfig: mapVoiceConfig(prompt.voice_config),
-  version: prompt.version,
+  version: prompt.version ?? 1,
   updatedAt: prompt.updated_at,
   isActive: prompt.is_active,
 });
 
-const toApiPayload = (payload: Partial<PromptTemplate> | PromptFormValues) => {
-    const rawOutputSchema = (payload as any).outputSchema;
-    const parsedOutputSchema =
-      typeof rawOutputSchema === 'string' ? tryParseJson(rawOutputSchema) : rawOutputSchema;
+const toApiPayload = (payload: PromptPayloadInput): Record<string, unknown> => {
+  const extractionSchema = parseJsonObject(payload.extractionSchema);
+  const outputSchema = parseJsonObject(payload.outputSchema);
+  const compatibleExtractionSchema = extractionSchema ?? outputSchema;
 
-    const rawExtractionSchema = (payload as any).extractionSchema;
-    const parsedExtractionSchema =
-      typeof rawExtractionSchema === 'string' ? tryParseJson(rawExtractionSchema) : rawExtractionSchema;
+  const apiPayload: Record<string, unknown> = {
+    name: payload.name,
+    code: payload.code,
+    description: payload.description,
+    category: payload.category,
+    llm_provider: payload.llmProvider,
+    llm_model: payload.llmModel,
+    temperature: payload.temperature,
+    max_tokens: payload.maxTokens,
+    system_prompt: payload.systemPrompt,
+    extraction_prompt: payload.extractionPrompt,
+    extraction_schema: compatibleExtractionSchema,
+    response_format: payload.responseFormat,
+    output_schema: outputSchema,
+    voice_provider: payload.voiceProvider,
+    voice_id: payload.voiceId,
+  };
 
-    // Prefer dedicated extraction schema; fallback to output schema for backward compatibility.
-    const extractionSchema = parsedExtractionSchema ?? parsedOutputSchema;
+  Object.keys(apiPayload).forEach((key) => {
+    if (apiPayload[key] === undefined) {
+      delete apiPayload[key];
+    }
+  });
 
-    const apiPayload: any = {
-        name: payload.name,
-        code: (payload as any).code,
-        description: (payload as any).description,
-        category: (payload as any).category,
-
-        llm_provider: (payload as any).llmProvider,
-        llm_model: (payload as any).llmModel,
-        temperature: (payload as any).temperature,
-        max_tokens: (payload as any).maxTokens,
-
-        system_prompt: (payload as any).systemPrompt,
-        extraction_prompt: (payload as any).extractionPrompt,
-        extraction_schema: extractionSchema,
-
-        response_format: (payload as any).responseFormat,
-        output_schema: parsedOutputSchema,
-
-        voice_provider: (payload as any).voiceProvider,
-        voice_id: (payload as any).voiceId,
-    };
-
-    Object.keys(apiPayload).forEach((key) => apiPayload[key] === undefined && delete apiPayload[key]);
-    return apiPayload;
+  return apiPayload;
 };
 
-export async function fetchPrompts() {
+export async function fetchPrompts(): Promise<PromptTemplate[]> {
   const response = await http.get('/prompts');
-  // Backend returns ResponseBase[PromptTemplateListResponse]
-  // response.data.data = { templates: ApiPrompt[], total: number }
-  const payload = response.data.data;
-  return (payload.templates || []).map(mapPrompt);
+  const payload = PromptListPayloadSchema.parse(response.data.data);
+  return payload.templates.map(mapPrompt);
 }
 
-export async function fetchPrompt(id: string) {
-    const response = await http.get(`/prompts/${id}`);
-    return mapPrompt(response.data.data);
+export async function fetchPrompt(id: string): Promise<PromptTemplate> {
+  const response = await http.get(`/prompts/${id}`);
+  const payload = ApiPromptSchema.parse(response.data.data);
+  return mapPrompt(payload);
 }
 
-export async function updatePrompt(id: string, payload: Partial<PromptTemplate> | PromptFormValues) {
-  const apiPayload = toApiPayload(payload);
-  const response = await http.put(`/prompts/${id}`, apiPayload);
-  return mapPrompt(response.data.data);
+export async function updatePrompt(
+  id: string,
+  payload: Partial<PromptTemplate> | PromptFormValues
+): Promise<PromptTemplate> {
+  const response = await http.put(`/prompts/${id}`, toApiPayload(payload));
+  const parsed = ApiPromptSchema.parse(response.data.data);
+  return mapPrompt(parsed);
 }
 
-export async function createPrompt(payload: PromptFormValues) {
+export async function createPrompt(payload: PromptFormValues): Promise<PromptTemplate> {
   const response = await http.post('/prompts', toApiPayload(payload));
-  return mapPrompt(response.data.data);
+  const parsed = ApiPromptSchema.parse(response.data.data);
+  return mapPrompt(parsed);
 }
 
-export async function deletePrompt(id: string) {
+export async function deletePrompt(id: string): Promise<void> {
   await http.delete(`/prompts/${id}`);
 }
 
 export async function fetchModels(provider: string): Promise<string[]> {
-  const response = await http.get('/llm/models', {
-    params: { provider },
-  });
-  return response.data.data.models;
+  const response = await http.get('/llm/models', { params: { provider } });
+  const payload = PromptModelsPayloadSchema.parse(response.data.data);
+  return payload.models;
 }

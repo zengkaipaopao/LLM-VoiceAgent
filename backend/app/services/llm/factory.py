@@ -3,10 +3,13 @@ LLM service factory.
 
 Creates the appropriate LLM service based on provider name.
 """
+import logging
 from typing import Optional
 
 from .base import BaseLLMService
 from .gemini_service import GeminiService
+
+logger = logging.getLogger(__name__)
 
 
 class LLMFactory:
@@ -70,16 +73,16 @@ class LLMFactory:
                 # We interpret api_key as needed for instantiation
                 service = GeminiService(api_key)
                 return await service.list_models()
-            except Exception as e:
+            except Exception:
                 # Fallback if API fails
-                print(f"Failed to list Gemini models: {e}")
+                logger.exception("Failed to list Gemini models from API; using fallback models.")
                 return ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash", "gemini-1.0-pro"]
-                
-        elif provider == "openai":
-            return ["gpt-4-turbo", "gpt-4o", "gpt-3.5-turbo"]
-            
-        elif provider == "claude":
-            return ["claude-3-opus", "claude-3-sonnet", "claude-3-haiku"]
+
+        if provider == "openai":
+            raise NotImplementedError("OpenAI provider is planned but not enabled in this build.")
+
+        if provider == "claude":
+            raise NotImplementedError("Claude provider is planned but not enabled in this build.")
             
         return []
 

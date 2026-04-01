@@ -1,10 +1,9 @@
 """
 Appointment model for database.
 """
-from sqlalchemy import Column, String, DateTime, Text, Numeric, ForeignKey, Boolean
+from sqlalchemy import Column, String, DateTime, Text, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from datetime import datetime
 import uuid
 
 from app.models.base import Base, TimestampMixin

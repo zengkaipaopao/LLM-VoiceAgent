@@ -46,6 +46,7 @@ interface LiveEventPayload {
 
 const INPUT_TARGET_SAMPLE_RATE = 16000;
 const OUTPUT_DEFAULT_SAMPLE_RATE = 24000;
+const LIVE_API_KEY = (import.meta.env.VITE_APP_API_KEY ?? '').trim();
 
 function getAudioContextCtor(): typeof AudioContext | null {
   if (typeof window === 'undefined') return null;
@@ -154,6 +155,7 @@ export function WebSocketTabContent() {
   const [logs, setLogs] = useState<EventLog[]>([]);
 
   const wsRef = useRef<WebSocket | null>(null);
+  const heartbeatTimerRef = useRef<number | null>(null);
   const localAudioContextRef = useRef<AudioContext | null>(null);
   const localSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
@@ -184,6 +186,7 @@ export function WebSocketTabContent() {
     if (model.trim()) params.set('model', model.trim());
     if (modalities.trim()) params.set('modalities', modalities.trim());
     if (voice.trim()) params.set('voice', voice.trim());
+    if (LIVE_API_KEY) params.set('api_key', LIVE_API_KEY);
     if (selectedPromptCode.trim()) {
       params.set('template_code', selectedPromptCode.trim());
     } else if (systemInstruction.trim()) {
@@ -192,11 +195,26 @@ export function WebSocketTabContent() {
     return `${base}/live/ws?${params.toString()}`;
   }, [model, modalities, voice, selectedPromptCode, systemInstruction]);
 
+  const displayWsUrl = useMemo(() => wsUrl.replace(/([?&]api_key=)[^&]*/i, '$1***'), [wsUrl]);
+
   const sendLiveEvent = useCallback((payload: Record<string, unknown>) => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     ws.send(JSON.stringify(payload));
   }, []);
+
+  const stopHeartbeat = useCallback(() => {
+    if (heartbeatTimerRef.current === null) return;
+    window.clearInterval(heartbeatTimerRef.current);
+    heartbeatTimerRef.current = null;
+  }, []);
+
+  const startHeartbeat = useCallback(() => {
+    stopHeartbeat();
+    heartbeatTimerRef.current = window.setInterval(() => {
+      sendLiveEvent({ type: 'ping' });
+    }, 10000);
+  }, [sendLiveEvent, stopHeartbeat]);
 
   const ensureRemoteAudioContext = useCallback(async (): Promise<AudioContext | null> => {
     const AudioContextCtor = getAudioContextCtor();
@@ -247,13 +265,14 @@ export function WebSocketTabContent() {
     [ensureRemoteAudioContext, pushLog]
   );
 
-  const canUseRealtimeInput = wsOpen;
+  const canUseRealtimeInput = wsOpen && socketStatus === 'connected';
 
   const handleLiveEvent = useCallback(
     async (event: LiveEventPayload) => {
       switch ((event.type || '').toLowerCase()) {
         case 'connected':
           setSocketStatus('connected');
+          startHeartbeat();
           pushLog('success', 'Live gateway connected.');
           return;
         case 'session_ready':
@@ -310,7 +329,7 @@ export function WebSocketTabContent() {
           return;
       }
     },
-    [playPcmAudioChunk, pushLog]
+    [playPcmAudioChunk, pushLog, startHeartbeat]
   );
 
   const releaseMicrophoneResources = useCallback(() => {
@@ -344,8 +363,14 @@ export function WebSocketTabContent() {
   }, []);
 
   const connectSocket = useCallback(() => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return;
+    if (wsRef.current) {
+      const { readyState } = wsRef.current;
+      if (readyState === WebSocket.OPEN || readyState === WebSocket.CONNECTING) {
+        return;
+      }
+    }
 
+    stopHeartbeat();
     setError(null);
     setSocketStatus('connecting');
     setAssistantText('');
@@ -354,18 +379,23 @@ export function WebSocketTabContent() {
     setTotalTokens(0);
     setSessionId('');
     setWsOpen(false);
-    pushLog('info', `Connecting to ${wsUrl}`);
+    pushLog('info', `Connecting to ${displayWsUrl}`);
 
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
+      if (wsRef.current !== ws) {
+        ws.close();
+        return;
+      }
       setWsOpen(true);
       setSocketStatus('connecting');
       pushLog('success', 'WebSocket connected. Waiting for Gemini Live session...');
     };
 
     ws.onmessage = (event) => {
+      if (wsRef.current !== ws) return;
       try {
         const payload = JSON.parse(event.data) as LiveEventPayload;
         void handleLiveEvent(payload);
@@ -375,12 +405,15 @@ export function WebSocketTabContent() {
     };
 
     ws.onerror = () => {
+      if (wsRef.current !== ws) return;
       setSocketStatus('error');
       setError('WebSocket connection error.');
       pushLog('error', 'WebSocket connection error.');
     };
 
     ws.onclose = (event) => {
+      if (wsRef.current !== ws) return;
+      stopHeartbeat();
       setSocketStatus('disconnected');
       setWsOpen(false);
       const closeDetail = event.reason
@@ -399,12 +432,12 @@ export function WebSocketTabContent() {
       }
       remotePlaybackCursorRef.current = 0;
     };
-  }, [handleLiveEvent, pushLog, releaseMicrophoneResources, wsUrl]);
+  }, [displayWsUrl, handleLiveEvent, pushLog, releaseMicrophoneResources, stopHeartbeat, wsUrl]);
 
   const disconnectSocket = useCallback(() => {
+    stopHeartbeat();
     if (processorRef.current || mediaStreamRef.current || localAudioContextRef.current) {
       sendLiveEvent({ type: 'audio_end' });
-      sendLiveEvent({ type: 'activity_end' });
       releaseMicrophoneResources();
       setMicStatus('off');
       pushLog('info', 'Microphone streaming stopped.');
@@ -420,7 +453,7 @@ export function WebSocketTabContent() {
       remoteAudioContextRef.current = null;
     }
     remotePlaybackCursorRef.current = 0;
-  }, [pushLog, releaseMicrophoneResources, sendLiveEvent]);
+  }, [pushLog, releaseMicrophoneResources, sendLiveEvent, stopHeartbeat]);
 
   const sendText = useCallback(() => {
     const text = textInput.trim();
@@ -438,7 +471,6 @@ export function WebSocketTabContent() {
     releaseMicrophoneResources();
 
     sendLiveEvent({ type: 'audio_end' });
-    sendLiveEvent({ type: 'activity_end' });
 
     setMicStatus('off');
     pushLog('info', 'Microphone streaming stopped.');
@@ -506,8 +538,6 @@ export function WebSocketTabContent() {
       localSourceRef.current = source;
       processorRef.current = processor;
       muteGainRef.current = muteGain;
-
-      sendLiveEvent({ type: 'activity_start' });
 
       setMicStatus('on');
       pushLog('success', 'Microphone streaming started.');
@@ -583,6 +613,7 @@ export function WebSocketTabContent() {
 
   useEffect(() => {
     return () => {
+      stopHeartbeat();
       if (processorRef.current || mediaStreamRef.current || localAudioContextRef.current) {
         stopMicrophone();
       }
@@ -593,7 +624,7 @@ export function WebSocketTabContent() {
         remoteAudioContextRef.current = null;
       }
     };
-  }, [stopMicrophone]);
+  }, [stopHeartbeat, stopMicrophone]);
 
   const statusTagType = useMemo(() => {
     if (socketStatus === 'connected') return 'green';
@@ -782,7 +813,7 @@ export function WebSocketTabContent() {
                 </div>
                 <div className={styles.metaRow}>
                   <dt>{t('pages:test.websocket.meta.endpoint', 'Endpoint')}</dt>
-                  <dd>{wsUrl}</dd>
+                  <dd>{displayWsUrl}</dd>
                 </div>
               </dl>
             </Stack>

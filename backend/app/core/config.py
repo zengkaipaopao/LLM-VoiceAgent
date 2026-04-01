@@ -29,9 +29,39 @@ class Settings(BaseSettings):
     
     # Database
     database_url: str = "postgresql://dev_user:dev_password@localhost:5432/llm_voice_agent"
+    redis_url: str = "redis://localhost:6379/0"
     
     # Debug
-    debug: bool = True
+    debug: bool = False
+
+    # Security
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    app_api_key: str = ""
+    enforce_api_key_auth_in_local: bool = False
+    twilio_validate_webhooks: bool = True
+    twilio_webhook_tolerance_seconds: int = 300
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def api_key_auth_required(self) -> bool:
+        if not (self.app_api_key or "").strip():
+            return False
+        return self.environment != "local" or self.enforce_api_key_auth_in_local
+
+    @property
+    def live_gateway_enabled(self) -> bool:
+        return bool((self.google_api_key or "").strip())
+
+    @property
+    def twilio_webcall_enabled(self) -> bool:
+        return bool(
+            (self.twilio_account_sid or "").strip()
+            and (self.twilio_auth_token or "").strip()
+            and (self.twilio_twiml_app_sid or "").strip()
+        )
 
 
 settings = Settings()

@@ -2,19 +2,24 @@
 Dashboard API Endpoints
 提供仪表盘统计数据 - 预约管理中心
 """
+import asyncio
+import logging
 from datetime import datetime, timedelta
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import and_, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
+from app.core.config import settings
 from app.models.appointment import Appointment
 from app.models.call import Call
 from app.schemas.base import ResponseBase
 from app.utils.datetime_utils import now_tokyo_naive
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/stats", response_model=ResponseBase[dict])
@@ -128,8 +133,8 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
 
     system_status = {
         "database": await _check_database(db),
-        "redis": {"status": "healthy", "message": "连接正常"},
-        "ai_service": {"status": "healthy", "message": "服务正常"},
+        "redis": await _check_redis(),
+        "ai_service": _check_ai_service(),
     }
 
     return ResponseBase(
@@ -206,5 +211,30 @@ async def _check_database(db: AsyncSession) -> dict:
     try:
         await db.execute(text("SELECT 1"))
         return {"status": "healthy", "message": "连接正常"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+    except Exception:
+        logger.exception("Database health probe failed.")
+        return {"status": "error", "message": "数据库不可达"}
+
+
+async def _check_redis() -> dict:
+    redis_url = (settings.redis_url or "").strip()
+    if not redis_url:
+        return {"status": "unknown", "message": "REDIS_URL not configured"}
+
+    parsed = urlparse(redis_url)
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port or 6379
+
+    try:
+        _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=1.5)
+        writer.close()
+        await writer.wait_closed()
+        return {"status": "healthy", "message": "连接正常"}
+    except Exception:
+        return {"status": "error", "message": "Redis不可达"}
+
+
+def _check_ai_service() -> dict:
+    if (settings.google_api_key or "").strip():
+        return {"status": "healthy", "message": "配置有效"}
+    return {"status": "error", "message": "GOOGLE_API_KEY未配置"}

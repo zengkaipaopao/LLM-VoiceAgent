@@ -30,11 +30,18 @@ async def list_models(
         models = await LLMFactory.get_models(provider, api_key)
         
         return ResponseBase(success=True, data={"models": models})
+    except NotImplementedError as e:
+        logger.info("Provider not enabled: provider=%s reason=%s", provider, e)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
+        ) from e
         
     except ValueError as e:
+        logger.warning("Invalid model listing request for provider=%s: %s", provider, e)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+            detail="Invalid provider request.",
         ) from e
     except Exception as e:
         logger.exception("Failed to list models for provider=%s", provider)

@@ -35,7 +35,11 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
         return ResponseBase(success=True, data=response_data)
 
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+        logger.warning("Invalid chat request: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid chat request.",
+        ) from e
     except Exception as e:
         logger.exception("Chat request failed.")
         raise HTTPException(
@@ -57,7 +61,11 @@ async def start_test_session(request: TestSessionStartRequest, db: AsyncSession 
         )
         return ResponseBase(success=True, data=result)
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+        logger.warning("Invalid test session start request: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid test session request.",
+        ) from e
     except Exception as e:
         logger.exception("Failed to start test session.")
         raise HTTPException(
@@ -82,7 +90,11 @@ async def finalize_test_session(request: TestSessionFinalizeRequest, db: AsyncSe
         )
         return ResponseBase(success=True, data=result)
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+        logger.warning("Invalid finalize session request: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid finalize request.",
+        ) from e
     except Exception as e:
         logger.exception("Failed to finalize test session.")
         raise HTTPException(
@@ -97,7 +109,7 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
     try:
         service = ChatService(db)
         return StreamingResponse(service.stream_chat(request), media_type="text/event-stream")
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to initialize chat stream.")
         err_msg = "Failed to initialize chat stream."
 
@@ -119,7 +131,11 @@ async def extract_appointment(request: ExtractionRequest, db: AsyncSession = Dep
             data=extraction_data,
         )
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+        logger.warning("Invalid extraction request: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid extraction request.",
+        ) from e
     except Exception as e:
         logger.exception("Appointment extraction request failed.")
         raise HTTPException(
