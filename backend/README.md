@@ -8,7 +8,7 @@
 
 ```bash
 # 本地开发
-cp .env.local .env
+cp .env.example .env
 
 # 填入你的API密钥
 vim .env

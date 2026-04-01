@@ -1,14 +1,17 @@
 """
 LLM related endpoints.
 """
-from fastapi import APIRouter, HTTPException, status, Query
+import logging
 from typing import List, Dict
 
+from fastapi import APIRouter, HTTPException, Query, status
+
 from app.core.config import settings
-from app.services.llm.factory import LLMFactory
 from app.schemas.base import ResponseBase
+from app.services.llm.factory import LLMFactory
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 @router.get("/models", response_model=ResponseBase[Dict[str, List[str]]])
 async def list_models(
@@ -32,9 +35,10 @@ async def list_models(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
-        )
+        ) from e
     except Exception as e:
+        logger.exception("Failed to list models for provider=%s", provider)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to list models: {str(e)}"
-        )
+            detail="Failed to list models."
+        ) from e

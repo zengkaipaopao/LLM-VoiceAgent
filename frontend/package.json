@@ -8,7 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --max-warnings=0",
-    "test": "vitest"
+    "test": "vitest",
+    "test:coverage": "vitest --coverage --run"
   },
   "dependencies": {
     "@carbon/charts": "^1.27.2",

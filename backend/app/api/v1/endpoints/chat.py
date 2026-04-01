@@ -2,6 +2,7 @@
 Chat API endpoints.
 """
 import json
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -22,6 +23,7 @@ from app.schemas.chat import (
 from app.services.chat_service import ChatService
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.post("", response_model=ResponseBase[ChatResponse], status_code=status.HTTP_200_OK)
@@ -33,9 +35,13 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
         return ResponseBase(success=True, data=response_data)
 
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Chat error: {str(e)}")
+        logger.exception("Chat request failed.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Chat processing failed.",
+        ) from e
 
 
 @router.post("/test/start", response_model=ResponseBase[TestSessionStartResponse], status_code=status.HTTP_200_OK)
@@ -51,12 +57,13 @@ async def start_test_session(request: TestSessionStartRequest, db: AsyncSession 
         )
         return ResponseBase(success=True, data=result)
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     except Exception as e:
+        logger.exception("Failed to start test session.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Start test session error: {str(e)}",
-        )
+            detail="Failed to start test session.",
+        ) from e
 
 
 @router.post(
@@ -75,12 +82,13 @@ async def finalize_test_session(request: TestSessionFinalizeRequest, db: AsyncSe
         )
         return ResponseBase(success=True, data=result)
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     except Exception as e:
+        logger.exception("Failed to finalize test session.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Finalize test session error: {str(e)}",
-        )
+            detail="Failed to finalize test session.",
+        ) from e
 
 
 @router.post("/stream")
@@ -90,7 +98,8 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)):
         service = ChatService(db)
         return StreamingResponse(service.stream_chat(request), media_type="text/event-stream")
     except Exception as e:
-        err_msg = str(e)
+        logger.exception("Failed to initialize chat stream.")
+        err_msg = "Failed to initialize chat stream."
 
         async def _error_stream():
             yield f"data: {json.dumps({'type': 'error', 'error': err_msg})}\n\n"
@@ -110,9 +119,10 @@ async def extract_appointment(request: ExtractionRequest, db: AsyncSession = Dep
             data=extraction_data,
         )
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     except Exception as e:
+        logger.exception("Appointment extraction request failed.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Extraction error: {str(e)}",
-        )
+            detail="Appointment extraction failed.",
+        ) from e

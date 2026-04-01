@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from app.api.routes import api_router
 from app.core.config import settings
+from app.core.logging import setup_logging
 from app.exceptions import AppException
 from app.api.errors import (
     app_exception_handler,
@@ -11,6 +12,7 @@ from app.api.errors import (
     general_exception_handler
 )
 
+setup_logging()
 app = FastAPI(title=settings.app_name)
 
 # Register Exception Handlers
