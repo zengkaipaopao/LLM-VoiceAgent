@@ -189,6 +189,7 @@
       "simulation": "Unified Test Lab",
       "appointment": "Appointment Sim",
       "reviewer": "Reviewer Mode",
+      "live": "Gemini Live",
       "websocket": "WebSocket",
       "twilio": "Twilio WebCall"
     },

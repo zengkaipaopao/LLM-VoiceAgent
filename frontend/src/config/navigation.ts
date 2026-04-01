@@ -55,8 +55,8 @@ export const testTabs: TestTabConfig[] = [
     component: ReviewerTabContent
   },
   { 
-    id: 'websocket', 
-    label: 'websocket', 
+    id: 'live', 
+    label: 'live', 
     icon: Network_3,
     component: WebSocketTabContent
   },

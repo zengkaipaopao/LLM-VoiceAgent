@@ -190,6 +190,7 @@
       "appointment": "预约模拟",
       "chat": "LLM 对话",
       "reviewer": "审查员模式",
+      "live": "Gemini Live",
       "websocket": "WebSocket",
       "twilio": "Twilio WebCall"
     },
@@ -277,7 +278,46 @@
       "description": "预约模拟测试功能开发中..."
     },
     "websocket": {
-      "description": "WebSocket测试功能开发中..."
+      "title": "Gemini Live 实时对话测试台",
+      "description": "连接 Gemini Live 网关后，可按已创建 Prompt 进行文本与语音实时联调。",
+      "form": {
+        "loadingPrompts": "正在加载 Prompt...",
+        "promptTemplate": "Prompt 模板",
+        "noPrompt": "不使用模板（手动指令）",
+        "model": "模型",
+        "modalities": "响应模态",
+        "voice": "音色（可选）",
+        "systemInstruction": "系统指令",
+        "micToggle": "麦克风输入",
+        "micOn": "麦克风开",
+        "micOff": "麦克风关",
+        "textInput": "实时文本输入",
+        "textPlaceholder": "输入一段实时提示词"
+      },
+      "actions": {
+        "connect": "连接",
+        "disconnect": "断开",
+        "startMic": "开始麦克风",
+        "stopMic": "停止麦克风",
+        "clear": "清空",
+        "send": "发送"
+      },
+      "meta": {
+        "sessionId": "会话 ID",
+        "tokens": "总 Tokens",
+        "prompt": "Prompt",
+        "endpoint": "连接端点"
+      },
+      "sections": {
+        "transcript": "实时转写",
+        "inputTranscript": "输入转写",
+        "outputTranscript": "输出转写",
+        "textOutput": "模型文本输出",
+        "logs": "事件日志"
+      },
+      "logs": {
+        "empty": "暂无日志，连接后开始一次会话。"
+      }
     },
     "twilio": {
       "description": "Twilio WebCall测试功能开发中..."

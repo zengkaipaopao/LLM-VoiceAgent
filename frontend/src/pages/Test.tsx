@@ -29,7 +29,8 @@ export function Test() {
 
   // 从 testTabs 动态生成 tabMap
   const tabMap = useMemo(() => testTabs.map(tab => tab.id), []);
-  const currentTab = searchParams.get('tab') || tabMap[0];
+  const currentTabRaw = searchParams.get('tab') || tabMap[0];
+  const currentTab = currentTabRaw === 'websocket' ? 'live' : currentTabRaw;
   const selectedIndex = tabMap.indexOf(currentTab);
   const safeIndex = selectedIndex >= 0 ? selectedIndex : 0;
 

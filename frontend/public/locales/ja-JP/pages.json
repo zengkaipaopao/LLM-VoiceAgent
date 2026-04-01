@@ -189,6 +189,7 @@
       "simulation": "統合テストラボ",
       "appointment": "予約シミュレーション",
       "reviewer": "レビュアーモード",
+      "live": "Gemini Live",
       "websocket": "WebSocket",
       "twilio": "Twilio WebCall"
     },

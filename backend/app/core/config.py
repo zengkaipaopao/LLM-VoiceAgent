@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     google_api_key: str = ""
     default_llm_provider: str = "gemini"
     default_llm_model: str = "gemini-2.0-flash"
+    default_live_model: str = "gemini-3.1-flash-live-preview"
+    default_live_modalities: str = "AUDIO"
+    default_live_voice: str = ""
     llm_temperature: float = 0.7
     llm_max_tokens: int = 2048
     llm_show_quota_notice_as_reply: bool = True
