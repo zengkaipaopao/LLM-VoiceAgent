@@ -1,0 +1,55 @@
+@use '@carbon/styles/scss/spacing';
+
+.statusCell {
+  align-items: center;
+  display: inline-flex;
+  gap: spacing.$spacing-02;
+}
+
+.statusHandled {
+  color: var(--cds-support-success);
+}
+
+.statusUnhandled {
+  color: var(--cds-support-error);
+}
+
+.operationCell {
+  align-items: center;
+  display: inline-flex;
+  gap: spacing.$spacing-03;
+}
+
+.operationIconCreate {
+  fill: var(--cds-support-success);
+}
+
+.operationIconUpdate {
+  fill: var(--cds-link-primary);
+}
+
+.operationIconDelete {
+  fill: var(--cds-support-error);
+}
+
+.operationIconFallback {
+  fill: var(--cds-icon-secondary);
+}
+
+.expandedRow {
+  background-color: var(--cds-layer-02);
+  padding: spacing.$spacing-05;
+}
+
+.expandedSection {
+  margin-bottom: spacing.$spacing-05;
+}
+
+.expandedSection:last-child {
+  margin-bottom: 0;
+}
+
+.expandedText {
+  margin: spacing.$spacing-03 0 0;
+  white-space: pre-wrap;
+}

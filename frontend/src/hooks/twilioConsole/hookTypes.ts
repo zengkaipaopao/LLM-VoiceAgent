@@ -1,0 +1,46 @@
+import type { PromptTemplate } from '../../types/shared';
+import type { EventLog } from '../testTabs/eventLog';
+import type { CallState, DeviceState, TwilioStatusTagType } from './types';
+
+export interface UseTwilioWebCallConsoleResult {
+  prompts: PromptTemplate[];
+  loadingPrompts: boolean;
+  selectedPromptCode: string;
+  setSelectedPromptCode: (value: string) => void;
+  identity: string;
+  setIdentity: (value: string) => void;
+  toNumber: string;
+  setToNumber: (value: string) => void;
+  tokenEndpoint: string;
+  setTokenEndpoint: (value: string) => void;
+  useEndpoint: boolean;
+  setUseEndpoint: (value: boolean) => void;
+  accessToken: string;
+  setAccessToken: (value: string) => void;
+  deviceState: DeviceState;
+  callState: CallState;
+  callSid: string;
+  isMuted: boolean;
+  logs: EventLog[];
+  error: string | null;
+  setError: (value: string | null) => void;
+  info: string | null;
+  setInfo: (value: string | null) => void;
+  isFetchingToken: boolean;
+  isInitializing: boolean;
+  isDialing: boolean;
+  isEnding: boolean;
+  activePrompt: PromptTemplate | undefined;
+  canMute: boolean;
+  canHangup: boolean;
+  deviceTagType: TwilioStatusTagType;
+  callTagType: TwilioStatusTagType;
+  clearLogs: () => void;
+  resetSession: () => void;
+  fetchToken: () => Promise<void>;
+  initializeDevice: () => Promise<void>;
+  handleDial: () => Promise<void>;
+  handleHangUp: () => void;
+  handleToggleMute: () => void;
+  handleUnregister: () => Promise<void>;
+}

@@ -1,0 +1,7 @@
+@use '@carbon/styles/scss/spacing';
+
+.actions {
+  align-items: flex-end;
+  display: flex;
+  gap: spacing.$spacing-03;
+}

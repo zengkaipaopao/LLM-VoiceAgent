@@ -1,0 +1,6 @@
+@use '@carbon/styles/scss/spacing';
+
+.container {
+  max-width: 20rem;
+  padding-bottom: spacing.$spacing-05;
+}

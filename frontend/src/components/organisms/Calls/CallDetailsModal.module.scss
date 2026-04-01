@@ -1,0 +1,20 @@
+@use '@carbon/styles/scss/spacing';
+
+.metaSection {
+  margin-bottom: spacing.$spacing-05;
+}
+
+.metaSection > div {
+  margin-bottom: spacing.$spacing-03;
+}
+
+.metaSection > div:last-child {
+  margin-bottom: 0;
+}
+
+.rawPayload {
+  margin: 0;
+  max-height: 24rem;
+  overflow: auto;
+  white-space: pre-wrap;
+}

@@ -1,0 +1,1 @@
+export { ChatControlPanel } from './ChatControlPanel';

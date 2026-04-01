@@ -1,0 +1,7 @@
+@use '@carbon/styles/scss/spacing';
+
+.handlerCell {
+  align-items: center;
+  display: inline-flex;
+  gap: spacing.$spacing-03;
+}
