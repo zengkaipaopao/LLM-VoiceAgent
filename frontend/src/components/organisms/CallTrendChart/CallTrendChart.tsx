@@ -5,6 +5,7 @@
  * 使用Carbon Charts LineChart
  */
 import { LineChart } from '@carbon/charts-react';
+import { useTranslation } from 'react-i18next';
 import '@carbon/charts-react/styles.css';
 import './CallTrendChart.scss';
 
@@ -25,12 +26,14 @@ export function CallTrendChart({
   data, 
   loading = false,
 }: CallTrendChartProps) {
+  const { t } = useTranslation(['pages', 'common']);
+
   const options: any = {
-    title: '最近7天通话趋势',
+    title: t('pages:dashboard.trend.title', 'Call trend in last 7 days'),
     axes: {
       left: {
         mapsTo: 'value',
-        title: '通话数',
+        title: t('pages:dashboard.trend.yAxis', 'Calls'),
       },
       bottom: {
         mapsTo: 'date',
@@ -56,7 +59,9 @@ export function CallTrendChart({
       <div className="call-trend-chart">
         <div className="call-trend-chart__content call-trend-chart__content--loading">
           <p className="call-trend-chart__empty">
-            {loading ? '加载中...' : '暂无数据'}
+            {loading
+              ? t('common:status.loading')
+              : t('pages:dashboard.messages.noData', 'No dashboard data yet')}
           </p>
         </div>
       </div>

@@ -9,17 +9,22 @@ import { Test } from '../pages/Test';
 import { AppLayout } from '../components/templates/AppLayout/AppLayout';
 import { Theme } from '@carbon/react';
 import { Suspense } from 'react';
+import { useTranslation } from 'react-i18next';
 
 // Root layout wrapper
-const RootLayout = () => (
-  <Theme theme="g10" className="app-root cds--theme--g10">
-    <AppLayout>
-      <Suspense fallback={<div>加载中...</div>}>
-        <Outlet />
-      </Suspense>
-    </AppLayout>
-  </Theme>
-);
+const RootLayout = () => {
+  const { t } = useTranslation(['common']);
+
+  return (
+    <Theme theme="g10" className="app-root cds--theme--g10">
+      <AppLayout>
+        <Suspense fallback={<div>{t('common:status.loading')}</div>}>
+          <Outlet />
+        </Suspense>
+      </AppLayout>
+    </Theme>
+  );
+};
 
 export const router = createBrowserRouter([
   {

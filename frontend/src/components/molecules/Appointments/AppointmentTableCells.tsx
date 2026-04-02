@@ -1,4 +1,5 @@
 import { CheckmarkFilled, ErrorFilled, HelpFilled, InformationFilled } from '@carbon/icons-react';
+import { useTranslation } from 'react-i18next';
 
 import styles from './AppointmentTableCells.module.scss';
 
@@ -85,15 +86,17 @@ export function AppointmentExpandedContent({
   summary,
   extraRequest,
 }: AppointmentExpandedContentProps) {
+  const { t } = useTranslation(['pages']);
+
   return (
     <div className={styles.expandedRow}>
       <div className={styles.expandedSection}>
-        <strong>摘要:</strong>
+        <strong>{t('pages:appointments.table.expanded.summary', 'Summary')}:</strong>
         <p className={styles.expandedText}>{summary}</p>
       </div>
       {extraRequest !== '-' && (
         <div className={styles.expandedSection}>
-          <strong>特别需求:</strong>
+          <strong>{t('pages:appointments.table.expanded.extraRequest', 'Extra request')}:</strong>
           <p className={styles.expandedText}>{extraRequest}</p>
         </div>
       )}

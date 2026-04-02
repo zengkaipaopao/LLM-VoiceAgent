@@ -1,6 +1,7 @@
 import React from 'react';
 import { Tile } from '@carbon/react';
 import { User, WatsonHealthAiStatus } from '@carbon/icons-react';
+import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Message } from '../../hooks/useChatStream';
@@ -22,6 +23,7 @@ interface MessageBubbleProps {
  * - 区分不同角色的样式
  */
 export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
+  const { t, i18n } = useTranslation(['pages']);
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
 
@@ -45,10 +47,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
           )}
         </div>
         <span className={styles.role}>
-          {isUser ? '用户' : 'AI 助手'}
+          {isUser
+            ? t('pages:test.chat.roles.user', 'User')
+            : t('pages:test.chat.roles.assistant', 'AI Assistant')}
         </span>
         <span className={styles.timestamp}>
-          {message.timestamp.toLocaleTimeString('zh-CN', { 
+          {message.timestamp.toLocaleTimeString(i18n.language || undefined, {
             hour: '2-digit', 
             minute: '2-digit' 
           })}

@@ -8,9 +8,14 @@ import {
 
 describe('formatters', () => {
   it('formats duration into Chinese human-readable text', () => {
-    expect(formatDuration(0)).toBe('0秒');
-    expect(formatDuration(65)).toBe('1分5秒');
-    expect(formatDuration(3661)).toBe('1小时1分1秒');
+    expect(formatDuration(0, 'zh-CN')).toBe('0秒');
+    expect(formatDuration(65, 'zh-CN')).toBe('1分5秒');
+    expect(formatDuration(3661, 'zh-CN')).toBe('1小时1分1秒');
+  });
+
+  it('formats duration with english units', () => {
+    expect(formatDuration(65, 'en-US')).toBe('1m 5s');
+    expect(formatDuration(3661, 'en-US')).toBe('1h 1m 1s');
   });
 
   it('formats call time with zero-padded values', () => {

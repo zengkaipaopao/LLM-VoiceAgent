@@ -1,24 +1,54 @@
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Column, Grid } from '@carbon/react';
 
 import { useUnifiedTestLab } from '../../../hooks/useUnifiedTestLab';
-import { TestTabNotifications } from '../../molecules/TestTabs';
+import { TestTabNotifications, TestWorkbenchShell, type TestWorkbenchSummaryItem } from '../../molecules/TestTabs';
 import { UnifiedChatWorkspace } from './unified/UnifiedChatWorkspace';
 import { UnifiedSidebarPanels } from './unified/UnifiedSidebarPanels';
-import styles from './UnifiedTestLabTabContent.module.scss';
 
 export function UnifiedTestLabTabContent() {
   const navigate = useNavigate();
   const { t } = useTranslation(['pages']);
   const lab = useUnifiedTestLab();
   const canClearPanel = lab.messages.length > 0 || !!lab.error || !!lab.info;
+  const sessionTone = lab.sessionClosed ? 'blue' : lab.session ? 'green' : 'cool-gray';
+
+  const summaryItems: TestWorkbenchSummaryItem[] = [
+    {
+      id: 'scenario',
+      label: t('pages:test.unified.summary.scenario', 'Scenario'),
+      value: t('pages:test.unified.summary.scenarioValue', 'Prompt-driven call rehearsal'),
+    },
+    {
+      id: 'prompt',
+      label: t('pages:test.unified.summary.prompt', 'Prompt'),
+      value: lab.selectedPromptCode || '-',
+      mono: true,
+    },
+    {
+      id: 'session',
+      label: t('pages:test.unified.summary.session', 'Session'),
+      value: lab.sessionStatus,
+      tone: sessionTone,
+    },
+    {
+      id: 'tokens',
+      label: t('pages:test.unified.summary.tokens', 'Total Tokens'),
+      value: String(lab.totalTokens),
+    },
+  ];
 
   return (
-    <div className={styles.container}>
-      <Grid narrow className={styles.layoutGrid}>
-        {(lab.error || lab.info) && (
-          <Column lg={16} md={8} sm={4} className={styles.noticeColumn}>
+    <TestWorkbenchShell
+      title={t('pages:test.unified.shell.title', 'Unified Prompt Simulation Workspace')}
+      description={t(
+        'pages:test.unified.shell.description',
+        'Run end-to-end prompt simulations in one controlled surface, from session creation to extraction finalization.'
+      )}
+      summaryItems={summaryItems}
+      notice={
+        lab.error || lab.info ? (
+          <>
             <TestTabNotifications
               error={lab.error}
               info={lab.info}
@@ -27,10 +57,11 @@ export function UnifiedTestLabTabContent() {
               onClearError={() => lab.setError(null)}
               onClearInfo={() => lab.setInfo(null)}
             />
-          </Column>
-        )}
-
-        <Column lg={11} md={8} sm={4} className={styles.mainColumn}>
+          </>
+        ) : undefined
+      }
+      main={
+        <>
           <UnifiedChatWorkspace
             hasSession={!!lab.session}
             sessionClosed={lab.sessionClosed}
@@ -43,9 +74,10 @@ export function UnifiedTestLabTabContent() {
             quickMessages={lab.quickMessages}
             onSendMessage={lab.handleSendMessage}
           />
-        </Column>
-
-        <Column lg={5} md={8} sm={4} className={styles.sideColumn}>
+        </>
+      }
+      side={
+        <>
           <UnifiedSidebarPanels
             loadingPrompts={lab.loadingPrompts}
             prompts={lab.prompts}
@@ -69,8 +101,8 @@ export function UnifiedTestLabTabContent() {
             onViewCalls={() => navigate('/calls')}
             onViewAppointments={() => navigate('/appointments')}
           />
-        </Column>
-      </Grid>
-    </div>
+        </>
+      }
+    />
   );
 }

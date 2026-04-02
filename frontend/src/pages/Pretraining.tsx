@@ -21,8 +21,11 @@ export function Pretraining() {
         className="pretrain-notice"
         kind="info"
         lowContrast
-        title="功能规划中"
-        subtitle="当前提供流程指引与资源入口,后续接入训练任务与状态监控。"
+        title={t('pages:pretraining.notice.title', 'Feature in planning')}
+        subtitle={t(
+          'pages:pretraining.notice.subtitle',
+          'This page currently provides process guidance and resource links. Training jobs and status tracking will be added next.'
+        )}
       />
       <EmptyState
         title={t('common:emptyState.title')}

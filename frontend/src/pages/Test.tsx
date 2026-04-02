@@ -69,7 +69,9 @@ export function Test() {
             const Component = tab.component;
             return (
               <TabPanel key={tab.id}>
-                <Component {...tabComponentProps} />
+                <div className={styles.tabPanelContent}>
+                  <Component {...tabComponentProps} />
+                </div>
               </TabPanel>
             );
           })}

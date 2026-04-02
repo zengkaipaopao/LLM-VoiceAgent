@@ -59,3 +59,38 @@ def test_resolve_amount_fallback_from_summary_text():
     amount = ChatService._resolve_amount(raw_data)
 
     assert amount == "3kg"
+
+
+def test_resolve_amount_handles_string_estimated_weight():
+    raw_data = {
+        "estimated_weight_kg": "3",
+    }
+
+    amount = ChatService._resolve_amount(raw_data)
+
+    assert amount == "3 kg"
+
+
+def test_resolve_amount_fallback_from_transcript_text():
+    raw_data = {}
+    transcript = "用户: 粗大ゴミ３kg\n助手: 承知しました。"
+
+    amount = ChatService._resolve_amount(raw_data, transcript)
+
+    assert amount == "３kg"
+
+
+def test_resolve_amount_supports_ton_and_cubic_aliases():
+    amount_ton = ChatService._resolve_amount({}, "重量は2tです。")
+    amount_volume = ChatService._resolve_amount({}, "体積は8立方米です。")
+    amount_short_volume = ChatService._resolve_amount({}, "体積は3立方です。")
+
+    assert amount_ton == "2t"
+    assert amount_volume == "8立方米"
+    assert amount_short_volume == "3立方"
+
+
+def test_resolve_amount_ignores_iso_datetime():
+    amount = ChatService._resolve_amount({}, "2026-04-02T09:33:26+09:00")
+
+    assert amount is None

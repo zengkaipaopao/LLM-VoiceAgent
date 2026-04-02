@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --max-warnings=0",
+    "i18n:check": "node scripts/check-i18n.mjs",
     "test": "vitest",
     "test:coverage": "vitest --coverage --run"
   },

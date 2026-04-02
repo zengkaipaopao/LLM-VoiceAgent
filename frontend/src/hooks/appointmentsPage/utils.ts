@@ -221,6 +221,7 @@ export function mapAppointmentsToTableRows(appointments: Appointment[]): Appoint
       summary: appointment.summary,
       appointmentContent:
         typeof extracted.appointment_content === 'string' ? extracted.appointment_content : undefined,
+      rawMessages: appointment.raw_messages,
     });
 
     const rowContent: AppointmentTableRow = {

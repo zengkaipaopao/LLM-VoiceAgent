@@ -3,6 +3,14 @@
     "title": "ダッシュボード",
     "subtitle": "システムステータスの概要",
     "emptyState": "このページは開発中です",
+    "messages": {
+      "loadFailed": "ダッシュボードの読み込みに失敗しました: {{message}}",
+      "noData": "ダッシュボードデータがありません"
+    },
+    "trend": {
+      "title": "直近7日間の通話推移",
+      "yAxis": "通話数"
+    },
     "stats": {
       "totalCalls": "総通話数",
       "todayCalls": "今日の通話",
@@ -84,6 +92,10 @@
     "title": "予約管理",
     "subtitle": "顧客の予約とスケジュールを管理",
     "emptyState": "このページは開発中です",
+    "promptSelector": {
+      "title": "Prompt テンプレート",
+      "label": "Prompt を選択"
+    },
     "table": {
       "headers": {
         "timestamp": "予約日時",
@@ -106,11 +118,43 @@
         "update": "変更",
         "cancel": "キャンセル"
       },
+      "expanded": {
+        "summary": "要約",
+        "extraRequest": "特別要望"
+      },
       "toolbar": {
         "searchPlaceholder": "名前、会社、内容を検索...",
         "refresh": "更新",
         "export": "データ出力"
       }
+    },
+    "card": {
+      "unspecifiedTime": "未指定",
+      "new": "新規予約",
+      "confidence": "AI 信頼度",
+      "fields": {
+        "time": "時間",
+        "callerName": "名前",
+        "company": "会社",
+        "content": "内容"
+      }
+    },
+    "detailModal": {
+      "heading": "詳細",
+      "headingWithName": "予約詳細: {{name}}",
+      "markHandled": "対応完了",
+      "appointmentEventId": "予約イベント ID",
+      "callId": "関連通話 ID",
+      "timestamp": "作成日時",
+      "appointmentTime": "希望回収日時",
+      "callerName": "名前",
+      "company": "会社",
+      "category": "カテゴリ",
+      "amount": "数量",
+      "address": "住所",
+      "summary": "要約",
+      "extraRequest": "追加要望",
+      "dialogueTitle": "詳細会話"
     }
   },
   "prompts": {
@@ -177,7 +221,11 @@
   "pretraining": {
     "title": "モデルファインチューニング",
     "subtitle": "AIモデルのトレーニングと最適化",
-    "emptyState": "このページは開発中です"
+    "emptyState": "このページは開発中です",
+    "notice": {
+      "title": "機能計画中",
+      "subtitle": "現在はプロセス案内とリソースリンクのみ提供しています。今後、学習ジョブと状態監視を追加します。"
+    }
   },
   "test": {
     "title": "リアルタイムデバッグラボ",
@@ -188,10 +236,40 @@
       "ariaLabel": "テストオプション",
       "simulation": "統合テストラボ",
       "appointment": "予約シミュレーション",
+      "chat": "LLM チャット",
       "reviewer": "レビュアーモード",
       "live": "Gemini Live",
       "websocket": "WebSocket",
       "twilio": "Twilio WebCall"
+    },
+    "chat": {
+      "input": {
+        "placeholder": "メッセージを入力して LLM 対話をテスト...",
+        "quickLabel": "クイック入力",
+        "charCount": "{{count}} 文字",
+        "send": "送信 (Ctrl+Enter)"
+      },
+      "actions": {
+        "retry": "再試行",
+        "export": "エクスポート",
+        "clear": "クリア"
+      },
+      "promptSelector": {
+        "label": "Agent を選択 (Prompt テンプレート)",
+        "helper": "{{provider}}/{{model}} (T={{temperature}})"
+      },
+      "meta": {
+        "callId": "通話 ID",
+        "totalTokens": "総 Tokens"
+      },
+      "empty": {
+        "title": "LLM フローのテストを開始",
+        "description": "メッセージを送信すると、アシスタントがリアルタイムで応答します。"
+      },
+      "roles": {
+        "user": "ユーザー",
+        "assistant": "AI アシスタント"
+      }
     },
     "unified": {
       "sections": {
@@ -277,7 +355,46 @@
       "description": "予約シミュレーション機能は開発中..."
     },
     "websocket": {
-      "description": "WebSocketテスト機能は開発中..."
+      "title": "Gemini Live リアルタイムコンソール",
+      "description": "Gemini Live ゲートウェイに接続し、作成済み Prompt でテキストと音声のリアルタイム連携を検証します。",
+      "form": {
+        "loadingPrompts": "Prompt を読み込み中...",
+        "promptTemplate": "Prompt テンプレート",
+        "noPrompt": "テンプレートなし（手動指示）",
+        "model": "モデル",
+        "modalities": "応答モダリティ",
+        "voice": "音色（任意）",
+        "systemInstruction": "システム指示",
+        "micToggle": "マイク入力",
+        "micOn": "マイク ON",
+        "micOff": "マイク OFF",
+        "textInput": "リアルタイムテキスト入力",
+        "textPlaceholder": "リアルタイム用プロンプトを入力"
+      },
+      "actions": {
+        "connect": "接続",
+        "disconnect": "切断",
+        "startMic": "マイク開始",
+        "stopMic": "マイク停止",
+        "clear": "クリア",
+        "send": "送信"
+      },
+      "meta": {
+        "sessionId": "セッション ID",
+        "tokens": "総 Tokens",
+        "prompt": "Prompt",
+        "endpoint": "接続エンドポイント"
+      },
+      "sections": {
+        "transcript": "リアルタイム文字起こし",
+        "inputTranscript": "入力文字起こし",
+        "outputTranscript": "出力文字起こし",
+        "textOutput": "モデル出力テキスト",
+        "logs": "イベントログ"
+      },
+      "logs": {
+        "empty": "まだログはありません。接続後に1回実行すると表示されます。"
+      }
     },
     "twilio": {
       "description": "Twilio WebCallテスト機能は開発中..."
@@ -285,6 +402,7 @@
     "simulation": {
       "scenarios": {
         "title": "テストシナリオを選択",
+        "description": "シナリオを選択して着信通話をシミュレーションします。",
         "ai_handled": { "title": "AI成功処理", "description": "AIが完全対応した通話をシミュレート" },
         "transferred": { "title": "有人転送", "description": "AIからオペレーターへの転送をシミュレート" },
         "no_answer": { "title": "未応答", "description": "不在着信をシミュレート" },

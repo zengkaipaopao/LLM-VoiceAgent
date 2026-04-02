@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { ChatErrorNotification } from '../molecules/ChatInterface';
 import { ChatControlPanel } from './ChatInterface/ChatControlPanel';
@@ -18,6 +19,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   defaultTemplate = 'general_appointment',
 }) => {
   void defaultProvider;
+  const { t } = useTranslation(['pages']);
 
   const {
     prompts,
@@ -63,7 +65,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       <ChatInput
         onSend={handleSend}
         disabled={isLoading}
-        placeholder="输入消息,测试 LLM 对话功能..."
+        placeholder={t('pages:test.chat.input.placeholder', 'Type a message...')}
       />
 
       {callId && <ExtractionPanel callId={callId} templateCode={selectedPromptCode} />}

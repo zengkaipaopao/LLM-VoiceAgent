@@ -17,7 +17,7 @@ export function WebSocketSidePanels({
   assistantText,
   logs,
 }: WebSocketSidePanelsProps) {
-  const { t } = useTranslation(['pages']);
+  const { t, i18n } = useTranslation(['pages']);
 
   return (
     <>
@@ -62,7 +62,7 @@ export function WebSocketSidePanels({
               {logs.map((log) => (
                 <li key={log.id} className={styles.logItem}>
                   <span className={styles.logTime}>
-                    {log.time.toLocaleTimeString('ja-JP', { hour12: false })}
+                    {log.time.toLocaleTimeString(i18n.language || undefined, { hour12: false })}
                   </span>
                   <span className={`${styles.logLevel} ${styles[`logLevel${log.level}`]}`}>
                     {log.level.toUpperCase()}

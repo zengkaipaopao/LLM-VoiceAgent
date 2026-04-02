@@ -1,24 +1,53 @@
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Column, Grid } from '@carbon/react';
 
 import { API_BASE_URL } from '../../../api/http';
 import { useTwilioWebCallConsole } from '../../../hooks/useTwilioWebCallConsole';
-import { TestTabNotifications } from '../../molecules/TestTabs';
+import { TestTabNotifications, TestWorkbenchShell, type TestWorkbenchSummaryItem } from '../../molecules/TestTabs';
 import { TwilioMainWorkspace } from './twilio/TwilioMainWorkspace';
 import { TwilioSidebarPanels } from './twilio/TwilioSidebarPanels';
-import styles from './TwilioTabContent.module.scss';
 
 export function TwilioTabContent() {
   const navigate = useNavigate();
   const { t } = useTranslation(['pages']);
   const twilio = useTwilioWebCallConsole();
+  const summaryItems: TestWorkbenchSummaryItem[] = [
+    {
+      id: 'scenario',
+      label: t('pages:test.twilio.summary.scenario', 'Scenario'),
+      value: t('pages:test.twilio.summary.scenarioValue', 'Browser-to-PSTN workflow rehearsal'),
+    },
+    {
+      id: 'device',
+      label: t('pages:test.twilio.summary.device', 'Device'),
+      value: twilio.deviceState,
+      tone: twilio.deviceTagType,
+    },
+    {
+      id: 'call',
+      label: t('pages:test.twilio.summary.call', 'Call'),
+      value: twilio.callState,
+      tone: twilio.callTagType,
+    },
+    {
+      id: 'prompt',
+      label: t('pages:test.twilio.summary.prompt', 'Prompt'),
+      value: twilio.selectedPromptCode || '-',
+      mono: true,
+    },
+  ];
 
   return (
-    <div className={styles.container}>
-      <Grid narrow className={styles.layoutGrid}>
-        {(twilio.error || twilio.info) && (
-          <Column lg={16} md={8} sm={4} className={styles.noticeColumn}>
+    <TestWorkbenchShell
+      title={t('pages:test.twilio.shell.title', 'Twilio WebCall Workspace')}
+      description={t(
+        'pages:test.twilio.shell.description',
+        'Operate token, registration, dialing, and prompt routing from a unified telephony test control plane.'
+      )}
+      summaryItems={summaryItems}
+      notice={
+        twilio.error || twilio.info ? (
+          <>
             <TestTabNotifications
               error={twilio.error}
               info={twilio.info}
@@ -27,10 +56,11 @@ export function TwilioTabContent() {
               onClearError={() => twilio.setError(null)}
               onClearInfo={() => twilio.setInfo(null)}
             />
-          </Column>
-        )}
-
-        <Column lg={11} md={8} sm={4} className={styles.mainColumn}>
+          </>
+        ) : undefined
+      }
+      main={
+        <>
           <TwilioMainWorkspace
             deviceState={twilio.deviceState}
             callState={twilio.callState}
@@ -59,9 +89,10 @@ export function TwilioTabContent() {
             tokenEndpoint={twilio.tokenEndpoint}
             logs={twilio.logs}
           />
-        </Column>
-
-        <Column lg={5} md={8} sm={4} className={styles.sideColumn}>
+        </>
+      }
+      side={
+        <>
           <TwilioSidebarPanels
             useEndpoint={twilio.useEndpoint}
             setUseEndpoint={twilio.setUseEndpoint}
@@ -80,8 +111,8 @@ export function TwilioTabContent() {
               navigate('/calls');
             }}
           />
-        </Column>
-      </Grid>
-    </div>
+        </>
+      }
+    />
   );
 }

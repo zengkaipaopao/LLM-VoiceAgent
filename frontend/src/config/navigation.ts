@@ -49,12 +49,6 @@ export const testTabs: TestTabConfig[] = [
     component: UnifiedTestLabTabContent
   },
   { 
-    id: 'reviewer', 
-    label: 'reviewer', 
-    icon: WatsonHealthAiStatus,
-    component: ReviewerTabContent
-  },
-  { 
     id: 'live', 
     label: 'live', 
     icon: Network_3,
@@ -65,6 +59,12 @@ export const testTabs: TestTabConfig[] = [
     label: 'twilio', 
     icon: PhoneVoice,
     component: TwilioTabContent
+  },
+  { 
+    id: 'reviewer', 
+    label: 'reviewer', 
+    icon: WatsonHealthAiStatus,
+    component: ReviewerTabContent
   },
 ];
 

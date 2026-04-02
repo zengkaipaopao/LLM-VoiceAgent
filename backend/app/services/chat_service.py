@@ -47,7 +47,7 @@ class ChatService:
         flags=re.IGNORECASE,
     )
     _AMOUNT_PATTERN = re.compile(
-        r"([0-9０-９]+(?:[.,．][0-9０-９]+)?\s*(?:kg|ｋｇ|キロ(?:グラム)?|g|ｇ|グラム|トン|ton(?:s)?|m[3３]|m³|㎥|立方メートル|立米|袋|点|個|台|脚|本|箱|枚))",
+        r"([0-9０-９]+(?:[.,．][0-9０-９]+)?\s*(?:kg|ｋｇ|キロ(?:グラム)?|g|ｇ|グラム|トン|ton(?:s)?|t(?![0-9０-９])|吨|噸|m[3３]|m³|㎥|立方メートル|立方米|立方|立米|袋|点|個|台|脚|本|箱|枚))",
         flags=re.IGNORECASE,
     )
 
@@ -208,6 +208,15 @@ class ChatService:
 
     @classmethod
     def _resolve_amount(cls, raw_data: dict[str, Any], *fallback_texts: Optional[str]) -> Optional[str]:
+        numeric_pattern = r"[0-9０-９]+(?:[.,．][0-9０-９]+)?"
+
+        def format_with_unit(value: Optional[str], unit: str) -> Optional[str]:
+            if not value:
+                return None
+            if re.fullmatch(numeric_pattern, value):
+                return f"{value} {unit}"
+            return value
+
         direct_amount = cls._first_non_empty(
             raw_data.get("amount"),
             raw_data.get("quantity"),
@@ -222,11 +231,9 @@ class ChatService:
             value = int(weight_kg) if float(weight_kg).is_integer() else weight_kg
             return f"{value} kg"
 
-        weight_text = cls._first_non_empty(raw_data.get("weight_kg"))
+        weight_text = cls._first_non_empty(raw_data.get("weight_kg"), raw_data.get("estimated_weight_kg"))
         if weight_text:
-            if re.fullmatch(r"[0-9０-９]+(?:[.,．][0-9０-９]+)?", weight_text):
-                return f"{weight_text} kg"
-            return weight_text
+            return format_with_unit(weight_text, "kg")
 
         volume = raw_data.get("estimated_volume_m3")
         if isinstance(volume, (int, float)):
@@ -235,7 +242,7 @@ class ChatService:
 
         volume_text = cls._first_non_empty(volume)
         if volume_text:
-            return f"{volume_text} m3"
+            return format_with_unit(volume_text, "m3")
 
         for candidate_text in (
             raw_data.get("summary"),
@@ -728,6 +735,12 @@ class ChatService:
                 raw_data,
                 extraction_result.summary,
                 extraction_result.appointment_content,
+                call.transcript,
+                "\n".join(
+                    str(message.get("content", "")).strip()
+                    for message in messages
+                    if isinstance(message, dict) and str(message.get("content", "")).strip()
+                ),
             )
             resolved_address = self._resolve_address(raw_data)
             resolved_extra_request = self._resolve_extra_request(raw_data)

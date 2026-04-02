@@ -19,7 +19,7 @@ export function createAssistantMessage(content: string = ''): Message {
 export function createAssistantErrorMessage(errorMessage: string): Message {
   return {
     role: 'assistant',
-    content: `❌ 错误: ${errorMessage}`,
+    content: `❌ ${errorMessage}`,
     timestamp: new Date(),
   };
 }

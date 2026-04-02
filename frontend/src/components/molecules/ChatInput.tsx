@@ -1,6 +1,7 @@
 import React, { useState, KeyboardEvent } from 'react';
 import { TextArea, Button } from '@carbon/react';
 import { Send } from '@carbon/icons-react';
+import { useTranslation } from 'react-i18next';
 import styles from './ChatInput.module.scss';
 
 /**
@@ -26,11 +27,16 @@ interface ChatInputProps {
 export const ChatInput: React.FC<ChatInputProps> = ({ 
   onSend, 
   disabled = false,
-  placeholder = '输入消息...',
+  placeholder,
   quickMessages = [],
-  quickMessagesLabel = '快捷输入'
+  quickMessagesLabel
 }) => {
+  const { t } = useTranslation(['pages']);
   const [input, setInput] = useState('');
+  const resolvedPlaceholder =
+    placeholder ?? t('pages:test.chat.input.placeholder', 'Type a message...');
+  const resolvedQuickMessagesLabel =
+    quickMessagesLabel ?? t('pages:test.chat.input.quickLabel', 'Quick input');
 
   const handleSend = () => {
     const trimmed = input.trim();
@@ -53,7 +59,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       <TextArea
         id="chat-input"
         labelText=""
-        placeholder={placeholder}
+        placeholder={resolvedPlaceholder}
         value={input}
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={handleKeyDown}
@@ -64,7 +70,10 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       
       <div className={styles.footer}>
         <span className={styles.charCount}>
-          {input.length} 字符
+          {t('pages:test.chat.input.charCount', {
+            count: input.length,
+            defaultValue: '{{count}} chars',
+          })}
         </span>
         
         <Button
@@ -74,13 +83,13 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           onClick={handleSend}
           disabled={disabled || !input.trim()}
         >
-          发送 (Ctrl+Enter)
+          {t('pages:test.chat.input.send', 'Send (Ctrl+Enter)')}
         </Button>
       </div>
 
       {quickMessages.length > 0 && (
         <div className={styles.quickSection}>
-          <span className={styles.quickLabel}>{quickMessagesLabel}</span>
+          <span className={styles.quickLabel}>{resolvedQuickMessagesLabel}</span>
           <div className={styles.quickButtons}>
             {quickMessages.map((message) => (
               <button

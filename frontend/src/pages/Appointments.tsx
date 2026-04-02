@@ -59,8 +59,8 @@ export function Appointments() {
         availablePrompts={availablePrompts}
         selectedPromptId={selectedPromptId}
         onPromptChange={handlePromptChange}
-        titleText="Prompt 模板"
-        label="选择 Prompt"
+        titleText={t('pages:appointments.promptSelector.title')}
+        label={t('pages:appointments.promptSelector.label')}
       />
 
       <AppointmentsDataTable

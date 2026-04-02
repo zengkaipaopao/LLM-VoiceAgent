@@ -3,6 +3,14 @@
     "title": "仪表盘",
     "subtitle": "概览系统状态",
     "emptyState": "此页面正在开发中",
+    "messages": {
+      "loadFailed": "加载 Dashboard 数据失败: {{message}}",
+      "noData": "暂无 Dashboard 数据"
+    },
+    "trend": {
+      "title": "最近7天通话趋势",
+      "yAxis": "通话数"
+    },
     "stats": {
       "totalCalls": "总通话数",
       "todayCalls": "今日通话",
@@ -84,6 +92,10 @@
     "title": "预约管理",
     "subtitle": "管理客户预约和日程安排",
     "emptyState": "此页面正在开发中",
+    "promptSelector": {
+      "title": "Prompt 模板",
+      "label": "选择 Prompt"
+    },
     "table": {
       "headers": {
         "timestamp": "预约时间",
@@ -106,11 +118,43 @@
         "update": "变更",
         "cancel": "取消"
       },
+      "expanded": {
+        "summary": "摘要",
+        "extraRequest": "特别需求"
+      },
       "toolbar": {
         "searchPlaceholder": "搜索姓名、公司或内容...",
         "refresh": "刷新",
         "export": "导出数据"
       }
+    },
+    "card": {
+      "unspecifiedTime": "未指定时间",
+      "new": "新预约",
+      "confidence": "AI 置信度",
+      "fields": {
+        "time": "时间",
+        "callerName": "姓名",
+        "company": "公司",
+        "content": "内容"
+      }
+    },
+    "detailModal": {
+      "heading": "详情",
+      "headingWithName": "预约详情: {{name}}",
+      "markHandled": "对应完毕",
+      "appointmentEventId": "预约事件 ID",
+      "callId": "关联通话 ID",
+      "timestamp": "预约时间",
+      "appointmentTime": "希望回收时间",
+      "callerName": "姓名",
+      "company": "公司",
+      "category": "类别",
+      "amount": "数量",
+      "address": "地址",
+      "summary": "摘要",
+      "extraRequest": "额外请求",
+      "dialogueTitle": "详细对话"
     }
   },
   "prompts": {
@@ -177,7 +221,11 @@
   "pretraining": {
     "title": "模型微调",
     "subtitle": "训练和优化AI模型",
-    "emptyState": "此页面正在开发中"
+    "emptyState": "此页面正在开发中",
+    "notice": {
+      "title": "功能规划中",
+      "subtitle": "当前提供流程指引与资源入口，后续接入训练任务与状态监控。"
+    }
   },
   "test": {
     "title": "实时调试实验室",
@@ -193,6 +241,35 @@
       "live": "Gemini Live",
       "websocket": "WebSocket",
       "twilio": "Twilio WebCall"
+    },
+    "chat": {
+      "input": {
+        "placeholder": "输入消息，测试 LLM 对话功能...",
+        "quickLabel": "快捷输入",
+        "charCount": "{{count}} 字符",
+        "send": "发送 (Ctrl+Enter)"
+      },
+      "actions": {
+        "retry": "重试",
+        "export": "导出",
+        "clear": "清空"
+      },
+      "promptSelector": {
+        "label": "选择 Agent (提示词模板)",
+        "helper": "{{provider}}/{{model}} (T={{temperature}})"
+      },
+      "meta": {
+        "callId": "通话 ID",
+        "totalTokens": "总 Tokens"
+      },
+      "empty": {
+        "title": "开始对话，测试 LLM 功能",
+        "description": "输入消息并发送，AI 助手将实时回复"
+      },
+      "roles": {
+        "user": "用户",
+        "assistant": "AI 助手"
+      }
     },
     "unified": {
       "sections": {

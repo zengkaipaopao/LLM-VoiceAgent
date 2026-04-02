@@ -1,4 +1,5 @@
 import { Loading, Select, SelectItem } from '@carbon/react';
+import { useTranslation } from 'react-i18next';
 
 import { PromptTemplate } from '../../../types/shared';
 import styles from './ChatPromptSelect.module.scss';
@@ -18,6 +19,8 @@ export function ChatPromptSelect({
   selectedPrompt,
   onChange,
 }: ChatPromptSelectProps) {
+  const { t } = useTranslation(['pages']);
+
   if (loading) {
     return <Loading small withOverlay={false} />;
   }
@@ -26,13 +29,18 @@ export function ChatPromptSelect({
     <div className={styles.container}>
       <Select
         id="agent-select"
-        labelText="选择 Agent (提示词模板)"
+        labelText={t('pages:test.chat.promptSelector.label', 'Select Agent (prompt template)')}
         value={selectedPromptCode}
         onChange={(event) => onChange(event.target.value)}
         size="sm"
         helperText={
           selectedPrompt
-            ? `${selectedPrompt.llmProvider}/${selectedPrompt.llmModel} (T=${selectedPrompt.temperature})`
+            ? t('pages:test.chat.promptSelector.helper', {
+                provider: selectedPrompt.llmProvider,
+                model: selectedPrompt.llmModel,
+                temperature: selectedPrompt.temperature,
+                defaultValue: '{{provider}}/{{model}} (T={{temperature}})',
+              })
             : ''
         }
       >

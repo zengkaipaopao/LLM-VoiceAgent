@@ -47,7 +47,10 @@ export function Dashboard() {
     return (
       <PageTemplate title={t('pages:dashboard.title')} subtitle={t('pages:dashboard.subtitle')}>
         <DashboardMessageTile
-          message={`加载Dashboard数据失败: ${error.message}`}
+          message={t('pages:dashboard.messages.loadFailed', {
+            message: error.message,
+            defaultValue: 'Failed to load dashboard data: {{message}}',
+          })}
           color="var(--cds-text-error)"
         />
       </PageTemplate>
@@ -66,7 +69,7 @@ export function Dashboard() {
     return (
       <PageTemplate title={t('pages:dashboard.title')} subtitle={t('pages:dashboard.subtitle')}>
         <DashboardMessageTile
-          message="暂无Dashboard数据"
+          message={t('pages:dashboard.messages.noData', 'No dashboard data yet')}
           color="var(--cds-text-secondary)"
         />
       </PageTemplate>

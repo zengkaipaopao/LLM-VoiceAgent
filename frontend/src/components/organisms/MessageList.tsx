@@ -1,5 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { SkeletonText } from '@carbon/react';
+import { useTranslation } from 'react-i18next';
 import { MessageBubble } from '../molecules/MessageBubble';
 import type { Message } from '../../hooks/useChatStream';
 import styles from './MessageList.module.scss';
@@ -25,6 +26,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   messages, 
   isLoading = false 
 }) => {
+  const { t } = useTranslation(['pages']);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // 自动滚动到最新消息
@@ -36,9 +38,12 @@ export const MessageList: React.FC<MessageListProps> = ({
   if (messages.length === 0 && !isLoading) {
     return (
       <div className={styles.emptyState}>
-        <p>开始对话,测试 LLM 功能</p>
+        <p>{t('pages:test.chat.empty.title', 'Start chatting to test the LLM flow')}</p>
         <span className={styles.hint}>
-          输入消息并发送,AI 助手将实时回复
+          {t(
+            'pages:test.chat.empty.description',
+            'Send a message and the assistant will respond in real time.'
+          )}
         </span>
       </div>
     );

@@ -1,4 +1,5 @@
 import { ActionableNotification } from '@carbon/react';
+import { useTranslation } from 'react-i18next';
 
 interface ChatErrorNotificationProps {
   error: string | null;
@@ -11,6 +12,8 @@ export function ChatErrorNotification({
   onRetry,
   onDismiss,
 }: ChatErrorNotificationProps) {
+  const { t } = useTranslation(['common', 'pages']);
+
   if (!error) {
     return null;
   }
@@ -18,9 +21,9 @@ export function ChatErrorNotification({
   return (
     <ActionableNotification
       kind="error"
-      title="错误"
+      title={t('common:status.error')}
       subtitle={error}
-      actionButtonLabel="重试"
+      actionButtonLabel={t('pages:test.chat.actions.retry', 'Retry')}
       onActionButtonClick={() => {
         void onRetry();
       }}

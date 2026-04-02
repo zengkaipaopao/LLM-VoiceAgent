@@ -57,6 +57,9 @@ jobs:
       - name: Run lint
         run: npm run lint
 
+      - name: Check i18n coverage
+        run: npm run i18n:check
+
       - name: Run tests
         run: npm run test -- --run
 

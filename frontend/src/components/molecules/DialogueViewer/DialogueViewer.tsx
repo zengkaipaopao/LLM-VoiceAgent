@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import styles from './DialogueViewer.module.scss';
 
 export interface ChatMessage {
@@ -42,6 +43,7 @@ function sanitizeAssistantContent(content: string): string {
  * Handles strings, nested objects, and arrays.
  */
 export const DialogueViewer: React.FC<DialogueViewerProps> = ({ rawMessages }) => {
+  const { t } = useTranslation(['pages']);
   const messages = useMemo(() => {
     const parseString = (str: string): any => {
       const normalized = str.trim();
@@ -124,13 +126,17 @@ export const DialogueViewer: React.FC<DialogueViewerProps> = ({ rawMessages }) =
 
   return (
     <div className={styles.dialogueContainer}>
-      <strong style={{ display: 'block', marginBottom: '0.5rem' }}>详细对话:</strong>
+      <strong style={{ display: 'block', marginBottom: '0.5rem' }}>
+        {t('pages:appointments.detailModal.dialogueTitle', 'Dialogue details')}
+      </strong>
       <div className={styles.messagesList}>
         {messages.map((msg, idx) => {
           const role = msg.role;
           const isUser = role === 'user';
           const content = msg.content;
-          const roleLabel = isUser ? '用户' : 'AI助手';
+          const roleLabel = isUser
+            ? t('pages:test.chat.roles.user', 'User')
+            : t('pages:test.chat.roles.assistant', 'AI Assistant');
 
           return (
             <div 

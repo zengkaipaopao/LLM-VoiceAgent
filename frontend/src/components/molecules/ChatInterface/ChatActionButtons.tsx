@@ -1,5 +1,6 @@
 import { Button } from '@carbon/react';
 import { Download, TrashCan } from '@carbon/icons-react';
+import { useTranslation } from 'react-i18next';
 
 import styles from './ChatActionButtons.module.scss';
 
@@ -14,6 +15,8 @@ export function ChatActionButtons({
   onExport,
   onClear,
 }: ChatActionButtonsProps) {
+  const { t } = useTranslation(['pages']);
+
   return (
     <div className={styles.actions}>
       <Button
@@ -23,7 +26,7 @@ export function ChatActionButtons({
         onClick={onExport}
         disabled={!hasMessages}
       >
-        导出
+        {t('pages:test.chat.actions.export', 'Export')}
       </Button>
       <Button
         kind="danger--ghost"
@@ -32,7 +35,7 @@ export function ChatActionButtons({
         onClick={onClear}
         disabled={!hasMessages}
       >
-        清空
+        {t('pages:test.chat.actions.clear', 'Clear')}
       </Button>
     </div>
   );

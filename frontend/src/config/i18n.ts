@@ -3,6 +3,10 @@ import { initReactI18next } from 'react-i18next';
 import HttpBackend from 'i18next-http-backend';
 import LanguageDetector from 'i18next-browser-languagedetector';
 
+const localeCacheVersion = import.meta.env.DEV
+  ? 'dev'
+  : import.meta.env.VITE_I18N_VERSION || 'v1';
+
 /**
  * i18n配置 - 模块化翻译文件结构
  * 
@@ -53,13 +57,13 @@ i18n
     // HTTP后端配置
     backend: {
       // 翻译文件路径模板
-      loadPath: `/locales/{{lng}}/{{ns}}.json?v=${new Date().getTime()}`,
+      loadPath: `/locales/{{lng}}/{{ns}}.json?v=${localeCacheVersion}`,
       
       // 请求超时
       requestOptions: {
         mode: 'cors',
         credentials: 'same-origin',
-        cache: 'default',
+        cache: import.meta.env.DEV ? 'no-cache' : 'default',
       },
     },
 

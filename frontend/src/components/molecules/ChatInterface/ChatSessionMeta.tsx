@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import styles from './ChatSessionMeta.module.scss';
 
 interface ChatSessionMetaProps {
@@ -6,6 +7,8 @@ interface ChatSessionMetaProps {
 }
 
 export function ChatSessionMeta({ callId, totalTokens }: ChatSessionMetaProps) {
+  const { t } = useTranslation(['pages']);
+
   if (!callId && totalTokens <= 0) {
     return null;
   }
@@ -14,13 +17,13 @@ export function ChatSessionMeta({ callId, totalTokens }: ChatSessionMetaProps) {
     <div className={styles.callInfo}>
       {callId && (
         <div className={styles.infoItem}>
-          <span className={styles.label}>Call ID:</span>
+          <span className={styles.label}>{t('pages:test.chat.meta.callId', 'Call ID')}:</span>
           <code className={styles.callId}>{callId}</code>
         </div>
       )}
       {totalTokens > 0 && (
         <div className={styles.infoItem}>
-          <span className={styles.label}>Total Tokens:</span>
+          <span className={styles.label}>{t('pages:test.chat.meta.totalTokens', 'Total Tokens')}:</span>
           <span className={styles.tokenCount}>{totalTokens.toLocaleString()}</span>
         </div>
       )}

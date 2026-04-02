@@ -3,6 +3,14 @@
     "title": "Dashboard",
     "subtitle": "Overview of system status",
     "emptyState": "This page is under development",
+    "messages": {
+      "loadFailed": "Failed to load dashboard data: {{message}}",
+      "noData": "No dashboard data yet"
+    },
+    "trend": {
+      "title": "Call trend in last 7 days",
+      "yAxis": "Calls"
+    },
     "stats": {
       "totalCalls": "Total Calls",
       "todayCalls": "Calls Today",
@@ -84,6 +92,10 @@
     "title": "Appointments",
     "subtitle": "Manage customer appointments and schedules",
     "emptyState": "This page is under development",
+    "promptSelector": {
+      "title": "Prompt Template",
+      "label": "Select Prompt"
+    },
     "table": {
       "headers": {
         "timestamp": "Time",
@@ -106,11 +118,43 @@
         "update": "Update",
         "cancel": "Cancel"
       },
+      "expanded": {
+        "summary": "Summary",
+        "extraRequest": "Extra request"
+      },
       "toolbar": {
         "searchPlaceholder": "Search name, company or content...",
         "refresh": "Refresh",
         "export": "Export Data"
       }
+    },
+    "card": {
+      "unspecifiedTime": "Not specified",
+      "new": "New appointment",
+      "confidence": "AI confidence",
+      "fields": {
+        "time": "Time",
+        "callerName": "Name",
+        "company": "Company",
+        "content": "Content"
+      }
+    },
+    "detailModal": {
+      "heading": "Details",
+      "headingWithName": "Appointment details: {{name}}",
+      "markHandled": "Mark handled",
+      "appointmentEventId": "Appointment Event ID",
+      "callId": "Related Call ID",
+      "timestamp": "Created at",
+      "appointmentTime": "Appointment time",
+      "callerName": "Name",
+      "company": "Company",
+      "category": "Category",
+      "amount": "Amount",
+      "address": "Address",
+      "summary": "Summary",
+      "extraRequest": "Extra request",
+      "dialogueTitle": "Dialogue details"
     }
   },
   "prompts": {
@@ -177,7 +221,11 @@
   "pretraining": {
     "title": "Model Fine-tuning",
     "subtitle": "Train and optimize AI models",
-    "emptyState": "This page is under development"
+    "emptyState": "This page is under development",
+    "notice": {
+      "title": "Feature in planning",
+      "subtitle": "This page currently provides process guidance and resource links. Training jobs and status tracking will be added next."
+    }
   },
   "test": {
     "title": "Real-time Debug Lab",
@@ -188,10 +236,40 @@
       "ariaLabel": "Test Options",
       "simulation": "Unified Test Lab",
       "appointment": "Appointment Sim",
+      "chat": "LLM Chat",
       "reviewer": "Reviewer Mode",
       "live": "Gemini Live",
       "websocket": "WebSocket",
       "twilio": "Twilio WebCall"
+    },
+    "chat": {
+      "input": {
+        "placeholder": "Type a message to test LLM chat...",
+        "quickLabel": "Quick input",
+        "charCount": "{{count}} chars",
+        "send": "Send (Ctrl+Enter)"
+      },
+      "actions": {
+        "retry": "Retry",
+        "export": "Export",
+        "clear": "Clear"
+      },
+      "promptSelector": {
+        "label": "Select Agent (prompt template)",
+        "helper": "{{provider}}/{{model}} (T={{temperature}})"
+      },
+      "meta": {
+        "callId": "Call ID",
+        "totalTokens": "Total Tokens"
+      },
+      "empty": {
+        "title": "Start chatting to test the LLM flow",
+        "description": "Send a message and the assistant will respond in real time."
+      },
+      "roles": {
+        "user": "User",
+        "assistant": "AI Assistant"
+      }
     },
     "unified": {
       "sections": {
@@ -277,7 +355,46 @@
       "description": "Appointment simulation feature under development..."
     },
     "websocket": {
-      "description": "WebSocket testing feature under development..."
+      "title": "Gemini Live Realtime Console",
+      "description": "Connect to the Gemini Live gateway to run realtime text and voice tests with existing prompts.",
+      "form": {
+        "loadingPrompts": "Loading prompts...",
+        "promptTemplate": "Prompt Template",
+        "noPrompt": "No template (manual instruction)",
+        "model": "Model",
+        "modalities": "Response modalities",
+        "voice": "Voice (optional)",
+        "systemInstruction": "System Instruction",
+        "micToggle": "Microphone Input",
+        "micOn": "Mic on",
+        "micOff": "Mic off",
+        "textInput": "Realtime Text Input",
+        "textPlaceholder": "Type a realtime prompt"
+      },
+      "actions": {
+        "connect": "Connect",
+        "disconnect": "Disconnect",
+        "startMic": "Start Mic",
+        "stopMic": "Stop Mic",
+        "clear": "Clear",
+        "send": "Send"
+      },
+      "meta": {
+        "sessionId": "Session ID",
+        "tokens": "Total Tokens",
+        "prompt": "Prompt",
+        "endpoint": "Endpoint"
+      },
+      "sections": {
+        "transcript": "Realtime Transcripts",
+        "inputTranscript": "Input Transcript",
+        "outputTranscript": "Output Transcript",
+        "textOutput": "Model Text Output",
+        "logs": "Event Logs"
+      },
+      "logs": {
+        "empty": "No logs yet. Connect and start one turn."
+      }
     },
     "twilio": {
       "description": "Twilio WebCall testing feature under development..."
@@ -285,6 +402,7 @@
     "simulation": {
       "scenarios": {
         "title": "Select Test Scenario",
+        "description": "Choose a scenario to simulate an incoming call.",
         "ai_handled": { "title": "AI Handled", "description": "Simulate AI handling call completely" },
         "transferred": { "title": "Transferred", "description": "Simulate AI transferring to human" },
         "no_answer": { "title": "No Answer", "description": "Simulate no answer" },
