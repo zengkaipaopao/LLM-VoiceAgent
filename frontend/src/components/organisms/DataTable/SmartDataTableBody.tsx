@@ -15,6 +15,7 @@ interface SmartDataTableBodyProps<T extends DataRow> {
   tableHeaders: Header[];
   renderCell?: SmartDataTableProps<T>['renderCell'];
   renderExpandedRow?: SmartDataTableProps<T>['renderExpandedRow'];
+  getRowClassName?: SmartDataTableProps<T>['getRowClassName'];
   resolveOriginalRow: (rowId: string) => T | null;
   getRowProps: (params: { row: any }) => Record<string, unknown>;
 }
@@ -24,6 +25,7 @@ export function SmartDataTableBody<T extends DataRow>({
   tableHeaders,
   renderCell,
   renderExpandedRow,
+  getRowClassName,
   resolveOriginalRow,
   getRowProps,
 }: SmartDataTableBodyProps<T>) {
@@ -49,12 +51,20 @@ export function SmartDataTableBody<T extends DataRow>({
         if (!originalRow) {
           return null;
         }
+        const rowProps = getRowProps({ row: tableRow }) as any;
+        const customRowClassName = getRowClassName?.(originalRow);
+        const mergedRowClassName = [rowProps?.className, customRowClassName]
+          .filter((value) => typeof value === 'string' && value.trim().length > 0)
+          .join(' ');
 
         const RowComponent: any = renderExpandedRow ? TableExpandRow : TableRow;
 
         return (
           <Fragment key={tableRow.id}>
-            <RowComponent {...(getRowProps({ row: tableRow }) as any)}>
+            <RowComponent
+              {...rowProps}
+              className={mergedRowClassName || rowProps?.className}
+            >
               {tableRow.cells.map((cell: any) => (
                 <TableCell key={cell.id}>
                   {renderCell

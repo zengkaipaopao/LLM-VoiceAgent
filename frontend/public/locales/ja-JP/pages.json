@@ -145,6 +145,7 @@
       "markHandled": "対応完了",
       "appointmentEventId": "予約イベント ID",
       "callId": "関連通話 ID",
+      "targetAppointmentId": "関連元予約 ID",
       "timestamp": "作成日時",
       "appointmentTime": "希望回収日時",
       "callerName": "名前",
@@ -323,7 +324,10 @@
           "dateRequest": "2026年4月1日に粗大ゴミを回収してほしいです。",
           "address": "回収先は東京都千代田区神田2-4-33です。",
           "items": "オフィス机2台と椅子4脚で、量はおよそ2立方メートルです。",
-          "confirmation": "はい、その内容で予約をお願いします。"
+          "confirmation": "はい、その内容で予約をお願いします。",
+          "changeDate": "回収日を4月5日に変更できますか？",
+          "addFridge": "古い冷蔵庫も1台追加したいのですが。",
+          "cancelRequest": "すみません、やっぱり予約をキャンセルしたいです。"
         }
       },
       "records": {

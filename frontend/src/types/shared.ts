@@ -141,6 +141,7 @@ export interface Appointment {
   raw_messages?: any;
   operation?: string;
   is_handled?: boolean;
+  extra_data?: Record<string, any>;
   
   // Dynamic Schema Extensions
   prompt_id?: string;

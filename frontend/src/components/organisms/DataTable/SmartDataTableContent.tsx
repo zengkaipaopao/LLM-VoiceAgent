@@ -34,6 +34,7 @@ interface SmartDataTableContentProps<T extends DataRow> {
   toolbarActions?: ReactNode;
   renderCell?: SmartDataTableProps<T>['renderCell'];
   renderExpandedRow?: SmartDataTableProps<T>['renderExpandedRow'];
+  getRowClassName?: SmartDataTableProps<T>['getRowClassName'];
   resolveOriginalRow: (rowId: string) => T | null;
 }
 
@@ -57,6 +58,7 @@ export function SmartDataTableContent<T extends DataRow>({
   toolbarActions,
   renderCell,
   renderExpandedRow,
+  getRowClassName,
   resolveOriginalRow,
 }: SmartDataTableContentProps<T>) {
   return (
@@ -118,6 +120,7 @@ export function SmartDataTableContent<T extends DataRow>({
               tableHeaders={tableHeaders}
               renderCell={renderCell}
               renderExpandedRow={renderExpandedRow}
+              getRowClassName={getRowClassName}
               resolveOriginalRow={resolveOriginalRow}
               getRowProps={getRowProps}
             />

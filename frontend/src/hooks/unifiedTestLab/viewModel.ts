@@ -21,6 +21,9 @@ export function buildQuickMessages(t: TranslateFn): string[] {
     t('pages:test.unified.chat.quickExamples.address', '回収場所は東京都千代田区神田2-4-33です。'),
     t('pages:test.unified.chat.quickExamples.items', 'オフィス机2台と椅子4脚で、量はおよそ2立方メートルです。'),
     t('pages:test.unified.chat.quickExamples.confirmation', 'はい、その内容で予約をお願いします。'),
+    t('pages:test.unified.chat.quickExamples.changeDate', '回収日を4月5日に変更できますか？'),
+    t('pages:test.unified.chat.quickExamples.addFridge', '古い冷蔵庫も1台追加したいのですが。'),
+    t('pages:test.unified.chat.quickExamples.cancelRequest', 'すみません、やっぱり予約をキャンセルしたいです。'),
   ];
 }
 

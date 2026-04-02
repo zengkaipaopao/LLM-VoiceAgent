@@ -145,6 +145,7 @@
       "markHandled": "Mark handled",
       "appointmentEventId": "Appointment Event ID",
       "callId": "Related Call ID",
+      "targetAppointmentId": "Linked Appointment ID",
       "timestamp": "Created at",
       "appointmentTime": "Appointment time",
       "callerName": "Name",
@@ -323,7 +324,10 @@
           "dateRequest": "I want bulky waste collection on April 1, 2026.",
           "address": "The pickup address is 2-4-33 Kanda, Chiyoda-ku, Tokyo.",
           "items": "Two office desks and four chairs, around 2 cubic meters.",
-          "confirmation": "Yes, please proceed with that reservation."
+          "confirmation": "Yes, please proceed with that reservation.",
+          "changeDate": "Can I change the collection date to April 5th?",
+          "addFridge": "I'd like to add an old refrigerator to the list.",
+          "cancelRequest": "Sorry, I'd like to cancel the reservation."
         }
       },
       "records": {

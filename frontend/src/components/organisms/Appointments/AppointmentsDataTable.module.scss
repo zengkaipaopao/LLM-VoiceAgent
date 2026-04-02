@@ -4,3 +4,19 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.rowLinkedUpdate td {
+  background-color: color-mix(in srgb, var(--cds-layer) 88%, var(--cds-support-info) 12%);
+}
+
+.rowLinkedUpdate td:first-child {
+  box-shadow: inset 0.25rem 0 0 var(--cds-support-info);
+}
+
+.rowLinkedCancel td {
+  background-color: color-mix(in srgb, var(--cds-layer) 88%, var(--cds-support-error) 12%);
+}
+
+.rowLinkedCancel td:first-child {
+  box-shadow: inset 0.25rem 0 0 var(--cds-support-error);
+}

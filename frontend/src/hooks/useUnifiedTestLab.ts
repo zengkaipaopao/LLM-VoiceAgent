@@ -14,6 +14,14 @@ import { resolveErrorMessage } from './unifiedTestLab/streamUtils';
 import { buildQuickMessages, deriveSessionStatus } from './unifiedTestLab/viewModel';
 import { usePromptTemplates } from './usePromptTemplates';
 
+function shouldAutoFinalizeByClosingPhrase(content: string): boolean {
+  if (!content) return false;
+  const normalized = content.replace(/\s+/g, '');
+  const hasThanks = normalized.includes('ご利用ありがとうございます');
+  const hasAccepted = normalized.includes('承りました');
+  return hasThanks && hasAccepted;
+}
+
 export function useUnifiedTestLab(): UseUnifiedTestLabResult {
   const { t } = useTranslation(['pages']);
 
@@ -33,6 +41,7 @@ export function useUnifiedTestLab(): UseUnifiedTestLabResult {
   const [info, setInfo] = useState<string | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const autoFinalizeInFlightRef = useRef(false);
   const handlePromptLoadError = useCallback(
     (loadError: unknown) => {
       setError(
@@ -124,6 +133,56 @@ export function useUnifiedTestLab(): UseUnifiedTestLabResult {
     ]);
   }, []);
 
+  const finalizeSession = useCallback(
+    async (activeSession: StartTestSessionResponse, trigger: 'manual' | 'auto') => {
+      if (autoFinalizeInFlightRef.current) {
+        return;
+      }
+
+      autoFinalizeInFlightRef.current = true;
+      setIsFinalizing(true);
+      setError(null);
+      if (trigger === 'manual') {
+        setInfo(null);
+      }
+
+      try {
+        const result = await finalizeTestSession({
+          call_id: activeSession.call_id,
+          template_code: activeSession.template_code || selectedPromptCode,
+          run_extraction: true,
+        });
+
+        setFinalizeResult(result);
+        if (trigger === 'auto') {
+          setInfo(
+            result.extraction?.message ||
+              t(
+                'pages:test.unified.info.autoSessionFinalized',
+                'Detected completion phrase. Session auto-finalized and extraction completed.'
+              )
+          );
+        } else {
+          setInfo(
+            result.extraction?.message ||
+              t('pages:test.unified.info.sessionFinalized', 'Session finalized and extraction completed')
+          );
+        }
+      } catch (finalizeError) {
+        setError(
+          resolveErrorMessage(
+            finalizeError,
+            t('pages:test.unified.errors.finalizeFailed', 'Failed to finalize session')
+          )
+        );
+      } finally {
+        setIsFinalizing(false);
+        autoFinalizeInFlightRef.current = false;
+      }
+    },
+    [selectedPromptCode, t]
+  );
+
   const handleSendMessage = useCallback(
     async (content: string) => {
       if (isSending || isFinalizing) {
@@ -155,6 +214,7 @@ export function useUnifiedTestLab(): UseUnifiedTestLabResult {
         setMessages((prev) => [...prev, userMessage, assistantMessage]);
 
         abortControllerRef.current = new AbortController();
+        let lastAssistantContent = '';
 
         await streamUnifiedChatResponse({
           callId: activeSession.call_id,
@@ -177,6 +237,7 @@ export function useUnifiedTestLab(): UseUnifiedTestLabResult {
             sessionRef.current = updatedSession;
           },
           onAssistantContent: (assistantContent: string) => {
+            lastAssistantContent = assistantContent;
             setMessages((prev) => {
               const next = [...prev];
               if (next.length > 0) {
@@ -192,6 +253,14 @@ export function useUnifiedTestLab(): UseUnifiedTestLabResult {
             setTotalTokens((prev) => prev + tokensUsed);
           },
         });
+
+        if (
+          activeSession &&
+          !finalizeResult &&
+          shouldAutoFinalizeByClosingPhrase(lastAssistantContent)
+        ) {
+          await finalizeSession(activeSession, 'auto');
+        }
       } catch (sendError) {
         if ((sendError as { name?: string })?.name !== 'AbortError') {
           const message = resolveErrorMessage(
@@ -206,7 +275,7 @@ export function useUnifiedTestLab(): UseUnifiedTestLabResult {
         abortControllerRef.current = null;
       }
     },
-    [appendErrorMessage, createSession, isFinalizing, isSending, selectedPromptCode, t]
+    [appendErrorMessage, createSession, finalizeResult, finalizeSession, isFinalizing, isSending, selectedPromptCode, t]
   );
 
   const handleFinalize = useCallback(async () => {
@@ -216,33 +285,8 @@ export function useUnifiedTestLab(): UseUnifiedTestLabResult {
       return;
     }
 
-    setIsFinalizing(true);
-    setError(null);
-    setInfo(null);
-
-    try {
-      const result = await finalizeTestSession({
-        call_id: activeSession.call_id,
-        template_code: activeSession.template_code || selectedPromptCode,
-        run_extraction: true,
-      });
-
-      setFinalizeResult(result);
-      setInfo(
-        result.extraction?.message ||
-          t('pages:test.unified.info.sessionFinalized', 'Session finalized and extraction completed')
-      );
-    } catch (finalizeError) {
-      setError(
-        resolveErrorMessage(
-          finalizeError,
-          t('pages:test.unified.errors.finalizeFailed', 'Failed to finalize session')
-        )
-      );
-    } finally {
-      setIsFinalizing(false);
-    }
-  }, [selectedPromptCode, t]);
+    await finalizeSession(activeSession, 'manual');
+  }, [finalizeSession, t]);
 
   const handleClear = useCallback(() => {
     setMessages([]);
@@ -250,6 +294,7 @@ export function useUnifiedTestLab(): UseUnifiedTestLabResult {
     setFinalizeResult(null);
     setError(null);
     setInfo(null);
+    autoFinalizeInFlightRef.current = false;
   }, []);
 
   const { sessionClosed, sessionStatus } = useMemo(

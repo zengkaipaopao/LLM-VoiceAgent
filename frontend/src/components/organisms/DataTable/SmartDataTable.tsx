@@ -36,6 +36,7 @@ export function SmartDataTable<T extends DataRow>({
   toolbarActions,
   renderCell,
   renderExpandedRow,
+  getRowClassName,
 }: SmartDataTableProps<T>) {
   const {
     searchValue,
@@ -89,6 +90,7 @@ export function SmartDataTable<T extends DataRow>({
         toolbarActions={toolbarActions}
         renderCell={renderCell}
         renderExpandedRow={renderExpandedRow}
+        getRowClassName={getRowClassName}
         resolveOriginalRow={resolveOriginalRow}
       />
 

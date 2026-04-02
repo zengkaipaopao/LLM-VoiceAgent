@@ -46,4 +46,5 @@ export interface SmartDataTableProps<T extends DataRow> {
   toolbarActions?: ReactNode;
   renderCell?: (cellValue: any, cellKey: string, row: T) => ReactNode;
   renderExpandedRow?: (row: T) => ReactNode;
+  getRowClassName?: (row: T) => string | undefined;
 }

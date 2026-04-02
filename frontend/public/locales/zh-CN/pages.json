@@ -145,6 +145,7 @@
       "markHandled": "对应完毕",
       "appointmentEventId": "预约事件 ID",
       "callId": "关联通话 ID",
+      "targetAppointmentId": "关联主预约 ID",
       "timestamp": "预约时间",
       "appointmentTime": "希望回收时间",
       "callerName": "姓名",
@@ -323,7 +324,10 @@
           "dateRequest": "2026年4月1日に粗大ゴミを回収してほしいです。",
           "address": "回収先は東京都千代田区神田2-4-33です。",
           "items": "オフィス机2台と椅子4脚で、量はおよそ2立方メートルです。",
-          "confirmation": "はい、その内容で予約をお願いします。"
+          "confirmation": "はい、その内容で予約をお願いします。",
+          "changeDate": "可以把回收日期改为4月5日吗？",
+          "addFridge": "我想再增加一个旧冰箱。",
+          "cancelRequest": "对不起，我想取消之前的预约。"
         }
       },
       "records": {

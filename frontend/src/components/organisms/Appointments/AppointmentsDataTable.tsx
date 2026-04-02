@@ -20,6 +20,7 @@ import {
   buildAppointmentsFilterConfig,
 } from './appointmentsDataTableConfig';
 import { renderAppointmentsTableCell } from './AppointmentsDataTableCellRenderer';
+import styles from './AppointmentsDataTable.module.scss';
 
 type TranslateFn = (key: string) => string;
 
@@ -72,6 +73,15 @@ export function AppointmentsDataTable({
       }),
     [onViewAppointment, operationLabels, t]
   );
+  const getRowClassName = useCallback((row: AppointmentTableRow) => {
+    if (row.row_state === 'linked-cancel') {
+      return styles.rowLinkedCancel;
+    }
+    if (row.row_state === 'linked-update') {
+      return styles.rowLinkedUpdate;
+    }
+    return undefined;
+  }, []);
 
   return (
     <SmartDataTable
@@ -104,6 +114,7 @@ export function AppointmentsDataTable({
         </TableToolbarMenu>
       }
       renderCell={renderCell}
+      getRowClassName={getRowClassName}
       renderExpandedRow={(row) => (
         <AppointmentExpandedContent summary={row.summary} extraRequest={row.extra_request} />
       )}

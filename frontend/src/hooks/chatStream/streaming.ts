@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '../../api/http';
+import { sanitizeAssistantPrefix } from '../unifiedTestLab/streamUtils';
 import { parseSSEEvent } from './sse';
 import type { ChatRequest } from './types';
 
@@ -59,7 +60,7 @@ export async function streamChatResponse({
 
         if (eventPayload.type === 'content' && typeof eventPayload.content === 'string') {
           assistantContent += eventPayload.content;
-          onAssistantContent(assistantContent);
+          onAssistantContent(sanitizeAssistantPrefix(assistantContent));
         }
 
         if (eventPayload.type === 'error') {

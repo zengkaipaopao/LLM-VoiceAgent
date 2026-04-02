@@ -19,6 +19,8 @@ interface BuildAppointmentQueryParamsOptions {
   selectedFilters: Record<string, any[]>;
 }
 
+type LinkedOperationState = 'update' | 'cancel';
+
 export function normalizeSchemaFields(schema: unknown): DynamicSchemaField[] {
   if (!schema || typeof schema !== 'object') {
     return [];
@@ -212,9 +214,75 @@ function applyLegacyFallback(rowContent: AppointmentTableRow, appointment: Appoi
   });
 }
 
+function resolveTargetAppointmentId(appointment: Appointment): string | undefined {
+  const extraData =
+    appointment.extra_data && typeof appointment.extra_data === 'object'
+      ? (appointment.extra_data as Record<string, unknown>)
+      : undefined;
+  const extractedData =
+    appointment.extracted_data && typeof appointment.extracted_data === 'object'
+      ? (appointment.extracted_data as Record<string, unknown>)
+      : undefined;
+
+  const rawTarget =
+    extraData?.target_appointment_id ??
+    extractedData?.target_appointment_id;
+  if (typeof rawTarget !== 'string') {
+    return undefined;
+  }
+  const target = rawTarget.trim();
+  return target.length > 0 ? target : undefined;
+}
+
+function buildLinkedOperationStateMap(appointments: Appointment[]): Map<string, LinkedOperationState> {
+  const operationMap = new Map<string, { op: LinkedOperationState; ts: number }>();
+
+  for (const appointment of appointments) {
+    const operation = (appointment.operation || '').toLowerCase();
+    if (operation !== 'update' && operation !== 'cancel') {
+      continue;
+    }
+
+    const targetAppointmentId = resolveTargetAppointmentId(appointment);
+    if (!targetAppointmentId) {
+      continue;
+    }
+
+    const timestamp = Number(new Date(appointment.timestamp).getTime()) || 0;
+    const current = operationMap.get(targetAppointmentId);
+    if (!current || timestamp >= current.ts) {
+      operationMap.set(targetAppointmentId, {
+        op: operation as LinkedOperationState,
+        ts: timestamp,
+      });
+    }
+  }
+
+  const linkedStateMap = new Map<string, LinkedOperationState>();
+  for (const [targetId, value] of operationMap.entries()) {
+    linkedStateMap.set(targetId, value.op);
+  }
+  return linkedStateMap;
+}
+
 export function mapAppointmentsToTableRows(appointments: Appointment[]): AppointmentTableRow[] {
+  const linkedOperationMap = buildLinkedOperationStateMap(appointments);
+
   return appointments.map((appointment) => {
     const extracted = (appointment.extracted_data || {}) as Record<string, unknown>;
+    const appointmentExtraData =
+      appointment.extra_data && typeof appointment.extra_data === 'object'
+        ? (appointment.extra_data as Record<string, unknown>)
+        : {};
+    const latestOperationType = String(appointmentExtraData.latest_operation_type || '').toLowerCase();
+    const linkedStateFromMap = linkedOperationMap.get(appointment.id);
+    const derivedLinkedState =
+      linkedStateFromMap ||
+      (latestOperationType === 'cancel'
+        ? 'cancel'
+        : latestOperationType === 'update'
+          ? 'update'
+          : undefined);
     const resolvedAmount = resolveAppointmentAmount({
       amount: appointment.amount,
       extractedData: extracted,
@@ -229,6 +297,12 @@ export function mapAppointmentsToTableRows(appointments: Appointment[]): Appoint
       timestamp: appointment.timestamp,
       appointment: appointment.appointment,
       operation: appointment.operation || 'create',
+      row_state:
+        derivedLinkedState === 'cancel'
+          ? 'linked-cancel'
+          : derivedLinkedState === 'update'
+            ? 'linked-update'
+            : 'default',
       is_handled: appointment.is_handled,
       caller_name: appointment.caller_name,
       company: appointment.company || '-',

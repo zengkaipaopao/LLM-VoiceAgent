@@ -6,11 +6,24 @@ export type StreamEvent = {
   tokens_used?: number;
 };
 
+const ASSISTANT_PREFIX_REGEX =
+  /^\s*(?:assistant|ai\s*assistant|ai助手|助手|アシスタント|aiアシスタント)\s*[:：]\s*/i;
+const ASSISTANT_INLINE_PREFIX_REGEX =
+  /(?:^|\n)\s*(?:assistant|ai\s*assistant|ai助手|助手|アシスタント|aiアシスタント)\s*[:：]\s*/gi;
+const USER_TURN_REGEX = /(?:^|\n)\s*(?:user|customer|human|用户|お客様)\s*[:：]/i;
+
 export function sanitizeAssistantPrefix(text: string): string {
-  return text.replace(
-    /^\s*(?:assistant|ai\s*assistant|ai助手|助手|アシスタント|aiアシスタント)\s*[:：]\s*/i,
-    ''
-  );
+  let normalized = text.replace(/^\uFEFF/, '');
+  normalized = normalized.replace(ASSISTANT_PREFIX_REGEX, '');
+
+  const userTurnMatch = USER_TURN_REGEX.exec(normalized);
+  if (userTurnMatch && typeof userTurnMatch.index === 'number') {
+    normalized = normalized.slice(0, userTurnMatch.index);
+  }
+
+  normalized = normalized.replace(ASSISTANT_INLINE_PREFIX_REGEX, '\n');
+  normalized = normalized.replace(/\n{3,}/g, '\n\n');
+  return normalized.trim();
 }
 
 export function parseSSEEvent(rawEvent: string): StreamEvent | null {

@@ -98,6 +98,11 @@ class GeminiService(BaseLLMService):
                 normalized_key = "ref"
             elif key == "$defs":
                 normalized_key = "defs"
+            elif key == "any_of":
+                normalized_key = "anyOf"
+            elif key in {"additional_properties", "additionalProperties"}:
+                # Gemini response_schema currently rejects this field.
+                continue
 
             if normalized_key in {"properties", "defs"} and isinstance(value, dict):
                 normalized[normalized_key] = {
@@ -106,7 +111,7 @@ class GeminiService(BaseLLMService):
                 }
                 continue
 
-            if normalized_key in {"items", "additionalProperties", "additional_properties"} and isinstance(value, dict):
+            if normalized_key == "items" and isinstance(value, dict):
                 normalized[normalized_key] = cls._normalize_schema_node(value)
                 continue
 

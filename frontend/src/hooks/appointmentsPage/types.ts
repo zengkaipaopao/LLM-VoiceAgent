@@ -19,6 +19,7 @@ export type AppointmentTableRow = {
   timestamp: string;
   appointment: string;
   operation: string;
+  row_state?: 'default' | 'linked-update' | 'linked-cancel';
   is_handled: boolean | undefined;
   caller_name: string;
   company: string;

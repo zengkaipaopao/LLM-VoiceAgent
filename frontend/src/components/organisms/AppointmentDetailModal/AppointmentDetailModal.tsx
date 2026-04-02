@@ -23,6 +23,11 @@ export const AppointmentDetailModal: React.FC<AppointmentDetailModalProps> = ({
 }) => {
   const { t, i18n } = useTranslation(['pages', 'common']);
   const extracted = (appointment?.extracted_data || {}) as Record<string, any>;
+  const extraData = (appointment?.extra_data || {}) as Record<string, any>;
+  const targetAppointmentId =
+    typeof extraData.target_appointment_id === 'string' && extraData.target_appointment_id.trim()
+      ? extraData.target_appointment_id
+      : undefined;
   const resolvedAddress =
     appointment?.address ||
     extracted.pickup_address ||
@@ -74,6 +79,12 @@ export const AppointmentDetailModal: React.FC<AppointmentDetailModalProps> = ({
               <strong>{t('pages:appointments.detailModal.callId', 'Related Call ID')}:</strong>{' '}
               <span className={styles.mono}>{appointment.call_id || '-'}</span>
             </div>
+            {targetAppointmentId && (
+              <div>
+                <strong>{t('pages:appointments.detailModal.targetAppointmentId', 'Linked Appointment ID')}:</strong>{' '}
+                <span className={styles.mono}>{targetAppointmentId}</span>
+              </div>
+            )}
           </div>
           
           <hr className={styles.divider} />
