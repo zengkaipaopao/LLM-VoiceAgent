@@ -4,6 +4,7 @@ export type MicStatus = 'off' | 'starting' | 'on';
 export interface LiveEventPayload {
   type?: string;
   text?: string;
+  final?: boolean;
   message?: string;
   error?: string;
   data?: string;

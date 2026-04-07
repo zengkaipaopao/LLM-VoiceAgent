@@ -18,6 +18,7 @@ interface WebSocketConfigFormProps {
   systemInstruction: string;
   setSystemInstruction: (value: string) => void;
   socketStatus: SocketStatus;
+  voiceOnlyMode: boolean;
 }
 
 export function WebSocketConfigForm({
@@ -34,6 +35,7 @@ export function WebSocketConfigForm({
   systemInstruction,
   setSystemInstruction,
   socketStatus,
+  voiceOnlyMode,
 }: WebSocketConfigFormProps) {
   const disableInputs = socketStatus === 'connected' || socketStatus === 'connecting';
 
@@ -45,6 +47,7 @@ export function WebSocketConfigForm({
         selectedPromptCode={selectedPromptCode}
         setSelectedPromptCode={setSelectedPromptCode}
         disabled={disableInputs}
+        lockToTemplate={voiceOnlyMode}
       />
 
       <WebSocketRealtimeConfigFields
@@ -58,6 +61,7 @@ export function WebSocketConfigForm({
         systemInstruction={systemInstruction}
         setSystemInstruction={setSystemInstruction}
         disabled={disableInputs}
+        lockToAudio={voiceOnlyMode}
       />
     </div>
   );

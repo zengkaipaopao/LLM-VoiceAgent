@@ -256,13 +256,21 @@ async def live_websocket(
                     if event_type == "text":
                         text = str(payload.get("text", "")).strip()
                         if text:
-                            await _safe_forward_realtime_input(
+                            accepted = await _safe_forward_realtime_input(
                                 session=session,
                                 websocket=websocket,
                                 lock=send_lock,
                                 input_name="text",
                                 text=text,
                             )
+                            if accepted:
+                                await _safe_forward_realtime_input(
+                                    session=session,
+                                    websocket=websocket,
+                                    lock=send_lock,
+                                    input_name="text_activity_end",
+                                    activity_end=types.ActivityEnd(),
+                                )
                         continue
 
                     if event_type == "audio_chunk":

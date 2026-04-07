@@ -87,6 +87,7 @@ export function WebSocketTabContent() {
             systemInstruction={websocket.systemInstruction}
             setSystemInstruction={websocket.setSystemInstruction}
             canUseRealtimeInput={websocket.canUseRealtimeInput}
+            voiceOnlyMode={websocket.voiceOnlyMode}
             textInput={websocket.textInput}
             setTextInput={websocket.setTextInput}
             connectSocket={websocket.connectSocket}

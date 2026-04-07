@@ -12,6 +12,7 @@ interface WebSocketRealtimeConfigFieldsProps {
   systemInstruction: string;
   setSystemInstruction: (value: string) => void;
   disabled: boolean;
+  lockToAudio: boolean;
 }
 
 export function WebSocketRealtimeConfigFields({
@@ -25,6 +26,7 @@ export function WebSocketRealtimeConfigFields({
   systemInstruction,
   setSystemInstruction,
   disabled,
+  lockToAudio,
 }: WebSocketRealtimeConfigFieldsProps) {
   const { t } = useTranslation(['pages']);
 
@@ -38,17 +40,27 @@ export function WebSocketRealtimeConfigFields({
         disabled={disabled}
       />
 
-      <Select
-        id="live-modalities"
-        labelText={t('pages:test.websocket.form.modalities', 'Response Modalities')}
-        value={modalities}
-        onChange={(event) => setModalities(event.target.value)}
-        disabled={disabled}
-      >
-        <SelectItem value="AUDIO" text="AUDIO" />
-        <SelectItem value="TEXT" text="TEXT" />
-        <SelectItem value="AUDIO,TEXT" text="AUDIO + TEXT" />
-      </Select>
+      {lockToAudio ? (
+        <TextInput
+          id="live-modalities-readonly"
+          labelText={t('pages:test.websocket.form.modalities', 'Response Modalities')}
+          value={t('pages:test.websocket.form.modalitiesVoiceOnly', 'AUDIO (Voice-only)')}
+          readOnly
+          disabled
+        />
+      ) : (
+        <Select
+          id="live-modalities"
+          labelText={t('pages:test.websocket.form.modalities', 'Response Modalities')}
+          value={modalities}
+          onChange={(event) => setModalities(event.target.value)}
+          disabled={disabled}
+        >
+          <SelectItem value="AUDIO" text="AUDIO" />
+          <SelectItem value="TEXT" text="TEXT" />
+          <SelectItem value="AUDIO,TEXT" text="AUDIO + TEXT" />
+        </Select>
+      )}
 
       <TextInput
         id="live-voice"
@@ -59,7 +71,7 @@ export function WebSocketRealtimeConfigFields({
         placeholder="Aoede"
       />
 
-      {!selectedPromptCode && (
+      {!selectedPromptCode && !lockToAudio && (
         <TextArea
           id="live-system-instruction"
           labelText={t('pages:test.websocket.form.systemInstruction', 'System Instruction')}

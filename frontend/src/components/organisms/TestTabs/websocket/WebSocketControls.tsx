@@ -8,6 +8,7 @@ interface WebSocketControlsProps {
   socketStatus: SocketStatus;
   micStatus: MicStatus;
   canUseRealtimeInput: boolean;
+  voiceOnlyMode: boolean;
   textInput: string;
   setTextInput: (value: string) => void;
   connectSocket: () => void;
@@ -21,6 +22,7 @@ export function WebSocketControls({
   socketStatus,
   micStatus,
   canUseRealtimeInput,
+  voiceOnlyMode,
   textInput,
   setTextInput,
   connectSocket,
@@ -30,6 +32,7 @@ export function WebSocketControls({
   toggleMicrophone,
 }: WebSocketControlsProps) {
   const { t } = useTranslation(['pages']);
+  const showTextInput = !voiceOnlyMode;
 
   return (
     <>
@@ -68,25 +71,35 @@ export function WebSocketControls({
         />
       </div>
 
-      <div className={styles.sendRow}>
-        <TextInput
-          id="live-text-input"
-          labelText={t('pages:test.websocket.form.textInput', 'Realtime Text Input')}
-          value={textInput}
-          onChange={(event) => setTextInput(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault();
-              sendText();
-            }
-          }}
-          placeholder={t('pages:test.websocket.form.textPlaceholder', 'Type a realtime prompt')}
-          disabled={!canUseRealtimeInput}
-        />
-        <Button size="sm" kind="primary" onClick={sendText} disabled={!canUseRealtimeInput}>
-          {t('pages:test.websocket.actions.send', 'Send')}
-        </Button>
-      </div>
+      {voiceOnlyMode && (
+        <p className={styles.helperText}>
+          {t(
+            'pages:test.websocket.form.voiceOnlyHint',
+            'This console is in voice-only mode. Connect first, then turn microphone on to test realtime calls.'
+          )}
+        </p>
+      )}
+      {showTextInput && (
+        <div className={styles.sendRow}>
+          <TextInput
+            id="live-text-input"
+            labelText={t('pages:test.websocket.form.textInput', 'Realtime Text Input')}
+            value={textInput}
+            onChange={(event) => setTextInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                sendText();
+              }
+            }}
+            placeholder={t('pages:test.websocket.form.textPlaceholder', 'Type a realtime prompt')}
+            disabled={!canUseRealtimeInput}
+          />
+          <Button size="sm" kind="primary" onClick={sendText} disabled={!canUseRealtimeInput}>
+            {t('pages:test.websocket.actions.send', 'Send')}
+          </Button>
+        </div>
+      )}
     </>
   );
 }

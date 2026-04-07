@@ -7,6 +7,7 @@ import styles from '../WebSocketTabContent.module.scss';
 interface WebSocketStatusHeaderProps {
   socketStatus: SocketStatus;
   micStatus: MicStatus;
+  voiceOnlyMode?: boolean;
 }
 
 function resolveSocketTagType(status: SocketStatus): 'green' | 'teal' | 'red' | 'cool-gray' {
@@ -22,7 +23,11 @@ function resolveMicTagType(status: MicStatus): 'green' | 'teal' | 'cool-gray' {
   return 'cool-gray';
 }
 
-export function WebSocketStatusHeader({ socketStatus, micStatus }: WebSocketStatusHeaderProps) {
+export function WebSocketStatusHeader({
+  socketStatus,
+  micStatus,
+  voiceOnlyMode = false,
+}: WebSocketStatusHeaderProps) {
   const { t } = useTranslation(['pages']);
   const statusTagType = resolveSocketTagType(socketStatus);
   const micTagType = resolveMicTagType(micStatus);
@@ -43,6 +48,7 @@ export function WebSocketStatusHeader({ socketStatus, micStatus }: WebSocketStat
       <div className={styles.statusTags}>
         <Tag type={statusTagType}>{`Socket: ${socketStatus}`}</Tag>
         <Tag type={micTagType}>{`Mic: ${micStatus}`}</Tag>
+        {voiceOnlyMode && <Tag type="teal">Mode: Voice-only</Tag>}
       </div>
     </div>
   );

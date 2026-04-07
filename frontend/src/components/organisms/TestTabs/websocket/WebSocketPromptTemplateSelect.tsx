@@ -9,6 +9,7 @@ interface WebSocketPromptTemplateSelectProps {
   selectedPromptCode: string;
   setSelectedPromptCode: (value: string) => void;
   disabled: boolean;
+  lockToTemplate: boolean;
 }
 
 export function WebSocketPromptTemplateSelect({
@@ -17,6 +18,7 @@ export function WebSocketPromptTemplateSelect({
   selectedPromptCode,
   setSelectedPromptCode,
   disabled,
+  lockToTemplate,
 }: WebSocketPromptTemplateSelectProps) {
   const { t } = useTranslation(['pages']);
 
@@ -36,10 +38,12 @@ export function WebSocketPromptTemplateSelect({
       onChange={(event) => setSelectedPromptCode(event.target.value)}
       disabled={disabled}
     >
-      <SelectItem
-        value=""
-        text={t('pages:test.websocket.form.noPrompt', 'No prompt (manual instruction)')}
-      />
+      {!lockToTemplate && (
+        <SelectItem
+          value=""
+          text={t('pages:test.websocket.form.noPrompt', 'No prompt (manual instruction)')}
+        />
+      )}
       {prompts.map((prompt) => (
         <SelectItem key={prompt.id} value={prompt.code} text={`${prompt.name} (${prompt.code})`} />
       ))}

@@ -8,8 +8,8 @@ interface HandleLiveEventOptions {
   pushLog: (level: LogLevel, message: string) => void;
   setSessionId: (value: string) => void;
   appendAssistantText: (value: string) => void;
-  setInputTranscript: (value: string) => void;
-  setOutputTranscript: (value: string) => void;
+  appendInputTranscript: (value: string, isFinal: boolean) => void;
+  appendOutputTranscript: (value: string, isFinal: boolean) => void;
   playPcmAudioChunk: (chunk: string, mimeType?: string) => Promise<void>;
   setTotalTokens: (value: number) => void;
   setError: (value: string) => void;
@@ -22,8 +22,8 @@ export async function handleLiveEventPayload({
   pushLog,
   setSessionId,
   appendAssistantText,
-  setInputTranscript,
-  setOutputTranscript,
+  appendInputTranscript,
+  appendOutputTranscript,
   playPcmAudioChunk,
   setTotalTokens,
   setError,
@@ -47,12 +47,12 @@ export async function handleLiveEventPayload({
       return;
     case 'input_transcript':
       if (typeof event.text === 'string') {
-        setInputTranscript(event.text);
+        appendInputTranscript(event.text, Boolean(event.final));
       }
       return;
     case 'output_transcript':
       if (typeof event.text === 'string') {
-        setOutputTranscript(event.text);
+        appendOutputTranscript(event.text, Boolean(event.final));
       }
       return;
     case 'audio_chunk':

@@ -44,11 +44,35 @@ export interface UseLiveWebSocketConsoleResult {
   logs: EventLog[];
   displayWsUrl: string;
   canUseRealtimeInput: boolean;
+  voiceOnlyMode: boolean;
   connectSocket: () => void;
   disconnectSocket: () => void;
   clearConsole: () => void;
   sendText: () => void;
   toggleMicrophone: (enabled: boolean) => void;
+}
+
+function mergeTranscriptChunk(current: string, incomingRaw: string): string {
+  const incoming = incomingRaw.trim();
+  if (!incoming) {
+    return current;
+  }
+  if (!current) {
+    return incoming;
+  }
+  if (incoming === current) {
+    return current;
+  }
+  if (incoming.startsWith(current)) {
+    return incoming;
+  }
+  if (current.startsWith(incoming)) {
+    return current;
+  }
+  if (current.endsWith(incoming)) {
+    return current;
+  }
+  return `${current} ${incoming}`.trim();
 }
 
 export function useLiveWebSocketConsole(): UseLiveWebSocketConsoleResult {
@@ -70,8 +94,14 @@ export function useLiveWebSocketConsole(): UseLiveWebSocketConsoleResult {
   const [outputTranscript, setOutputTranscript] = useState('');
   const [totalTokens, setTotalTokens] = useState<number>(0);
   const [logs, setLogs] = useState<EventLog[]>([]);
+  const voiceOnlyMode = true;
 
   const wsRef = useRef<WebSocket | null>(null);
+  const inputTranscriptHistoryRef = useRef('');
+  const inputTranscriptTurnRef = useRef('');
+  const outputTranscriptHistoryRef = useRef('');
+  const outputTranscriptTurnRef = useRef('');
+  const lastTextSendRef = useRef<{ text: string; ts: number }>({ text: '', ts: 0 });
 
   const pushLog = useCallback((level: LogLevel, message: string) => {
     setLogs((prev) => appendEventLog(prev, level, message, 180));
@@ -137,12 +167,65 @@ export function useLiveWebSocketConsole(): UseLiveWebSocketConsoleResult {
 
   const canUseRealtimeInput = wsOpen && socketStatus === 'connected';
 
+  useEffect(() => {
+    if (!voiceOnlyMode) return;
+    if (modalities === 'AUDIO') return;
+    setModalities('AUDIO');
+  }, [modalities, voiceOnlyMode]);
+
+  useEffect(() => {
+    if (!voiceOnlyMode) return;
+    if (selectedPromptCode) return;
+    if (!prompts.length) return;
+    setSelectedPromptCode(prompts[0].code);
+  }, [prompts, selectedPromptCode, setSelectedPromptCode, voiceOnlyMode]);
+
+  useEffect(() => {
+    if (!voiceOnlyMode) return;
+    if (!textInput) return;
+    setTextInput('');
+  }, [textInput, voiceOnlyMode]);
+
   const appendAssistantText = useCallback((value: string) => {
     if (value === '\n') {
       setAssistantText((prev) => (prev.endsWith('\n') ? prev : `${prev}\n`));
       return;
     }
     setAssistantText((prev) => prev + value);
+  }, []);
+
+  const appendInputTranscript = useCallback((chunk: string, isFinal: boolean) => {
+    setInputTranscript((prev) => {
+      const mergedTurn = mergeTranscriptChunk(inputTranscriptTurnRef.current, chunk);
+      inputTranscriptTurnRef.current = mergedTurn;
+      const history = inputTranscriptHistoryRef.current;
+
+      if (!isFinal) {
+        return `${history}${mergedTurn}`;
+      }
+
+      const next = mergedTurn ? `${history}${mergedTurn}\n` : prev;
+      inputTranscriptHistoryRef.current = next;
+      inputTranscriptTurnRef.current = '';
+      return next;
+    });
+  }, []);
+
+  const appendOutputTranscript = useCallback((chunk: string, isFinal: boolean) => {
+    setOutputTranscript((prev) => {
+      const mergedTurn = mergeTranscriptChunk(outputTranscriptTurnRef.current, chunk);
+      outputTranscriptTurnRef.current = mergedTurn;
+      const history = outputTranscriptHistoryRef.current;
+
+      if (!isFinal) {
+        return `${history}${mergedTurn}`;
+      }
+
+      const next = mergedTurn ? `${history}${mergedTurn}\n` : prev;
+      outputTranscriptHistoryRef.current = next;
+      outputTranscriptTurnRef.current = '';
+      return next;
+    });
   }, []);
 
   const handlePayload = useCallback(
@@ -154,17 +237,22 @@ export function useLiveWebSocketConsole(): UseLiveWebSocketConsoleResult {
         pushLog,
         setSessionId,
         appendAssistantText,
-        setInputTranscript,
-        setOutputTranscript,
+        appendInputTranscript,
+        appendOutputTranscript,
         playPcmAudioChunk,
         setTotalTokens,
         setError: (value) => setError(value),
       });
     },
-    [appendAssistantText, playPcmAudioChunk, pushLog, startHeartbeat]
+    [appendAssistantText, appendInputTranscript, appendOutputTranscript, playPcmAudioChunk, pushLog, startHeartbeat]
   );
 
   const connectSocket = useCallback(() => {
+    inputTranscriptHistoryRef.current = '';
+    inputTranscriptTurnRef.current = '';
+    outputTranscriptHistoryRef.current = '';
+    outputTranscriptTurnRef.current = '';
+    lastTextSendRef.current = { text: '', ts: 0 };
     connectLiveSocket({
       wsRef,
       wsUrl,
@@ -210,21 +298,40 @@ export function useLiveWebSocketConsole(): UseLiveWebSocketConsoleResult {
   }, [hasActiveMicrophoneResources, resetRemotePlayback, sendLiveEvent, stopHeartbeat, stopMicrophone]);
 
   const sendText = useCallback(() => {
+    if (voiceOnlyMode) {
+      pushLog('warning', 'Voice-only mode enabled. Text input is disabled in this tab.');
+      return;
+    }
+
     const text = textInput.trim();
     if (!text) return;
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       setError('WebSocket is not connected.');
       return;
     }
+
+    const now = Date.now();
+    const previous = lastTextSendRef.current;
+    if (previous.text === text && now - previous.ts < 1200) {
+      pushLog('warning', 'Duplicate text input ignored.');
+      return;
+    }
+    lastTextSendRef.current = { text, ts: now };
+
     sendLiveEvent({ type: 'text', text });
     pushLog('info', `Text input: ${text}`);
     setTextInput('');
-  }, [pushLog, sendLiveEvent, textInput]);
+  }, [pushLog, sendLiveEvent, textInput, voiceOnlyMode]);
 
   const clearConsole = useCallback(() => {
     setAssistantText('');
     setInputTranscript('');
     setOutputTranscript('');
+    inputTranscriptHistoryRef.current = '';
+    inputTranscriptTurnRef.current = '';
+    outputTranscriptHistoryRef.current = '';
+    outputTranscriptTurnRef.current = '';
+    lastTextSendRef.current = { text: '', ts: 0 };
     setLogs([]);
     setTotalTokens(0);
     setError(null);
@@ -278,6 +385,7 @@ export function useLiveWebSocketConsole(): UseLiveWebSocketConsoleResult {
     logs,
     displayWsUrl,
     canUseRealtimeInput,
+    voiceOnlyMode,
     connectSocket,
     disconnectSocket,
     clearConsole,

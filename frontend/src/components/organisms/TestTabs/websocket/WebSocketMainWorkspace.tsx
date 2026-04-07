@@ -1,4 +1,5 @@
 import { Stack, Tile } from '@carbon/react';
+import { useTranslation } from 'react-i18next';
 
 import {
   MicStatus,
@@ -27,6 +28,7 @@ interface WebSocketMainWorkspaceProps {
   systemInstruction: string;
   setSystemInstruction: (value: string) => void;
   canUseRealtimeInput: boolean;
+  voiceOnlyMode: boolean;
   textInput: string;
   setTextInput: (value: string) => void;
   connectSocket: () => void;
@@ -55,6 +57,7 @@ export function WebSocketMainWorkspace({
   systemInstruction,
   setSystemInstruction,
   canUseRealtimeInput,
+  voiceOnlyMode,
   textInput,
   setTextInput,
   connectSocket,
@@ -66,46 +69,75 @@ export function WebSocketMainWorkspace({
   totalTokens,
   displayWsUrl,
 }: WebSocketMainWorkspaceProps) {
+  const { t } = useTranslation(['pages']);
+
   return (
     <Tile className={styles.mainTile}>
-      <WebSocketStatusHeader socketStatus={socketStatus} micStatus={micStatus} />
+      <WebSocketStatusHeader
+        socketStatus={socketStatus}
+        micStatus={micStatus}
+        voiceOnlyMode={voiceOnlyMode}
+      />
 
       <Stack gap={6}>
-        <WebSocketConfigForm
-          loadingPrompts={loadingPrompts}
-          prompts={prompts}
-          selectedPromptCode={selectedPromptCode}
-          setSelectedPromptCode={setSelectedPromptCode}
-          model={model}
-          setModel={setModel}
-          modalities={modalities}
-          setModalities={setModalities}
-          voice={voice}
-          setVoice={setVoice}
-          systemInstruction={systemInstruction}
-          setSystemInstruction={setSystemInstruction}
-          socketStatus={socketStatus}
-        />
+        <section className={styles.sectionBlock}>
+          <h4 className="cds--heading-01">{t('pages:test.websocket.sections.setup', 'Session Setup')}</h4>
+          <WebSocketConfigForm
+            loadingPrompts={loadingPrompts}
+            prompts={prompts}
+            selectedPromptCode={selectedPromptCode}
+            setSelectedPromptCode={setSelectedPromptCode}
+            model={model}
+            setModel={setModel}
+            modalities={modalities}
+            setModalities={setModalities}
+            voice={voice}
+            setVoice={setVoice}
+            systemInstruction={systemInstruction}
+            setSystemInstruction={setSystemInstruction}
+            socketStatus={socketStatus}
+            voiceOnlyMode={voiceOnlyMode}
+          />
+          {voiceOnlyMode && (
+            <p className={styles.helperText}>
+              {t(
+                'pages:test.websocket.sections.setupHint',
+                'Voice-only mode uses prompt templates only. Manual instruction input is hidden.'
+              )}
+            </p>
+          )}
+        </section>
 
-        <WebSocketControls
-          socketStatus={socketStatus}
-          micStatus={micStatus}
-          canUseRealtimeInput={canUseRealtimeInput}
-          textInput={textInput}
-          setTextInput={setTextInput}
-          connectSocket={connectSocket}
-          disconnectSocket={disconnectSocket}
-          clearConsole={clearConsole}
-          sendText={sendText}
-          toggleMicrophone={toggleMicrophone}
-        />
+        <section className={styles.sectionBlock}>
+          <h4 className="cds--heading-01">
+            {t('pages:test.websocket.sections.realtimeControls', 'Realtime Controls')}
+          </h4>
+          <WebSocketControls
+            socketStatus={socketStatus}
+            micStatus={micStatus}
+            canUseRealtimeInput={canUseRealtimeInput}
+            voiceOnlyMode={voiceOnlyMode}
+            textInput={textInput}
+            setTextInput={setTextInput}
+            connectSocket={connectSocket}
+            disconnectSocket={disconnectSocket}
+            clearConsole={clearConsole}
+            sendText={sendText}
+            toggleMicrophone={toggleMicrophone}
+          />
+        </section>
 
-        <WebSocketMetaList
-          sessionId={sessionId}
-          totalTokens={totalTokens}
-          selectedPromptCode={selectedPromptCode}
-          displayWsUrl={displayWsUrl}
-        />
+        <section className={styles.sectionBlock}>
+          <h4 className="cds--heading-01">
+            {t('pages:test.websocket.sections.sessionMetadata', 'Session Metadata')}
+          </h4>
+          <WebSocketMetaList
+            sessionId={sessionId}
+            totalTokens={totalTokens}
+            selectedPromptCode={selectedPromptCode}
+            displayWsUrl={displayWsUrl}
+          />
+        </section>
       </Stack>
     </Tile>
   );
