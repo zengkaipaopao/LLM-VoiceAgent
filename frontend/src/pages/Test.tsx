@@ -15,7 +15,7 @@ import styles from './Test.module.scss';
 /**
  * TestPage - 实时调试实验室页面
  * 
- * 用于统一测试台、WebSocket 和 Twilio WebCall 等链路调试
+ * 用于统一测试台、WebSocket 和 Twilio 入站 AI 等链路调试
  * 
  * 设计特点:
  * - 完全声明式配置，所有Tab内容在 navigation.ts 中定义
@@ -65,12 +65,12 @@ export function Test() {
         
         {/* 动态生成 TabPanels */}
         <TabPanels>
-          {testTabs.map((tab) => {
+          {testTabs.map((tab, index) => {
             const Component = tab.component;
             return (
               <TabPanel key={tab.id}>
                 <div className={styles.tabPanelContent}>
-                  <Component {...tabComponentProps} />
+                  {safeIndex === index ? <Component {...tabComponentProps} /> : null}
                 </div>
               </TabPanel>
             );

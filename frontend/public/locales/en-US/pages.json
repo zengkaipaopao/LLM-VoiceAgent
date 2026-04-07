@@ -232,7 +232,7 @@
     "title": "Real-time Debug Lab",
     "subtitle": "Use the Unified Test Lab to simulate prompt-driven calls with data persistence, while keeping WebSocket and Twilio debugging in the same workspace.",
     "emptyState": "Test features under development",
-    "emptyDescription": "This page will provide real-time debugging for WebSocket and Twilio WebCall.",
+    "emptyDescription": "This page provides real-time debugging for WebSocket and Twilio inbound AI.",
     "tabs": {
       "ariaLabel": "Test Options",
       "simulation": "Unified Test Lab",
@@ -241,7 +241,7 @@
       "reviewer": "Reviewer Mode",
       "live": "Gemini Live",
       "websocket": "WebSocket",
-      "twilio": "Twilio WebCall"
+      "twilio": "Twilio Inbound AI"
     },
     "chat": {
       "input": {
@@ -401,16 +401,46 @@
       }
     },
     "twilio": {
-      "description": "Twilio WebCall testing feature under development..."
+      "description": "Twilio inbound AI regression workspace is under development...",
+      "form": {
+        "geminiVoice": "Gemini Voice",
+        "geminiVoiceHelper": "Leave blank to use the prompt voice_id or backend default voice.",
+        "geminiVoiceAuto": "Auto (Prompt/default)",
+        "inboundNumber": "Inbound Twilio Number",
+        "inboundNumberHelper": "Incoming PSTN tests route through this purchased number."
+      },
+      "summary": {
+        "voice": "Gemini Voice",
+        "device": "Dialer Device"
+      },
+      "meta": {
+        "voice": "Gemini Voice"
+      },
+      "loading": {
+        "voices": "Loading official Gemini voice options..."
+      },
+      "voiceCatalogInfo": "Voice source: {{source}} · {{count}} options"
     },
     "simulation": {
       "scenarios": {
         "title": "Select Test Scenario",
         "description": "Choose a scenario to simulate an incoming call.",
-        "ai_handled": { "title": "AI Handled", "description": "Simulate AI handling call completely" },
-        "transferred": { "title": "Transferred", "description": "Simulate AI transferring to human" },
-        "no_answer": { "title": "No Answer", "description": "Simulate no answer" },
-        "failed": { "title": "Call Failed", "description": "Simulate call failure" }
+        "ai_handled": {
+          "title": "AI Handled",
+          "description": "Simulate AI handling call completely"
+        },
+        "transferred": {
+          "title": "Transferred",
+          "description": "Simulate AI transferring to human"
+        },
+        "no_answer": {
+          "title": "No Answer",
+          "description": "Simulate no answer"
+        },
+        "failed": {
+          "title": "Call Failed",
+          "description": "Simulate call failure"
+        }
       },
       "batch": {
         "title": "Batch Test",

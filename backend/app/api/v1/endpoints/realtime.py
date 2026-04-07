@@ -1,5 +1,5 @@
 """
-Realtime websocket gateway for Gemini Live API.
+Realtime websocket gateway with provider-aware routing.
 """
 import asyncio
 import base64
@@ -15,6 +15,7 @@ from starlette.websockets import WebSocketState
 from app.api.deps import verify_websocket_api_key
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
+from app.services.live_gateway import provider_available, resolve_live_provider
 from app.services.prompt_service import PromptService
 from app.utils.datetime_utils import now_tokyo_naive
 
@@ -148,9 +149,16 @@ async def _resolve_system_instruction(
 @router.websocket("/ws")
 async def live_websocket(
     websocket: WebSocket,
+    provider: str | None = Query(
+        default=None,
+        description=(
+            "Realtime provider, e.g. gemini/openai. "
+            "Optional; inferred from model when omitted."
+        ),
+    ),
     model: str | None = Query(
         default=None,
-        description="Gemini Live model. Defaults to settings.default_live_model.",
+        description="Realtime model. Defaults to settings.default_live_model.",
     ),
     modalities: str | None = Query(
         default=None,
@@ -168,7 +176,7 @@ async def live_websocket(
 ):
     """
     Bidirectional websocket bridge:
-    frontend <-> backend websocket <-> Gemini Live session.
+    frontend <-> backend websocket <-> provider live session.
     """
     await websocket.accept()
 
@@ -183,17 +191,33 @@ async def live_websocket(
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
-    if not settings.google_api_key:
+    selected_model = (model or settings.default_live_model).strip()
+    selected_provider = resolve_live_provider(provider, selected_model)
+    available, reason = provider_available(selected_provider)
+    if not available:
         await websocket.send_json(
             {
                 "type": "error",
-                "error": "Google API Key not configured. Please set GOOGLE_API_KEY in backend/.env",
+                "error": reason or f"Live provider '{selected_provider}' is unavailable.",
+                "provider": selected_provider,
+            }
+        )
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+    if selected_provider != "gemini":
+        await websocket.send_json(
+            {
+                "type": "error",
+                "error": (
+                    f"Live provider '{selected_provider}' is reserved "
+                    "but not implemented in this build."
+                ),
+                "provider": selected_provider,
             }
         )
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
-    selected_model = (model or settings.default_live_model).strip()
     requested_modalities = _parse_modalities(modalities or settings.default_live_modalities)
     selected_modalities, modality_notice = _normalize_modalities_for_model(
         selected_model,
@@ -220,6 +244,7 @@ async def live_websocket(
                 send_lock,
                 {
                     "type": "connected",
+                    "provider": selected_provider,
                     "model": selected_model,
                     "modalities": selected_modalities,
                     "voice": selected_voice,

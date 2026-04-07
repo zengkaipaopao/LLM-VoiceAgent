@@ -24,11 +24,22 @@ async def capability_matrix():
             "twilio_webcall": {
                 "status": "implemented" if settings.twilio_webcall_enabled else "disabled",
                 "requires": ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_TWIML_APP_SID"],
+                "configured_phone_number": (settings.twilio_phone_number or "").strip() or None,
+            },
+            "twilio_inbound_voice_engine": {
+                "status": "implemented",
+                "default_engine": settings.twilio_incoming_voice_engine,
+                "supported_engines": ["twilio", "gemini"],
+                "gemini_activity_mode": settings.twilio_gemini_activity_mode,
             },
             "provider_support": {
                 "gemini": "implemented",
-                "openai": "planned",
+                "openai": "adapter_reserved_not_implemented",
                 "claude": "planned",
+            },
+            "live_provider_routing": {
+                "status": "implemented",
+                "default_provider": settings.default_live_provider,
             },
             "sip_call_control": {
                 "status": "planned",

@@ -20,6 +20,7 @@ from app.exceptions import BusinessException
 
 E164_PATTERN = re.compile(r"^\+[1-9]\d{7,14}$")
 IDENTITY_PATTERN = re.compile(r"^[A-Za-z0-9_.:@-]{1,128}$")
+PROMPT_CODE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 
 
 def _b64url_encode(raw: bytes) -> str:
@@ -53,10 +54,24 @@ class TwilioWebCallService:
             raise BusinessException(f"Twilio configuration missing: {', '.join(missing)}")
 
     @staticmethod
+    def _normalize_phone_number_for_e164(number: str) -> str:
+        # Accept common human-readable separators in UI input.
+        return re.sub(r"[\s\u3000\-()]", "", (number or "").strip())
+
+    @staticmethod
     def _validate_phone_number(number: str) -> str:
-        value = (number or "").strip()
+        value = TwilioWebCallService._normalize_phone_number_for_e164(number)
         if not E164_PATTERN.fullmatch(value):
             raise BusinessException("Phone number must be E.164 format, e.g. +13185551234")
+        return value
+
+    @staticmethod
+    def _normalize_prompt_code(prompt_code: str | None) -> str | None:
+        value = (prompt_code or "").strip()
+        if not value:
+            return None
+        if not PROMPT_CODE_PATTERN.fullmatch(value):
+            return None
         return value
 
     def create_voice_access_token(self, identity: str, ttl_seconds: int = 3600) -> tuple[str, str, int]:
@@ -144,14 +159,52 @@ class TwilioWebCallService:
             f"<Number>{html.escape(normalized_to)}</Number></Dial></Response>"
         )
 
-    def build_incoming_to_client_twiml(self, identity: str) -> str:
+    def resolve_incoming_prompt_code(self, *, prompt_code: str | None, to_number: str | None) -> str | None:
+        """
+        Resolve prompt for inbound PSTN call.
+
+        Priority:
+        1) prompt_code in webhook query params
+        2) per-number mapping from TWILIO_INCOMING_PROMPT_MAP
+        3) TWILIO_DEFAULT_PROMPT_CODE
+        """
+        from_query = self._normalize_prompt_code(prompt_code)
+        if from_query:
+            return from_query
+
+        normalized_to: str | None = None
+        try:
+            normalized_to = self._validate_phone_number((to_number or "").strip())
+        except BusinessException:
+            normalized_to = None
+
+        if normalized_to:
+            mapped = settings.twilio_incoming_prompt_mapping.get(normalized_to)
+            from_map = self._normalize_prompt_code(mapped)
+            if from_map:
+                return from_map
+
+        return self._normalize_prompt_code(settings.twilio_default_prompt_code)
+
+    def build_incoming_to_client_twiml(self, identity: str, prompt_code: str | None = None) -> str:
         """
         Build TwiML to route PSTN incoming call to a browser client identity.
         """
         normalized_identity = self._validate_identity(identity)
+        normalized_prompt = self._normalize_prompt_code(prompt_code)
+
+        if not normalized_prompt:
+            return (
+                '<?xml version="1.0" encoding="UTF-8"?>'
+                f"<Response><Dial answerOnBridge=\"true\"><Client>{html.escape(normalized_identity)}</Client></Dial></Response>"
+            )
+
         return (
             '<?xml version="1.0" encoding="UTF-8"?>'
-            f"<Response><Dial answerOnBridge=\"true\"><Client>{html.escape(normalized_identity)}</Client></Dial></Response>"
+            "<Response><Dial answerOnBridge=\"true\"><Client>"
+            f"<Identity>{html.escape(normalized_identity)}</Identity>"
+            f"<Parameter name=\"prompt_code\" value=\"{html.escape(normalized_prompt)}\" />"
+            "</Client></Dial></Response>"
         )
 
     @staticmethod
