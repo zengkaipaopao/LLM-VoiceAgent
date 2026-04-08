@@ -5,6 +5,7 @@ from sqlalchemy import Column, String, Text, Boolean, Integer, Float
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 import uuid
 
+from app.core.model_defaults import DEFAULT_GENERATE_MODEL
 from app.models.base import Base, TimestampMixin
 
 
@@ -40,7 +41,7 @@ class PromptTemplate(Base, TimestampMixin):
     
     # LLM Configuration
     llm_provider = Column(String(50), default="gemini")
-    llm_model = Column(String(100), default="gemini-2.0-flash")
+    llm_model = Column(String(100), default=DEFAULT_GENERATE_MODEL)
     temperature = Column(Float, default=0.7)
     max_tokens = Column(Integer, default=2048)
     

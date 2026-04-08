@@ -1,3 +1,4 @@
+import { DEFAULT_GENERATE_MODEL } from '../../../config/llmModels';
 import { PromptFormValues, PromptTemplate } from '../../../types/shared';
 
 export const defaultPromptFormValues: PromptFormValues = {
@@ -6,7 +7,7 @@ export const defaultPromptFormValues: PromptFormValues = {
   description: '',
   category: 'booking',
   llmProvider: 'gemini',
-  llmModel: 'gemini-2.0-flash',
+  llmModel: DEFAULT_GENERATE_MODEL,
   temperature: 0.7,
   maxTokens: 2048,
   systemPrompt: 'You are a helpful AI assistant.',

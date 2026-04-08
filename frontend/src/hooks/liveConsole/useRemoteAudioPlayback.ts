@@ -15,6 +15,7 @@ interface UseRemoteAudioPlaybackOptions {
 
 interface UseRemoteAudioPlaybackResult {
   playPcmAudioChunk: (encodedData: string, mimeType?: string) => Promise<void>;
+  isRemotePlaybackActive: () => boolean;
   resetRemotePlayback: () => void;
 }
 
@@ -73,6 +74,15 @@ export function useRemoteAudioPlayback({
     [ensureRemoteAudioContext, pushLog]
   );
 
+  const isRemotePlaybackActive = useCallback((): boolean => {
+    const context = remoteAudioContextRef.current;
+    if (!context) {
+      return false;
+    }
+
+    return remotePlaybackCursorRef.current > context.currentTime + 0.05;
+  }, []);
+
   const resetRemotePlayback = useCallback(() => {
     if (remoteAudioContextRef.current) {
       void remoteAudioContextRef.current.close();
@@ -83,6 +93,7 @@ export function useRemoteAudioPlayback({
 
   return {
     playPcmAudioChunk,
+    isRemotePlaybackActive,
     resetRemotePlayback,
   };
 }

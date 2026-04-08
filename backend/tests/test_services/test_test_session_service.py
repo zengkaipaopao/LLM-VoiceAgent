@@ -16,7 +16,7 @@ async def test_start_test_session_uses_prompt_runtime_and_creates_call():
         code="base_appointment",
         name="Base Appointment",
         llm_provider="gemini",
-        llm_model="gemini-2.0-flash",
+        llm_model="gemini-2.5-flash",
         temperature=0.4,
         max_tokens=512,
         voice_id="Aoede",
@@ -41,14 +41,14 @@ async def test_start_test_session_uses_prompt_runtime_and_creates_call():
     assert result.call_id == created_call.id
     assert result.template_code == "base_appointment"
     assert result.llm_provider == "gemini"
-    assert result.llm_model == "gemini-2.0-flash"
+    assert result.llm_model == "gemini-2.5-flash"
     assert result.started_at == started_at
     call_repo.create.assert_awaited_once()
     payload = call_repo.create.await_args.args[0]
     assert payload["prompt_id"] == "prompt-id"
     assert payload["extra_data"]["template_code"] == "base_appointment"
     assert payload["extra_data"]["llm_provider"] == "gemini"
-    assert payload["extra_data"]["llm_model"] == "gemini-2.0-flash"
+    assert payload["extra_data"]["llm_model"] == "gemini-2.5-flash"
     assert payload["caller_name"] == "Caller"
 
 

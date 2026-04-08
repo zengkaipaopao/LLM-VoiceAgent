@@ -18,6 +18,7 @@ from urllib.parse import urlencode
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.model_defaults import DEFAULT_GENERATE_MODEL, resolve_generate_model
 from app.services.live_gateway import infer_provider_from_model, normalize_provider
 from app.services.prompt_runtime_resolver import resolve_prompt_runtime
 from app.services.prompt_service import PromptService
@@ -100,6 +101,7 @@ class TwilioVoiceAgentService:
                 "あなたは日本語のコールセンター受付AIです。"
                 "丁寧に1項目ずつ確認し、推測せず、自然な会話で応答してください。"
             ),
+            model_capability="generate",
         )
         system_prompt = runtime.system_instruction or (
             "あなたは日本語のコールセンター受付AIです。"
@@ -115,7 +117,10 @@ class TwilioVoiceAgentService:
             prompt_code=runtime.template_code,
             system_prompt=system_prompt,
             llm_provider=llm_provider,
-            llm_model=runtime.llm_model or settings.default_llm_model,
+            llm_model=resolve_generate_model(
+                runtime.llm_model,
+                fallback_model=settings.default_llm_model,
+            ),
             temperature=float(runtime.temperature),
             max_tokens=int(runtime.max_tokens),
         )
@@ -320,11 +325,11 @@ class TwilioVoiceAgentService:
 
         default_model = (settings.default_llm_model or "").strip()
         if default_model and cls._model_matches_provider(default_model, provider):
-            return default_model
+            return resolve_generate_model(default_model, fallback_model=DEFAULT_GENERATE_MODEL)
 
         if normalize_provider(provider) == "openai":
             return "gpt-4o-mini"
-        return "gemini-2.0-flash"
+        return DEFAULT_GENERATE_MODEL
 
     @staticmethod
     def _is_provider_key_missing(provider: str) -> bool:

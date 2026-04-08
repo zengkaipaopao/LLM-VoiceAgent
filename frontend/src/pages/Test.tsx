@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { Suspense, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -10,6 +10,7 @@ import {
 } from '@carbon/react';
 import { PageTemplate } from '../components/templates/PageTemplate';
 import { normalizeTestTabId, testTabs } from '../config/navigation';
+import { testTabComponents } from '../features/test-lab/registry';
 import styles from './Test.module.scss';
 
 /**
@@ -18,7 +19,7 @@ import styles from './Test.module.scss';
  * 用于文字测试、语音测试与审查链路调试
  * 
  * 设计特点:
- * - 完全声明式配置，所有 Tab 内容在 navigation.ts 中定义
+ * - navigation.ts 只负责导航元数据，真实 Tab 组件按需懒加载
  * - 动态生成 Tab UI 和 TabPanel，无需手动维护顺序
  * - 保留旧 query tab 参数兼容，但统一收口到 text / voice / reviewer
  */
@@ -64,11 +65,15 @@ export function Test() {
         {/* 动态生成 TabPanels */}
         <TabPanels>
           {testTabs.map((tab, index) => {
-            const Component = tab.component;
+            const Component = testTabComponents[tab.id];
             return (
               <TabPanel key={tab.id}>
                 <div className={styles.tabPanelContent}>
-                  {safeIndex === index ? <Component {...tabComponentProps} /> : null}
+                  {safeIndex === index ? (
+                    <Suspense fallback={<div>{t('common:status.loading')}</div>}>
+                      <Component {...tabComponentProps} />
+                    </Suspense>
+                  ) : null}
                 </div>
               </TabPanel>
             );

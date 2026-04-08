@@ -11,8 +11,10 @@ import {
 } from './audioCodec';
 
 interface UseMicrophoneStreamOptions {
-  getWebSocket: () => WebSocket | null;
-  sendLiveEvent: (payload: Record<string, unknown>) => void;
+  canSendRealtimeInput: () => boolean;
+  sendAudioChunk: (params: { mimeType: string; data: string }) => void;
+  sendAudioStreamEnd: () => void;
+  isRemotePlaybackActive: () => boolean;
   pushLog: (level: LogLevel, message: string) => void;
   setError: (value: string | null) => void;
 }
@@ -27,8 +29,10 @@ interface UseMicrophoneStreamResult {
 }
 
 export function useMicrophoneStream({
-  getWebSocket,
-  sendLiveEvent,
+  canSendRealtimeInput,
+  sendAudioChunk,
+  sendAudioStreamEnd,
+  isRemotePlaybackActive,
   pushLog,
   setError,
 }: UseMicrophoneStreamOptions): UseMicrophoneStreamResult {
@@ -39,6 +43,7 @@ export function useMicrophoneStream({
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const muteGainRef = useRef<GainNode | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const playbackSuppressedRef = useRef(false);
 
   const hasActiveMicrophoneResources = useCallback(
     () => Boolean(processorRef.current || mediaStreamRef.current || localAudioContextRef.current),
@@ -77,6 +82,8 @@ export function useMicrophoneStream({
       void localContext.close();
       localAudioContextRef.current = null;
     }
+
+    playbackSuppressedRef.current = false;
   }, []);
 
   const resetMicrophone = useCallback(() => {
@@ -86,19 +93,18 @@ export function useMicrophoneStream({
 
   const stopMicrophone = useCallback(() => {
     releaseMicrophoneResources();
-    // Keep a single long-running audio stream and let Gemini Live auto-detect turns.
-    // Send audio_end only when user explicitly stops microphone streaming.
-    sendLiveEvent({ type: 'audio_end' });
+    // Let Gemini Live keep turn detection ownership. Only close the stream when the user
+    // explicitly turns the microphone off.
+    sendAudioStreamEnd();
     setMicStatus('off');
     pushLog('info', 'Microphone streaming stopped.');
-  }, [pushLog, releaseMicrophoneResources, sendLiveEvent]);
+  }, [pushLog, releaseMicrophoneResources, sendAudioStreamEnd]);
 
   const startMicrophone = useCallback(async () => {
     if (micStatus !== 'off') return;
 
-    const ws = getWebSocket();
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      setError('Connect WebSocket before starting microphone.');
+    if (!canSendRealtimeInput()) {
+      setError('Connect Gemini Live before starting microphone.');
       return;
     }
 
@@ -134,21 +140,31 @@ export function useMicrophoneStream({
       pushLog('info', `Microphone sample rate: ${Math.round(inputSampleRate)} Hz`);
 
       processor.onaudioprocess = (event) => {
-        const activeSocket = getWebSocket();
-        if (!activeSocket || activeSocket.readyState !== WebSocket.OPEN) return;
+        if (!canSendRealtimeInput()) return;
+
+        if (isRemotePlaybackActive()) {
+          if (!playbackSuppressedRef.current) {
+            playbackSuppressedRef.current = true;
+            pushLog('info', 'Microphone uplink paused while AI audio is playing.');
+          }
+          return;
+        }
+
+        if (playbackSuppressedRef.current) {
+          playbackSuppressedRef.current = false;
+          pushLog('info', 'Microphone uplink resumed.');
+        }
 
         const input = event.inputBuffer.getChannelData(0);
         const normalized = resampleFloat32(input, inputSampleRate, INPUT_TARGET_SAMPLE_RATE);
         if (!normalized.length) return;
 
         const audioBytes = float32ToPcm16Bytes(normalized);
-        activeSocket.send(
-          JSON.stringify({
-            type: 'audio_chunk',
-            mime_type: `audio/pcm;rate=${INPUT_TARGET_SAMPLE_RATE}`,
-            data: pcm16ToBase64(audioBytes),
-          })
-        );
+
+        sendAudioChunk({
+          mimeType: `audio/pcm;rate=${INPUT_TARGET_SAMPLE_RATE}`,
+          data: pcm16ToBase64(audioBytes),
+        });
       };
 
       source.connect(processor);
@@ -168,7 +184,7 @@ export function useMicrophoneStream({
       setError(String(micError));
       pushLog('error', `Failed to start microphone: ${String(micError)}`);
     }
-  }, [getWebSocket, micStatus, pushLog, setError]);
+  }, [canSendRealtimeInput, isRemotePlaybackActive, micStatus, pushLog, sendAudioChunk, setError]);
 
   const toggleMicrophone = useCallback(
     (enabled: boolean) => {

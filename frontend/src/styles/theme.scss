@@ -5,6 +5,10 @@
 $feature-flags: (
   enable-css-custom-properties: true
 );
+$font-path: '@ibm/plex';
+$fonts: (
+  IBM-Plex-Serif: false
+);
 
 // 2. Import Carbon Styles
 // Using direct path to avoid resolution ambiguity

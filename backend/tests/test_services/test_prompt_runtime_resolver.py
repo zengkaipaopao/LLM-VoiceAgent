@@ -13,7 +13,7 @@ async def test_resolve_prompt_runtime_uses_template_values_and_renders_current_t
         name="Base Appointment",
         system_prompt="raw system prompt",
         llm_provider="gemini",
-        llm_model="gemini-2.0-flash",
+        llm_model="gemini-2.5-flash",
         temperature=0.4,
         max_tokens=512,
         voice_id="Aoede",
@@ -34,7 +34,7 @@ async def test_resolve_prompt_runtime_uses_template_values_and_renders_current_t
     assert runtime.template_code == "base_appointment"
     assert runtime.system_instruction == "rendered prompt with current time"
     assert runtime.llm_provider == "gemini"
-    assert runtime.llm_model == "gemini-2.0-flash"
+    assert runtime.llm_model == "gemini-2.5-flash"
     assert runtime.temperature == 0.4
     assert runtime.max_tokens == 512
     assert runtime.voice_id == "Aoede"
@@ -61,3 +61,57 @@ async def test_resolve_prompt_runtime_returns_fallback_instruction_when_template
     assert runtime.system_instruction == "fallback system instruction"
     assert runtime.voice_id is None
     assert runtime.notice == "missing template notice"
+
+
+@pytest.mark.asyncio
+async def test_resolve_prompt_runtime_preserves_template_model_for_generate_usage():
+    template = SimpleNamespace(
+        code="base_appointment",
+        name="Base Appointment",
+        system_prompt="raw system prompt",
+        llm_provider="gemini",
+        llm_model="gemini-3.1-flash-live-preview",
+        temperature=0.4,
+        max_tokens=512,
+        voice_id="Aoede",
+    )
+    prompt_service = SimpleNamespace(
+        get_template=AsyncMock(return_value=template),
+        render_prompt=Mock(return_value="rendered prompt with current time"),
+    )
+
+    runtime = await resolve_prompt_runtime(
+        prompt_service,
+        template_code="base_appointment",
+        default_code="base_appointment",
+        model_capability="generate",
+    )
+
+    assert runtime.llm_model == "gemini-3.1-flash-live-preview"
+
+
+@pytest.mark.asyncio
+async def test_resolve_prompt_runtime_preserves_template_model_for_live_usage():
+    template = SimpleNamespace(
+        code="base_appointment",
+        name="Base Appointment",
+        system_prompt="raw system prompt",
+        llm_provider="gemini",
+        llm_model="gemini-2.5-flash",
+        temperature=0.4,
+        max_tokens=512,
+        voice_id="Aoede",
+    )
+    prompt_service = SimpleNamespace(
+        get_template=AsyncMock(return_value=template),
+        render_prompt=Mock(return_value="rendered prompt with current time"),
+    )
+
+    runtime = await resolve_prompt_runtime(
+        prompt_service,
+        template_code="base_appointment",
+        default_code="base_appointment",
+        model_capability="live",
+    )
+
+    assert runtime.llm_model == "gemini-2.5-flash"

@@ -7,6 +7,7 @@ import {
   startTestSession,
   StartTestSessionResponse,
 } from '../../../../api/testLab';
+import { isLiveModelId } from '../../../../config/llmModels';
 import { Message } from '../../../../hooks/useChatStream';
 import { UseUnifiedTestLabResult } from '../../../../hooks/unifiedTestLab/hookTypes';
 import { streamUnifiedChatResponse } from '../../../../hooks/unifiedTestLab/streaming';
@@ -86,6 +87,14 @@ export function useTextTestSession(): UseUnifiedTestLabResult {
     if (!selectedPromptCode) {
       throw new Error(t('pages:test.unified.errors.noPromptSelected', 'Please select a prompt first'));
     }
+    if (selectedPrompt && isLiveModelId(selectedPrompt.llmModel)) {
+      throw new Error(
+        t(
+          'pages:test.unified.errors.promptModelRequiresVoiceTab',
+          'The selected prompt is configured with a live-only model. Please use the voice test tab or change the prompt model.'
+        )
+      );
+    }
 
     setIsStarting(true);
     setError(null);
@@ -112,7 +121,7 @@ export function useTextTestSession(): UseUnifiedTestLabResult {
     } finally {
       setIsStarting(false);
     }
-  }, [callerName, selectedPromptCode, t]);
+  }, [callerName, selectedPrompt, selectedPromptCode, t]);
 
   const handleStartSession = useCallback(async () => {
     const activeSession = sessionRef.current;

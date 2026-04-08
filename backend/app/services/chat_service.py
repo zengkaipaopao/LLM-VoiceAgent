@@ -12,6 +12,7 @@ import tiktoken
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.model_defaults import require_generate_model
 from app.models.appointment import Appointment
 from app.models.call import Call
 from app.repositories.appointment_repository import AppointmentRepository
@@ -1933,13 +1934,17 @@ class ChatService:
                 self.prompt_service,
                 template_code=template_code,
                 default_code=template_code,
+                model_capability="generate",
             )
             template = runtime.template
             if not template:
                 raise ValueError(f"Template '{template_code}' not found")
 
             llm_provider = extra_data.get("llm_provider") or runtime.llm_provider or "gemini"
-            llm_model = extra_data.get("llm_model") or runtime.llm_model or settings.default_llm_model
+            llm_model = require_generate_model(
+                extra_data.get("llm_model") or runtime.llm_model,
+                source="Extraction model",
+            )
 
             llm_service = LLMFactory.create(
                 provider=llm_provider,

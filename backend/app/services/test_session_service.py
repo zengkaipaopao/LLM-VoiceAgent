@@ -5,25 +5,24 @@ from __future__ import annotations
 
 import random
 from datetime import datetime
-from typing import Awaitable, Callable, Optional
+from typing import Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.model_defaults import require_generate_model
 from app.repositories.appointment_repository import AppointmentRepository
 from app.repositories.call_repository import CallRepository
 from app.schemas.chat import (
-    ExtractionRequest,
     ExtractionResponse,
     TestSessionFinalizeResponse,
     TestSessionStartResponse,
 )
+from app.services.extraction_bridge import ExtractAppointmentRunner, ExtractionBridgeService
 from app.services.prompt_runtime_resolver import resolve_prompt_runtime
 from app.services.prompt_service import PromptService
 from app.utils.datetime_utils import now_tokyo_naive
-
-ExtractAppointmentRunner = Callable[[ExtractionRequest], Awaitable[ExtractionResponse]]
 
 
 class TestSessionService:
@@ -38,12 +37,17 @@ class TestSessionService:
         appointment_repo: AppointmentRepository | None = None,
         prompt_service: PromptService | None = None,
         extract_appointment: ExtractAppointmentRunner | None = None,
+        extraction_bridge: ExtractionBridgeService | None = None,
     ) -> None:
         self.db = db
         self.call_repo = call_repo or CallRepository(db)
         self.appointment_repo = appointment_repo or AppointmentRepository(db)
         self.prompt_service = prompt_service or PromptService(db)
         self.extract_appointment = extract_appointment
+        self.extraction_bridge = extraction_bridge or ExtractionBridgeService(
+            appointment_repo=self.appointment_repo,
+            extract_appointment=self.extract_appointment,
+        )
 
     @staticmethod
     def _generate_simulated_phone() -> str:
@@ -69,13 +73,17 @@ class TestSessionService:
             self.prompt_service,
             template_code=template_code,
             default_code=template_code,
+            model_capability="generate",
         )
         template = runtime.template
         if not template:
             raise ValueError(f"Template '{template_code}' not found")
 
         llm_provider = provider or runtime.llm_provider or "gemini"
-        llm_model = model or runtime.llm_model or settings.default_llm_model
+        llm_model = require_generate_model(
+            model or runtime.llm_model,
+            source="Prompt llm_model",
+        )
         started_at = now_tokyo_naive()
         simulated_phone = self._generate_simulated_phone()
 
@@ -151,55 +159,10 @@ class TestSessionService:
         already_extracted = False
 
         if run_extraction:
-            operation_execution = (call.extra_data or {}).get("operation_execution")
-            if isinstance(operation_execution, dict):
-                op_type = str(operation_execution.get("operation") or "").lower()
-                appt_id = operation_execution.get("appointment_id")
-                if op_type in {"update", "cancel"} and appt_id:
-                    try:
-                        appointment_id = UUID(str(appt_id))
-                    except (TypeError, ValueError):
-                        appointment_id = None
-                    if appointment_id:
-                        already_extracted = True
-                        extraction_result = ExtractionResponse(
-                            success=True,
-                            appointment_id=appointment_id,
-                            extracted_data=operation_execution,
-                            confidence=1.0,
-                            message="已执行预约变更/取消，跳过新建提取",
-                        )
-                        return TestSessionFinalizeResponse(
-                            call_id=call.id,
-                            status=call.status,
-                            ended_at=call.ended_at,
-                            duration_seconds=call.duration_seconds or 0,
-                            appointment_id=appointment_id,
-                            extraction=extraction_result,
-                            already_extracted=already_extracted,
-                        )
-
-            existing = await self.appointment_repo.get_by_call_id(call.id)
-            if existing:
-                already_extracted = True
-                appointment_id = existing.id
-                extraction_result = ExtractionResponse(
-                    success=True,
-                    appointment_id=existing.id,
-                    extracted_data=existing.extracted_data or {},
-                    confidence=1.0,
-                    message="已有预约记录，跳过重复提取",
-                )
-            else:
-                if not self.extract_appointment:
-                    raise RuntimeError("extract_appointment callback is required when run_extraction=True")
-                extraction_result = await self.extract_appointment(
-                    ExtractionRequest(
-                        call_id=call.id,
-                        template_code=template_code or extra_data.get("template_code"),
-                    )
-                )
-                appointment_id = extraction_result.appointment_id
+            appointment_id, extraction_result, already_extracted = await self.extraction_bridge.resolve_finalized_call(
+                call=call,
+                template_code=template_code,
+            )
 
         return TestSessionFinalizeResponse(
             call_id=call.id,

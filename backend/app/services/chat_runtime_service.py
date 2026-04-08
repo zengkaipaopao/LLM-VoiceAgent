@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.model_defaults import require_generate_model
 from app.models.call import Call
 from app.repositories.call_repository import CallRepository
 from app.schemas.chat import ChatRequest
@@ -64,6 +65,7 @@ class ChatRuntimeService:
             template_code=resolved_template_code,
             default_code=resolved_template_code,
             render_system_instruction=True,
+            model_capability="generate",
         )
         template = runtime.template
 
@@ -73,11 +75,11 @@ class ChatRuntimeService:
             or runtime.llm_provider
             or "gemini"
         )
-        llm_model = (
+        llm_model = require_generate_model(
             request.model
             or extra_data.get("llm_model")
-            or runtime.llm_model
-            or settings.default_llm_model
+            or runtime.llm_model,
+            source="Text test model",
         )
 
         llm_service = LLMFactory.create(

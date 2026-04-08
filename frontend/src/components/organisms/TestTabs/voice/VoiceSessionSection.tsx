@@ -93,7 +93,7 @@ export function VoiceSessionSection({
               labelText="Gemini Live 模型"
               value={liveWebsocket.model}
               onChange={(event) => liveWebsocket.setModel(event.target.value)}
-              helperText="建议使用 Live 模型，如 gemini-3.1-flash-live-preview。"
+              helperText="默认跟随 Prompt 的 llm_model，可在这里手动覆盖；语音测试必须使用 Gemini Live 或 Native Audio 模型。"
               disabled={directSessionActive}
             />
 
@@ -106,7 +106,7 @@ export function VoiceSessionSection({
               disabled={directSessionActive}
             />
 
-            <TextInput id="direct-ws-endpoint" labelText="当前连接端点" value={liveWebsocket.displayWsUrl} readOnly />
+            <TextInput id="direct-ws-endpoint" labelText="当前接入方式" value={liveWebsocket.displayWsUrl} readOnly />
           </div>
         ) : (
           <>
@@ -162,7 +162,7 @@ export function VoiceSessionSection({
         <h4 className="cds--heading-03">连接控制</h4>
         <p className={styles.description}>
           {routeMode === 'direct'
-            ? '连接 WebSocket 后再开启麦克风，逐步验证收音、转写与回复。'
+            ? '先建立浏览器直连会话，再开启麦克风。浏览器仅负责采音与播放期抑制，实际 turn 判定交给 Gemini Live。'
             : '按 Token → 设备注册 → 拨号 的顺序执行电话链路验证。'}
         </p>
 

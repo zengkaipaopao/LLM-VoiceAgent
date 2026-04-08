@@ -6,21 +6,49 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          react_vendor: ['react', 'react-dom', 'react-router-dom'],
-          carbon_vendor: [
-            '@carbon/react',
-            '@carbon/icons-react',
-            '@carbon/charts',
-            '@carbon/charts-react',
-          ],
-          i18n_vendor: [
-            'i18next',
-            'react-i18next',
-            'i18next-browser-languagedetector',
-            'i18next-http-backend',
-          ],
-          twilio_vendor: ['@twilio/voice-sdk'],
+        manualChunks(id) {
+          if (!id.includes('node_modules')) {
+            return undefined;
+          }
+
+          if (
+            id.includes('/node_modules/@carbon/charts/') ||
+            id.includes('/node_modules/@carbon/charts-react/') ||
+            id.includes('/node_modules/d3/')
+          ) {
+            return 'carbon_charts_vendor';
+          }
+
+          if (id.includes('/node_modules/@carbon/icons-react/')) {
+            return 'carbon_icons_vendor';
+          }
+
+          if (id.includes('/node_modules/@carbon/react/')) {
+            return 'carbon_react_vendor';
+          }
+
+          if (
+            id.includes('/node_modules/react/') ||
+            id.includes('/node_modules/react-dom/') ||
+            id.includes('/node_modules/react-router-dom/')
+          ) {
+            return 'react_vendor';
+          }
+
+          if (
+            id.includes('/node_modules/i18next/') ||
+            id.includes('/node_modules/react-i18next/') ||
+            id.includes('/node_modules/i18next-browser-languagedetector/') ||
+            id.includes('/node_modules/i18next-http-backend/')
+          ) {
+            return 'i18n_vendor';
+          }
+
+          if (id.includes('/node_modules/@twilio/voice-sdk/')) {
+            return 'twilio_vendor';
+          }
+
+          return undefined;
         },
       },
     },

@@ -2,12 +2,19 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Stack, Tile } from '@carbon/react';
 
 import { TestTabNotifications, TestWorkbenchShell, type TestWorkbenchSummaryItem } from '../../../../components/molecules/TestTabs';
+import {
+  describeVoiceTabOverrideWarning,
+  describeVoiceTabPromptModelWarning,
+} from '../../../../config/llmModels';
 import { VoiceLogsTile } from '../../../../components/organisms/TestTabs/voice/VoiceLogsTile';
 import { VoiceRouteSelector } from '../../../../components/organisms/TestTabs/voice/VoiceRouteSelector';
 import { VoiceSessionSection } from '../../../../components/organisms/TestTabs/voice/VoiceSessionSection';
 import { VoiceSidePanel } from '../../../../components/organisms/TestTabs/voice/VoiceSidePanel';
 import type { VoiceRouteMode } from '../../../../components/organisms/TestTabs/voice/types';
-import { useTwilioVoiceGateway, type UseTwilioVoiceGatewayResult } from '../../../../hooks/testTabs/useTwilioVoiceGateway';
+import {
+  useTwilioVoiceGateway,
+  type UseTwilioVoiceGatewayResult,
+} from '../adapters/twilio/useTwilioVoiceGateway';
 import { resolveVoiceRouteTransition } from '../routeMode';
 import { useVoiceTestConsole } from '../hooks/useVoiceTestConsole';
 
@@ -161,6 +168,19 @@ export function VoiceTestTab() {
 
   const activeError = routeMode === 'direct' ? liveWebsocket.error : twilioGateway.error;
   const activeInfo = routeMode === 'twilio' ? twilioGateway.info : null;
+  const compatibilityWarning = useMemo(() => {
+    const promptWarning = describeVoiceTabPromptModelWarning(
+      selectedPrompt?.llmModel,
+      selectedPromptCode
+    );
+    if (promptWarning) {
+      return promptWarning;
+    }
+    if (routeMode === 'direct') {
+      return describeVoiceTabOverrideWarning(liveWebsocket.model);
+    }
+    return null;
+  }, [liveWebsocket.model, routeMode, selectedPrompt?.llmModel, selectedPromptCode]);
   const directLogs = useMemo(() => [...liveWebsocket.logs].slice(-180).reverse(), [liveWebsocket.logs]);
 
   return (
@@ -172,8 +192,10 @@ export function VoiceTestTab() {
         <TestTabNotifications
           error={activeError}
           info={activeInfo}
+          warning={compatibilityWarning}
           errorTitle="请求失败"
           successTitle="执行成功"
+          warningTitle="配置提示"
           onClearError={() => {
             if (routeMode === 'direct') {
               liveWebsocket.setError(null);

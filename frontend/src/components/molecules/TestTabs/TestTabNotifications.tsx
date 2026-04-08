@@ -3,8 +3,10 @@ import { InlineNotification } from '@carbon/react';
 interface TestTabNotificationsProps {
   error?: string | null;
   info?: string | null;
+  warning?: string | null;
   errorTitle: string;
   successTitle: string;
+  warningTitle?: string;
   onClearError?: () => void;
   onClearInfo?: () => void;
 }
@@ -12,17 +14,29 @@ interface TestTabNotificationsProps {
 export function TestTabNotifications({
   error,
   info,
+  warning,
   errorTitle,
   successTitle,
+  warningTitle,
   onClearError,
   onClearInfo,
 }: TestTabNotificationsProps) {
-  if (!error && !info) {
+  if (!error && !info && !warning) {
     return null;
   }
 
   return (
     <>
+      {warning && (
+        <InlineNotification
+          kind="warning"
+          title={warningTitle || 'Configuration warning'}
+          subtitle={warning}
+          lowContrast
+          hideCloseButton
+        />
+      )}
+
       {error && (
         <InlineNotification
           kind="error"

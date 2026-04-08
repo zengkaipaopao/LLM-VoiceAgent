@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  GoogleGenAI,
+  Modality,
+  type LiveConnectConfig,
+  type LiveServerMessage,
+  type Session,
+} from '@google/genai';
 
-import { API_BASE_URL } from '../../../../api/http';
+import { fetchLiveAuthToken } from '../../../../api/live';
+import { DEFAULT_LIVE_MODEL, isLiveModelId } from '../../../../config/llmModels';
 import { PromptTemplate } from '../../../../types/shared';
 import { appendEventLog, EventLog, LogLevel } from '../../../../hooks/testTabs/eventLog';
 import { handleLiveEventPayload } from '../../../../hooks/liveConsole/eventHandlers';
-import { closeSocketResources, connectLiveSocket, disconnectLiveSocket } from '../../../../hooks/liveConsole/socketLifecycle';
-import { toWebSocketBase } from '../../../../hooks/liveConsole/socketUtils';
 import { LiveEventPayload, MicStatus, SocketStatus } from '../../../../hooks/liveConsole/types';
-import { useHeartbeat } from '../../../../hooks/liveConsole/useHeartbeat';
 import { useMicrophoneStream } from '../../../../hooks/liveConsole/useMicrophoneStream';
 import { useRemoteAudioPlayback } from '../../../../hooks/liveConsole/useRemoteAudioPlayback';
 import { usePromptTemplates } from '../../../../hooks/usePromptTemplates';
@@ -15,7 +20,7 @@ import { usePromptTemplates } from '../../../../hooks/usePromptTemplates';
 export type { LiveEventPayload, MicStatus, SocketStatus } from '../../../../hooks/liveConsole/types';
 export type { EventLog, LogLevel } from '../../../../hooks/testTabs/eventLog';
 
-const LIVE_API_KEY = (import.meta.env.VITE_APP_API_KEY ?? '').trim();
+const DEFAULT_DISPLAY_ENDPOINT = 'Gemini Live client-to-server (ephemeral token)';
 
 export interface UseLiveWebSocketConsoleResult {
   socketStatus: SocketStatus;
@@ -76,18 +81,135 @@ function mergeTranscriptChunk(current: string, incomingRaw: string): string {
   return `${current} ${incoming}`.trim();
 }
 
+function parseResponseModalities(raw: string): Modality[] {
+  const tokens = raw
+    .split(',')
+    .map((item) => item.trim().toUpperCase())
+    .filter(Boolean);
+
+  if (!tokens.length) {
+    return [Modality.AUDIO];
+  }
+
+  const mapped = tokens.flatMap((token) => {
+    if (token === 'AUDIO') return [Modality.AUDIO];
+    if (token === 'TEXT') return [Modality.TEXT];
+    return [];
+  });
+
+  return mapped.length ? mapped : [Modality.AUDIO];
+}
+
+function buildBrowserLiveConfig(params: {
+  modalities: string;
+  voice?: string;
+  systemInstruction?: string | null;
+}): LiveConnectConfig {
+  const config: LiveConnectConfig = {
+    responseModalities: parseResponseModalities(params.modalities),
+    inputAudioTranscription: {},
+    outputAudioTranscription: {},
+  };
+
+  const voice = (params.voice || '').trim();
+  if (voice) {
+    config.speechConfig = {
+      voiceConfig: {
+        prebuiltVoiceConfig: {
+          voiceName: voice,
+        },
+      },
+    };
+  }
+
+  const instruction = (params.systemInstruction || '').trim();
+  if (instruction) {
+    config.systemInstruction = instruction;
+  }
+
+  return config;
+}
+
+function normalizeLiveServerMessage(message: LiveServerMessage): LiveEventPayload[] {
+  const payloads: LiveEventPayload[] = [];
+
+  if (message.setupComplete?.sessionId) {
+    payloads.push({ type: 'session_ready', session_id: message.setupComplete.sessionId });
+  }
+
+  if (message.usageMetadata) {
+    payloads.push({
+      type: 'usage',
+      total_tokens: message.usageMetadata.totalTokenCount ?? 0,
+    });
+  }
+
+  const content = message.serverContent;
+  if (content?.inputTranscription?.text) {
+    payloads.push({
+      type: 'input_transcript',
+      text: content.inputTranscription.text,
+      final: Boolean(content.inputTranscription.finished),
+    });
+  }
+
+  if (content?.outputTranscription?.text) {
+    payloads.push({
+      type: 'output_transcript',
+      text: content.outputTranscription.text,
+      final: Boolean(content.outputTranscription.finished),
+    });
+  }
+
+  if (content?.modelTurn?.parts) {
+    for (const part of content.modelTurn.parts) {
+      if (part.text) {
+        payloads.push({ type: 'text', text: part.text });
+      }
+      if (part.inlineData?.data) {
+        payloads.push({
+          type: 'audio_chunk',
+          data: part.inlineData.data,
+          mime_type: part.inlineData.mimeType,
+        });
+      }
+    }
+  }
+
+  if (content?.interrupted) {
+    payloads.push({ type: 'interrupted' });
+  }
+
+  if (content?.turnComplete) {
+    payloads.push({
+      type: 'turn_complete',
+      reason: content.turnCompleteReason ?? null,
+    });
+  }
+
+  if (message.goAway?.timeLeft) {
+    payloads.push({
+      type: 'warning',
+      message: `Gemini Live asked the client to reconnect soon. time_left=${message.goAway.timeLeft}`,
+    });
+  }
+
+  return payloads;
+}
+
 export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
   const [socketStatus, setSocketStatus] = useState<SocketStatus>('disconnected');
   const [wsOpen, setWsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [model, setModel] = useState('gemini-3.1-flash-live-preview');
+  const [model, setModel] = useState(DEFAULT_LIVE_MODEL);
   const [modalities, setModalities] = useState('AUDIO');
   const [voice, setVoice] = useState('');
   const [systemInstruction, setSystemInstruction] = useState(
     'You are a helpful bilingual voice assistant for customer service.'
   );
   const [textInput, setTextInput] = useState('');
+  const [displayWsUrl, setDisplayWsUrl] = useState(DEFAULT_DISPLAY_ENDPOINT);
 
   const [sessionId, setSessionId] = useState<string>('');
   const [assistantText, setAssistantText] = useState('');
@@ -97,7 +219,7 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
   const [logs, setLogs] = useState<EventLog[]>([]);
   const voiceOnlyMode = true;
 
-  const wsRef = useRef<WebSocket | null>(null);
+  const sessionRef = useRef<Session | null>(null);
   const inputTranscriptHistoryRef = useRef('');
   const inputTranscriptTurnRef = useRef('');
   const outputTranscriptHistoryRef = useRef('');
@@ -106,6 +228,7 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
   const lastLoggedOutputRef = useRef('');
   const lastLoadedPromptLogRef = useRef('');
   const lastTextSendRef = useRef<{ text: string; ts: number }>({ text: '', ts: 0 });
+  const isManualDisconnectRef = useRef(false);
 
   const pushLog = useCallback((level: LogLevel, message: string) => {
     setLogs((prev) => appendEventLog(prev, level, message, 180));
@@ -123,38 +246,24 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
     onError: handlePromptLoadError,
   });
 
-  const wsUrl = useMemo(() => {
-    const base = toWebSocketBase(API_BASE_URL);
-    const params = new URLSearchParams();
-    if (model.trim()) params.set('model', model.trim());
-    if (modalities.trim()) params.set('modalities', modalities.trim());
-    if (voice.trim()) params.set('voice', voice.trim());
-    if (LIVE_API_KEY) params.set('api_key', LIVE_API_KEY);
-    if (selectedPromptCode.trim()) {
-      params.set('template_code', selectedPromptCode.trim());
-    } else if (systemInstruction.trim()) {
-      params.set('system_instruction', systemInstruction.trim());
-    }
-    return `${base}/live/ws?${params.toString()}`;
-  }, [model, modalities, voice, selectedPromptCode, systemInstruction]);
+  const { playPcmAudioChunk, isRemotePlaybackActive, resetRemotePlayback } = useRemoteAudioPlayback({ pushLog });
 
-  const displayWsUrl = useMemo(() => wsUrl.replace(/([?&]api_key=)[^&]*/i, '$1***'), [wsUrl]);
+  const canSendRealtimeInput = useCallback(() => Boolean(sessionRef.current) && socketStatus === 'connected', [socketStatus]);
 
-  const sendLiveEvent = useCallback((payload: Record<string, unknown>) => {
-    const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    ws.send(JSON.stringify(payload));
+  const sendAudioChunk = useCallback(({ mimeType, data }: { mimeType: string; data: string }) => {
+    sessionRef.current?.sendRealtimeInput({
+      audio: {
+        mimeType,
+        data,
+      },
+    });
   }, []);
 
-  const getWebSocket = useCallback(() => wsRef.current, []);
-
-  const sendPing = useCallback(() => {
-    sendLiveEvent({ type: 'ping' });
-  }, [sendLiveEvent]);
-
-  const { startHeartbeat, stopHeartbeat } = useHeartbeat({ sendPing });
-
-  const { playPcmAudioChunk, resetRemotePlayback } = useRemoteAudioPlayback({ pushLog });
+  const sendAudioStreamEnd = useCallback(() => {
+    sessionRef.current?.sendRealtimeInput({
+      audioStreamEnd: true,
+    });
+  }, []);
 
   const {
     micStatus,
@@ -163,8 +272,10 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
     toggleMicrophone,
     hasActiveMicrophoneResources,
   } = useMicrophoneStream({
-    getWebSocket,
-    sendLiveEvent,
+    canSendRealtimeInput,
+    sendAudioChunk,
+    sendAudioStreamEnd,
+    isRemotePlaybackActive,
     pushLog,
     setError,
   });
@@ -283,7 +394,10 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
       await handleLiveEventPayload({
         event: payload,
         setSocketStatus,
-        startHeartbeat,
+        startHeartbeat: () => {
+          // The official browser client manages its own connection lifecycle;
+          // keep the existing event pipeline but no custom heartbeat is needed.
+        },
         pushLog,
         setSessionId,
         appendAssistantText,
@@ -302,96 +416,8 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
       flushTranscriptTurns,
       playPcmAudioChunk,
       pushLog,
-      startHeartbeat,
     ]
   );
-
-  const connectSocket = useCallback(() => {
-    inputTranscriptHistoryRef.current = '';
-    inputTranscriptTurnRef.current = '';
-    outputTranscriptHistoryRef.current = '';
-    outputTranscriptTurnRef.current = '';
-    lastLoggedInputRef.current = '';
-    lastLoggedOutputRef.current = '';
-    lastLoadedPromptLogRef.current = '';
-    lastTextSendRef.current = { text: '', ts: 0 };
-    connectLiveSocket({
-      wsRef,
-      wsUrl,
-      displayWsUrl,
-      pushLog,
-      setError: (value) => setError(value),
-      setSocketStatus,
-      setAssistantText: (value) => setAssistantText(value),
-      setInputTranscript,
-      setOutputTranscript,
-      setTotalTokens,
-      setSessionId,
-      setWsOpen,
-      handlePayload,
-      stopHeartbeat,
-      hasActiveMicrophoneResources,
-      resetRemotePlayback,
-      resetMicrophone,
-    });
-  }, [
-    displayWsUrl,
-    handlePayload,
-    hasActiveMicrophoneResources,
-    pushLog,
-    resetMicrophone,
-    resetRemotePlayback,
-    stopHeartbeat,
-    wsUrl,
-  ]);
-
-  const disconnectSocket = useCallback(() => {
-    flushTranscriptTurns();
-    disconnectLiveSocket({
-      wsRef,
-      stopHeartbeat,
-      hasActiveMicrophoneResources,
-      stopMicrophone,
-      sendLiveEvent,
-      setSocketStatus,
-      setWsOpen,
-      setSessionId,
-      resetRemotePlayback,
-    });
-  }, [
-    flushTranscriptTurns,
-    hasActiveMicrophoneResources,
-    resetRemotePlayback,
-    sendLiveEvent,
-    stopHeartbeat,
-    stopMicrophone,
-  ]);
-
-  const sendText = useCallback(() => {
-    if (voiceOnlyMode) {
-      pushLog('warning', 'Voice-only mode enabled. Text input is disabled in this tab.');
-      return;
-    }
-
-    const text = textInput.trim();
-    if (!text) return;
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      setError('WebSocket is not connected.');
-      return;
-    }
-
-    const now = Date.now();
-    const previous = lastTextSendRef.current;
-    if (previous.text === text && now - previous.ts < 1200) {
-      pushLog('warning', 'Duplicate text input ignored.');
-      return;
-    }
-    lastTextSendRef.current = { text, ts: now };
-
-    sendLiveEvent({ type: 'text', text });
-    pushLog('info', `Text input: ${text}`);
-    setTextInput('');
-  }, [pushLog, sendLiveEvent, textInput, voiceOnlyMode]);
 
   const clearConsole = useCallback(() => {
     setAssistantText('');
@@ -410,11 +436,184 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
     setError(null);
   }, []);
 
+  const disconnectSocket = useCallback(() => {
+    isManualDisconnectRef.current = true;
+    flushTranscriptTurns();
+    if (hasActiveMicrophoneResources()) {
+      stopMicrophone();
+    }
+    sessionRef.current?.close();
+    sessionRef.current = null;
+    setSocketStatus('disconnected');
+    setWsOpen(false);
+    setSessionId('');
+    resetRemotePlayback();
+    pushLog('info', 'Gemini Live direct session closed.');
+  }, [flushTranscriptTurns, hasActiveMicrophoneResources, pushLog, resetRemotePlayback, stopMicrophone]);
+
+  const connectSocket = useCallback(() => {
+    const normalizedModel = model.trim();
+    if (!isLiveModelId(normalizedModel)) {
+      setError('当前模型不是 Gemini Live / Native Audio 模型。请在 Prompt 中选择语音模型，或在此处显式覆盖。');
+      pushLog('error', `Incompatible voice test model: ${normalizedModel || '(empty)'}`);
+      return;
+    }
+
+    void (async () => {
+      try {
+        isManualDisconnectRef.current = false;
+        if (sessionRef.current) {
+          sessionRef.current.close();
+          sessionRef.current = null;
+        }
+        if (hasActiveMicrophoneResources()) {
+          resetMicrophone();
+        }
+        resetRemotePlayback();
+
+        setError(null);
+        setSocketStatus('connecting');
+        setWsOpen(false);
+        setAssistantText('');
+        setInputTranscript('');
+        setOutputTranscript('');
+        setTotalTokens(0);
+        setSessionId('');
+        setDisplayWsUrl(DEFAULT_DISPLAY_ENDPOINT);
+        inputTranscriptHistoryRef.current = '';
+        inputTranscriptTurnRef.current = '';
+        outputTranscriptHistoryRef.current = '';
+        outputTranscriptTurnRef.current = '';
+        lastLoggedInputRef.current = '';
+        lastLoggedOutputRef.current = '';
+        lastTextSendRef.current = { text: '', ts: 0 };
+
+        pushLog('info', 'Requesting Gemini Live ephemeral token...');
+        const auth = await fetchLiveAuthToken({
+          model: normalizedModel,
+          modalities: ['AUDIO'],
+          voice: voice.trim() || undefined,
+          templateCode: selectedPromptCode.trim() || undefined,
+          systemInstruction: selectedPromptCode.trim() ? undefined : systemInstruction.trim() || undefined,
+        });
+
+        setDisplayWsUrl(auth.display_endpoint);
+        setModel(auth.model);
+        if (!voice.trim() && auth.voice) {
+          setVoice(auth.voice);
+        }
+
+        const ai = new GoogleGenAI({
+          apiKey: auth.auth_token,
+          apiVersion: 'v1alpha',
+        });
+        const config = buildBrowserLiveConfig({
+          modalities: auth.modalities.join(','),
+          voice: auth.voice ?? undefined,
+          systemInstruction: auth.system_instruction,
+        });
+
+        const session = await ai.live.connect({
+          model: auth.model,
+          config,
+          callbacks: {
+            onopen: () => {
+              setWsOpen(true);
+              setSocketStatus('connected');
+              pushLog('success', 'Gemini Live direct session connected.');
+            },
+            onmessage: (message) => {
+              const payloads = normalizeLiveServerMessage(message);
+              for (const payload of payloads) {
+                void handlePayload(payload);
+              }
+            },
+            onerror: (event) => {
+              const message = event.message || 'Gemini Live direct connection error.';
+              setError(message);
+              setSocketStatus('error');
+              pushLog('error', message);
+            },
+            onclose: (event) => {
+              const detail =
+                event.reason && event.reason.length
+                  ? `Gemini Live connection closed (code: ${event.code}, reason: ${event.reason}).`
+                  : `Gemini Live connection closed (code: ${event.code}).`;
+              if (!isManualDisconnectRef.current) {
+                pushLog('info', detail);
+              }
+              sessionRef.current = null;
+              setWsOpen(false);
+              setSocketStatus('disconnected');
+              setSessionId('');
+              if (hasActiveMicrophoneResources()) {
+                resetMicrophone();
+              }
+              resetRemotePlayback();
+              isManualDisconnectRef.current = false;
+            },
+          },
+        });
+
+        sessionRef.current = session;
+      } catch (connectError) {
+        const message = connectError instanceof Error ? connectError.message : String(connectError);
+        setError(message);
+        setSocketStatus('error');
+        setWsOpen(false);
+        pushLog('error', `Failed to connect to Gemini Live directly: ${message}`);
+      }
+    })();
+  }, [
+    handlePayload,
+    hasActiveMicrophoneResources,
+    model,
+    pushLog,
+    resetMicrophone,
+    resetRemotePlayback,
+    selectedPromptCode,
+    systemInstruction,
+    voice,
+  ]);
+
+  const sendText = useCallback(() => {
+    if (voiceOnlyMode) {
+      pushLog('warning', 'Voice-only mode enabled. Text input is disabled in this tab.');
+      return;
+    }
+
+    const text = textInput.trim();
+    if (!text) return;
+    if (!sessionRef.current) {
+      setError('Gemini Live is not connected.');
+      return;
+    }
+
+    const now = Date.now();
+    const previous = lastTextSendRef.current;
+    if (previous.text === text && now - previous.ts < 1200) {
+      pushLog('warning', 'Duplicate text input ignored.');
+      return;
+    }
+    lastTextSendRef.current = { text, ts: now };
+
+    sessionRef.current.sendClientContent({ turns: text, turnComplete: true });
+    pushLog('info', `Text input: ${text}`);
+    setTextInput('');
+  }, [pushLog, textInput, voiceOnlyMode]);
+
   useEffect(() => {
     if (!selectedPromptCode) return;
     const selected = prompts.find((item) => item.code === selectedPromptCode);
     if (!selected) return;
     setSystemInstruction(selected.systemPrompt || '');
+    setModel((previous) => {
+      const promptModel = (selected.llmModel || '').trim();
+      if (!promptModel || previous === promptModel) {
+        return previous;
+      }
+      return promptModel;
+    });
     const signature = `${selected.code}|${selected.name}`;
     if (lastLoadedPromptLogRef.current === signature) {
       return;
@@ -425,15 +624,14 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
 
   useEffect(() => {
     return () => {
-      closeSocketResources({
-        wsRef,
-        stopHeartbeat,
-        hasActiveMicrophoneResources,
-        stopMicrophone,
-        resetRemotePlayback,
-      });
+      if (hasActiveMicrophoneResources()) {
+        stopMicrophone();
+      }
+      sessionRef.current?.close();
+      sessionRef.current = null;
+      resetRemotePlayback();
     };
-  }, [hasActiveMicrophoneResources, resetRemotePlayback, stopHeartbeat, stopMicrophone]);
+  }, [hasActiveMicrophoneResources, resetRemotePlayback, stopMicrophone]);
 
   return {
     socketStatus,

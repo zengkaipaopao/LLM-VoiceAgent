@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { DEFAULT_GENERATE_MODEL } from '../config/llmModels';
 import { http } from './http';
 import { LlmModelCapability, LlmModelOption, PromptFormValues, PromptTemplate, VoiceConfig } from '../types/shared';
 
@@ -136,7 +137,7 @@ const mapPrompt = (prompt: ApiPrompt): PromptTemplate => ({
   description: prompt.description ?? undefined,
   category: prompt.category ?? undefined,
   llmProvider: prompt.llm_provider || 'gemini',
-  llmModel: prompt.llm_model || 'gemini-2.0-flash',
+  llmModel: prompt.llm_model || DEFAULT_GENERATE_MODEL,
   temperature: prompt.temperature ?? 0.7,
   maxTokens: prompt.max_tokens ?? 2048,
   systemPrompt: prompt.system_prompt,
@@ -147,7 +148,7 @@ const mapPrompt = (prompt: ApiPrompt): PromptTemplate => ({
   voiceProvider: prompt.voice_provider ?? undefined,
   voiceId: prompt.voice_id ?? undefined,
   voiceSettings: prompt.voice_settings,
-  modelId: prompt.llm_model || 'gemini-2.0-flash',
+  modelId: prompt.llm_model || DEFAULT_GENERATE_MODEL,
   instructions: prompt.instructions ?? prompt.system_prompt,
   welcomeMessage: prompt.welcome_message ?? undefined,
   closingMessage: prompt.closing_message ?? undefined,

@@ -1,5 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.core.model_defaults import DEFAULT_GENERATE_MODEL, DEFAULT_LIVE_MODEL
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -11,9 +13,9 @@ class Settings(BaseSettings):
     google_api_key: str = ""
     openai_api_key: str = ""
     default_llm_provider: str = "gemini"
-    default_llm_model: str = "gemini-2.0-flash"
+    default_llm_model: str = DEFAULT_GENERATE_MODEL
     default_live_provider: str = "gemini"
-    default_live_model: str = "gemini-3.1-flash-live-preview"
+    default_live_model: str = DEFAULT_LIVE_MODEL
     default_live_modalities: str = "AUDIO"
     default_live_voice: str = ""
     llm_temperature: float = 0.7

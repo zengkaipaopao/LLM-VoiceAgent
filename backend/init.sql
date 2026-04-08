@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS prompt_templates (
     response_format VARCHAR(50) DEFAULT 'text',
     output_schema JSONB,
     llm_provider VARCHAR(50) DEFAULT 'gemini',
-    llm_model VARCHAR(100) DEFAULT 'gemini-2.0-flash',
+    llm_model VARCHAR(100) DEFAULT 'gemini-2.5-flash',
     temperature FLOAT DEFAULT 0.7,
     max_tokens INTEGER DEFAULT 2048,
     voice_provider VARCHAR(50),

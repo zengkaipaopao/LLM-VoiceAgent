@@ -5,6 +5,8 @@ Creates the appropriate LLM service based on provider name.
 """
 from typing import Optional
 
+from app.core.model_defaults import DEFAULT_GENERATE_MODEL
+
 from .base import BaseLLMService
 from .gemini_service import GeminiService
 
@@ -35,7 +37,7 @@ class LLMFactory:
         provider = provider.lower()
         
         if provider == "gemini":
-            model = model or "gemini-2.0-flash"
+            model = model or DEFAULT_GENERATE_MODEL
             return GeminiService(api_key, model)
         
         elif provider == "openai":

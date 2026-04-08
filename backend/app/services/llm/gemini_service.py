@@ -9,6 +9,8 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from google import genai
 from google.genai import types
 
+from app.core.model_defaults import DEFAULT_GENERATE_MODEL
+
 from .base import BaseLLMService
 from .exceptions import LLMAPIError, LLMInvalidResponseError, LLMRateLimitError
 
@@ -18,7 +20,7 @@ logger = logging.getLogger(__name__)
 class GeminiService(BaseLLMService):
     """Google Gemini LLM service implementation."""
 
-    def __init__(self, api_key: str, model: str = "gemini-2.0-flash"):
+    def __init__(self, api_key: str, model: str = DEFAULT_GENERATE_MODEL):
         super().__init__(api_key, model)
         self.client = genai.Client(api_key=api_key)
 

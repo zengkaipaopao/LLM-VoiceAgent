@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db, require_api_key
 from app.core.config import settings
+from app.core.model_defaults import require_live_model
 from app.core.database import AsyncSessionLocal
 from app.schemas.base import ResponseBase
 from app.schemas.twilio import TwilioTokenResponse
@@ -373,13 +374,10 @@ async def _load_official_gemini_voices(*, force_refresh: bool = False) -> tuple[
 
 
 def _resolve_gemini_live_model(candidate_model: str | None) -> str:
-    selected = (candidate_model or "").strip()
-    if selected and "live" in selected.lower():
-        return selected
-    fallback = (settings.default_live_model or "").strip()
-    if fallback:
-        return fallback
-    return "gemini-3.1-flash-live-preview"
+    return require_live_model(
+        candidate_model or settings.default_live_model,
+        source="Prompt llm_model",
+    )
 
 
 def _use_manual_vad_control() -> bool:
@@ -678,7 +676,19 @@ async def incoming_voice_webhook(
     if mode_value == "agent":
         if engine_value == "gemini":
             runtime = await _resolve_prompt_runtime(db=db, prompt_code=resolved_prompt_code)
-            selected_model = _resolve_gemini_live_model(runtime.llm_model)
+            try:
+                selected_model = _resolve_gemini_live_model(runtime.llm_model)
+            except ValueError as exc:
+                logger.warning(
+                    "Twilio inbound prompt model incompatible with live engine. prompt=%s error=%s",
+                    resolved_prompt_code,
+                    exc,
+                )
+                xml = twilio_voice_agent_service.build_hangup_twiml(
+                    say_text="現在の Prompt モデルでは音声テストを開始できません。設定を確認してください。",
+                    language=settings.twilio_agent_language,
+                )
+                return Response(content=xml, media_type="application/xml")
             selected_provider = resolve_live_provider(runtime.llm_provider, selected_model)
             available, reason = provider_available(selected_provider)
             if selected_provider != "gemini":
@@ -818,7 +828,16 @@ async def twilio_voice_media_stream(
         runtime = await _resolve_prompt_runtime(db=db, prompt_code=prompt_code)
         runtime_notice = runtime.notice
 
-    selected_model = _resolve_gemini_live_model(runtime.llm_model)
+    try:
+        selected_model = _resolve_gemini_live_model(runtime.llm_model)
+    except ValueError as exc:
+        logger.warning(
+            "Twilio media stream prompt model incompatible with live engine. prompt=%s error=%s",
+            runtime.template_code,
+            exc,
+        )
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason=str(exc)[:120])
+        return
     selected_provider = resolve_live_provider(runtime.llm_provider, selected_model)
     available, reason = provider_available(selected_provider)
     if selected_provider != "gemini":

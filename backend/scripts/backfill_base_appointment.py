@@ -35,7 +35,7 @@ async def main():
                     response_format="json_object",
                     is_active=True,
                     llm_provider="gemini",
-                    llm_model="gemini-2.0-flash",
+                    llm_model="gemini-2.5-flash",
                     temperature=0.7,
                     max_tokens=2048,
                 )

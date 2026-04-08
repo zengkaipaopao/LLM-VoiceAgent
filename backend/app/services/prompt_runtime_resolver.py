@@ -4,9 +4,10 @@ Shared prompt runtime resolution helpers.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from app.core.config import settings
+from app.core.model_defaults import resolve_generate_model, resolve_live_model
 from app.services.prompt_service import PromptService
 from app.utils.datetime_utils import now_tokyo_naive
 
@@ -25,6 +26,18 @@ class PromptRuntimeConfig:
     notice: str | None
 
 
+def _resolve_runtime_model(candidate_model: str | None, *, model_capability: Literal["any", "generate", "live"]) -> str:
+    if model_capability == "generate":
+        return resolve_generate_model(candidate_model, fallback_model=settings.default_llm_model)
+    if model_capability == "live":
+        return resolve_live_model(candidate_model, fallback_model=settings.default_live_model)
+
+    token = (candidate_model or "").strip()
+    if token:
+        return token
+    return resolve_generate_model(None, fallback_model=settings.default_llm_model)
+
+
 async def resolve_prompt_runtime(
     prompt_service: PromptService,
     *,
@@ -34,6 +47,7 @@ async def resolve_prompt_runtime(
     render_system_instruction: bool = False,
     fallback_instruction: str | None = None,
     missing_notice: str | None = None,
+    model_capability: Literal["any", "generate", "live"] = "any",
 ) -> PromptRuntimeConfig:
     requested_code = (template_code or "").strip() or default_code
     normalized_fallback = (fallback_code or "").strip() or None
@@ -51,7 +65,8 @@ async def resolve_prompt_runtime(
             if render_system_instruction
             else ((template.system_prompt or "").strip() or fallback_instruction)
         )
-        llm_model = (template.llm_model or "").strip() or (settings.default_llm_model or "").strip() or None
+        template_model = (template.llm_model or "").strip()
+        llm_model = template_model or _resolve_runtime_model(None, model_capability=model_capability)
         return PromptRuntimeConfig(
             template=template,
             template_code=(template.code or requested_code).strip(),
@@ -73,7 +88,7 @@ async def resolve_prompt_runtime(
         template_name=None,
         system_instruction=fallback_instruction,
         llm_provider=None,
-        llm_model=(settings.default_llm_model or "").strip() or None,
+        llm_model=_resolve_runtime_model(None, model_capability=model_capability),
         temperature=float(settings.llm_temperature),
         max_tokens=int(settings.llm_max_tokens),
         voice_id=None,

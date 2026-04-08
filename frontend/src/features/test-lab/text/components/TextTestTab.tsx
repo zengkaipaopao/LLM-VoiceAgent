@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 import { TestTabNotifications, TestWorkbenchShell, type TestWorkbenchSummaryItem } from '../../../../components/molecules/TestTabs';
+import { describeTextTabModelWarning } from '../../../../config/llmModels';
 import { UnifiedChatWorkspace } from '../../../../components/organisms/TestTabs/unified/UnifiedChatWorkspace';
 import { UnifiedSidebarPanels } from '../../../../components/organisms/TestTabs/unified/UnifiedSidebarPanels';
 import { useTextTestSession } from '../hooks/useTextTestSession';
@@ -12,6 +13,10 @@ export function TextTestTab() {
   const lab = useTextTestSession();
   const canClearPanel = lab.messages.length > 0 || !!lab.error || !!lab.info;
   const sessionTone = lab.sessionClosed ? 'blue' : lab.session ? 'green' : 'cool-gray';
+  const compatibilityWarning = describeTextTabModelWarning(
+    lab.selectedPrompt?.llmModel,
+    lab.selectedPromptCode
+  );
 
   const summaryItems: TestWorkbenchSummaryItem[] = [
     {
@@ -47,12 +52,14 @@ export function TextTestTab() {
       )}
       summaryItems={summaryItems}
       notice={
-        lab.error || lab.info ? (
+        lab.error || lab.info || compatibilityWarning ? (
           <TestTabNotifications
             error={lab.error}
             info={lab.info}
+            warning={compatibilityWarning}
             errorTitle={t('pages:test.unified.notifications.errorTitle', 'Request failed')}
             successTitle={t('pages:test.unified.notifications.successTitle', 'Success')}
+            warningTitle={t('pages:test.unified.notifications.warningTitle', 'Configuration warning')}
             onClearError={() => lab.setError(null)}
             onClearInfo={() => lab.setInfo(null)}
           />

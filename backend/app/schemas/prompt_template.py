@@ -6,6 +6,8 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from uuid import UUID
 
+from app.core.model_defaults import DEFAULT_GENERATE_MODEL
+
 
 class PromptTemplateBase(BaseModel):
     """Base prompt template schema."""
@@ -25,7 +27,7 @@ class PromptTemplateBase(BaseModel):
     
     # LLM Configuration
     llm_provider: Optional[str] = Field("gemini", description="LLM provider (gemini, openai, etc.)")
-    llm_model: Optional[str] = Field("gemini-2.0-flash", description="LLM model name")
+    llm_model: Optional[str] = Field(DEFAULT_GENERATE_MODEL, description="LLM model name")
     temperature: Optional[float] = Field(0.7, ge=0, le=2, description="Sampling temperature")
     max_tokens: Optional[int] = Field(2048, description="Max tokens")
     

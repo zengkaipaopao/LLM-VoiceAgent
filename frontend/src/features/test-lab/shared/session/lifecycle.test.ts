@@ -12,7 +12,7 @@ const activeSession = {
   started_at: '2026-04-08T10:00:00+09:00',
   template_code: 'base_appointment',
   llm_provider: 'gemini',
-  llm_model: 'gemini-2.0-flash',
+  llm_model: 'gemini-2.5-flash',
 };
 
 describe('test session lifecycle helpers', () => {
@@ -67,7 +67,7 @@ describe('test session lifecycle helpers', () => {
       callId: 'call-1',
       templateCode: 'base_appointment',
       provider: 'gemini',
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.5-flash',
     });
   });
 });
