@@ -3,7 +3,6 @@
  * 
  * 导出所有Test Page的Tab内容组件
  */
-export { UnifiedTestLabTabContent } from './UnifiedTestLabTabContent';
+export { TextTestTab, UnifiedTestLabTabContent } from './UnifiedTestLabTabContent';
 export { ReviewerTabContent } from './ReviewerTabContent';
-export { WebSocketTabContent } from './WebSocketTabContent';
-export { TwilioTabContent } from './TwilioTabContent';
+export { VoiceTestTab, TwilioTabContent } from './TwilioTabContent';

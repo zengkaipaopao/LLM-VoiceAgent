@@ -24,10 +24,10 @@ from app.core.database import AsyncSessionLocal
 from app.schemas.base import ResponseBase
 from app.schemas.twilio import TwilioTokenResponse
 from app.services.live_gateway import provider_available, resolve_live_provider
+from app.services.prompt_runtime_resolver import PromptRuntimeConfig, resolve_prompt_runtime
 from app.services.prompt_service import PromptService
 from app.services.twilio_webcall_service import TwilioWebCallService
 from app.services.twilio_voice_agent_service import twilio_voice_agent_service
-from app.utils.datetime_utils import now_tokyo_naive
 from app.utils.twilio_security import verify_twilio_webhook_request
 
 router = APIRouter()
@@ -439,16 +439,12 @@ def _build_twilio_media_stream_url(
     *,
     request: Request,
     prompt_code: str | None,
-    voice_name: str | None,
 ) -> str:
     base_url = _to_websocket_url(str(request.url_for("twilio_voice_media_stream")))
     query_params: dict[str, str] = {}
     code = (prompt_code or "").strip()
     if code:
         query_params["prompt_code"] = code
-    voice = (voice_name or "").strip()
-    if voice:
-        query_params["voice_name"] = voice
     if not query_params:
         return base_url
     return f"{base_url}?{urlencode(query_params)}"
@@ -458,48 +454,29 @@ async def _resolve_prompt_runtime(
     *,
     db: AsyncSession,
     prompt_code: str | None,
-) -> dict[str, str | None]:
-    code = (prompt_code or "").strip()
-    effective_code = (
-        code
-        or (settings.twilio_default_prompt_code or "").strip()
-        or "general_appointment"
+) -> PromptRuntimeConfig:
+    effective_code = (settings.twilio_default_prompt_code or "").strip() or "general_appointment"
+    fallback_instruction = (
+        "あなたは日本語のコールセンター受付AIです。"
+        "丁寧に自然な会話を行い、推測せず不足情報は確認質問してください。"
+        "最初の発話は必ず次の一文で開始してください。"
+        "「いつもお世話になっております。光洲産業の自動受付AIです。"
+        "本日はどのようなご用件でしょうか。」"
     )
-
     prompt_service = PromptService(db)
-    template = await prompt_service.get_template(effective_code)
-    fallback_code = "general_appointment"
-    if not template and effective_code != fallback_code:
-        template = await prompt_service.get_template(fallback_code)
-    if not template:
-        fallback_instruction = (
-            "あなたは日本語のコールセンター受付AIです。"
-            "丁寧に自然な会話を行い、推測せず不足情報は確認質問してください。"
-            "最初の発話は必ず次の一文で開始してください。"
-            "「いつもお世話になっております。光洲産業の自動受付AIです。"
-            "本日はどのようなご用件でしょうか。」"
-        )
-        return {
-            "prompt_code": effective_code,
-            "system_instruction": fallback_instruction,
-            "llm_provider": None,
-            "llm_model": None,
-            "voice_name": None,
-            "notice": f"Prompt template '{effective_code}' not found or inactive. Applied fallback runtime instruction.",
-        }
-
-    rendered_prompt = prompt_service.render_prompt(
-        template,
-        {"current_time": now_tokyo_naive().isoformat()},
+    requested_code = (prompt_code or "").strip() or effective_code
+    return await resolve_prompt_runtime(
+        prompt_service,
+        template_code=requested_code,
+        default_code=effective_code,
+        fallback_code="general_appointment",
+        render_system_instruction=True,
+        fallback_instruction=fallback_instruction,
+        missing_notice=(
+            f"Prompt template '{requested_code}' not found or inactive. "
+            "Applied fallback runtime instruction."
+        ),
     )
-    return {
-        "prompt_code": template.code,
-        "system_instruction": rendered_prompt,
-        "llm_provider": (template.llm_provider or "").strip() or None,
-        "llm_model": (template.llm_model or "").strip() or None,
-        "voice_name": (template.voice_id or "").strip() or None,
-        "notice": f"Loaded prompt template: {template.name} ({template.code})",
-    }
 
 
 def _build_gemini_live_config(
@@ -685,7 +662,6 @@ async def incoming_voice_webhook(
     mode_value = ((mode or settings.twilio_incoming_default_mode or "agent").strip().lower())
     effective_engine = voice_engine or pending_engine
     engine_value = _normalize_voice_engine(effective_engine)
-    effective_voice_name = voice_name or pending_voice_name
     if engine_value not in {"twilio", "gemini"}:
         logger.warning(
             "Twilio inbound voice engine invalid. value=%s call_sid=%s to=%s",
@@ -702,8 +678,8 @@ async def incoming_voice_webhook(
     if mode_value == "agent":
         if engine_value == "gemini":
             runtime = await _resolve_prompt_runtime(db=db, prompt_code=resolved_prompt_code)
-            selected_model = _resolve_gemini_live_model(runtime["llm_model"])
-            selected_provider = resolve_live_provider(runtime["llm_provider"], selected_model)
+            selected_model = _resolve_gemini_live_model(runtime.llm_model)
+            selected_provider = resolve_live_provider(runtime.llm_provider, selected_model)
             available, reason = provider_available(selected_provider)
             if selected_provider != "gemini":
                 logger.warning(
@@ -729,7 +705,6 @@ async def incoming_voice_webhook(
                 stream_url = _build_twilio_media_stream_url(
                     request=request,
                     prompt_code=resolved_prompt_code,
-                    voice_name=effective_voice_name,
                 )
                 xml = (
                     '<?xml version="1.0" encoding="UTF-8"?>'
@@ -841,17 +816,17 @@ async def twilio_voice_media_stream(
     runtime_notice = None
     async with AsyncSessionLocal() as db:
         runtime = await _resolve_prompt_runtime(db=db, prompt_code=prompt_code)
-        runtime_notice = runtime["notice"]
+        runtime_notice = runtime.notice
 
-    selected_model = _resolve_gemini_live_model(runtime["llm_model"])
-    selected_provider = resolve_live_provider(runtime["llm_provider"], selected_model)
+    selected_model = _resolve_gemini_live_model(runtime.llm_model)
+    selected_provider = resolve_live_provider(runtime.llm_provider, selected_model)
     available, reason = provider_available(selected_provider)
     if selected_provider != "gemini":
         logger.warning(
             "Twilio media stream provider unsupported. provider=%s model=%s prompt=%s",
             selected_provider,
             selected_model,
-            runtime["prompt_code"],
+            runtime.template_code,
         )
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
@@ -860,11 +835,16 @@ async def twilio_voice_media_stream(
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
-    selected_voice = (voice_name or runtime["voice_name"] or settings.default_live_voice or "Aoede").strip() or "Aoede"
+    if (voice_name or "").strip():
+        logger.info(
+            "Ignoring query voice_name override in Twilio media stream. Prompt voice_id has priority. prompt=%s",
+            runtime.template_code,
+        )
+    selected_voice = (runtime.voice_id or settings.default_live_voice or "Aoede").strip() or "Aoede"
     manual_vad_control = _use_manual_vad_control()
-    opening_hint = _build_gemini_opening_hint(runtime["system_instruction"])
+    opening_hint = _build_gemini_opening_hint(runtime.system_instruction)
     live_config = _build_gemini_live_config(
-        system_instruction=runtime["system_instruction"],
+        system_instruction=runtime.system_instruction,
         voice_name=selected_voice,
         manual_vad=manual_vad_control,
     )
@@ -910,7 +890,7 @@ async def twilio_voice_media_stream(
                 selected_provider,
                 selected_model,
                 selected_voice,
-                runtime["prompt_code"],
+                runtime.template_code,
                 runtime_notice,
                 "manual" if manual_vad_control else "auto",
             )
@@ -1112,31 +1092,31 @@ async def twilio_voice_media_stream(
                                 if injected_segments:
                                     combined_manual_audio = b"".join(injected_segments)
                                     stats = _pcm16_audio_stats(combined_manual_audio, sample_rate=16000)
-                                await _append_call_trace(
-                                    current_call_sid,
-                                    event_type="manual_audio_injecting",
-                                    text=(
-                                        f"segments={len(injected_segments)} bytes={stats['bytes']} "
-                                        f"duration_ms={stats['duration_ms']} rms={stats['rms']} peak={stats['peak']} "
-                                        "mode=auto_vad"
-                                    ),
-                                    level="info",
-                                )
-                                for segment in injected_segments:
-                                    for packet in _chunk_bytes(segment, 640):
-                                        await session.send_realtime_input(
-                                            audio=types.Blob(data=packet, mime_type="audio/pcm;rate=16000")
-                                        )
-                                awaiting_model_response = True
-                                awaiting_model_since = now_ts
-                                awaiting_model_retry_count = 0
-                                awaiting_manual_turn = True
-                                lock_seconds = min(
-                                    12.0,
-                                    max(2.5, (stats["duration_ms"] / 1000.0) + 1.5),
-                                )
-                                manual_inject_lock_until = now_ts + lock_seconds
-                                continue
+                                    await _append_call_trace(
+                                        current_call_sid,
+                                        event_type="manual_audio_injecting",
+                                        text=(
+                                            f"segments={len(injected_segments)} bytes={stats['bytes']} "
+                                            f"duration_ms={stats['duration_ms']} rms={stats['rms']} peak={stats['peak']} "
+                                            "mode=auto_vad"
+                                        ),
+                                        level="info",
+                                    )
+                                    for segment in injected_segments:
+                                        for packet in _chunk_bytes(segment, 640):
+                                            await session.send_realtime_input(
+                                                audio=types.Blob(data=packet, mime_type="audio/pcm;rate=16000")
+                                            )
+                                    awaiting_model_response = True
+                                    awaiting_model_since = now_ts
+                                    awaiting_model_retry_count = 0
+                                    awaiting_manual_turn = True
+                                    lock_seconds = min(
+                                        12.0,
+                                        max(2.5, (stats["duration_ms"] / 1000.0) + 1.5),
+                                    )
+                                    manual_inject_lock_until = now_ts + lock_seconds
+                                    continue
 
                             await session.send_realtime_input(
                                 audio=types.Blob(data=pcm16k, mime_type="audio/pcm;rate=16000")

@@ -1,14 +1,31 @@
 @use '@carbon/styles/scss/spacing';
 
-.headerTile {
+.mainTile {
   display: grid;
-  gap: spacing.$spacing-04;
+  gap: spacing.$spacing-05;
+}
+
+.routeTile {
+  display: grid;
+  gap: spacing.$spacing-03;
+}
+
+.badgeRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: spacing.$spacing-03;
+}
+
+.routeHint {
+  margin: 0;
+  color: var(--cds-text-secondary);
+  font-size: var(--cds-body-compact-01-font-size);
 }
 
 .headerRow {
   display: flex;
-  align-items: flex-start;
   justify-content: space-between;
+  align-items: flex-start;
   gap: spacing.$spacing-05;
 }
 
@@ -19,60 +36,90 @@
   line-height: 1.45;
 }
 
-.loadingRow {
-  min-height: spacing.$spacing-06;
-  display: flex;
-  align-items: center;
-}
-
-.timestamp {
-  color: var(--cds-text-secondary);
-  font-size: var(--cds-body-compact-01-font-size);
-}
-
-.modulesTile {
+.sectionHeader {
   display: grid;
+  gap: spacing.$spacing-02;
 }
 
-.moduleGrid {
+.sectionBlock {
   display: grid;
-  gap: spacing.$spacing-05;
+  gap: spacing.$spacing-04;
+  padding-bottom: spacing.$spacing-05;
+  border-bottom: 1px solid var(--cds-border-subtle);
+}
+
+.sectionBlock:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.formGrid {
+  display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: spacing.$spacing-05;
 }
 
-.moduleCard {
-  border: 1px solid var(--cds-border-subtle);
-  background: var(--cds-layer-accent);
-  padding: spacing.$spacing-05;
-  display: grid;
-  gap: spacing.$spacing-03;
-}
-
-.cardHeader {
+.actionRow {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-wrap: wrap;
   gap: spacing.$spacing-03;
 }
 
-.phaseLabel {
-  color: var(--cds-text-secondary);
-  font-size: var(--cds-label-01-font-size);
-  font-weight: 600;
-  letter-spacing: 0.02em;
+.logTile {
+  display: grid;
+  gap: spacing.$spacing-04;
 }
 
-.moduleDescription {
+.emptyText {
   margin: 0;
-  color: var(--cds-text-primary);
+  color: var(--cds-text-secondary);
   font-size: var(--cds-body-compact-01-font-size);
-  line-height: 1.5;
 }
 
-.sourceLabel {
+.logList {
   margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 14rem;
+  overflow: auto;
+  border-top: 1px solid var(--cds-border-subtle);
+}
+
+.logItem {
+  display: grid;
+  grid-template-columns: 5.25rem 5.5rem 1fr;
+  gap: spacing.$spacing-03;
+  padding: spacing.$spacing-03 0;
+  border-bottom: 1px dashed var(--cds-border-subtle);
+  font-size: var(--cds-body-compact-01-font-size);
+}
+
+.logTime {
   color: var(--cds-text-secondary);
-  font-size: var(--cds-label-01-font-size);
+}
+
+.logLevel {
+  font-weight: 600;
+}
+
+.logLevelinfo {
+  color: var(--cds-link-primary);
+}
+
+.logLevelsuccess {
+  color: var(--cds-support-success);
+}
+
+.logLevelwarning {
+  color: var(--cds-support-warning);
+}
+
+.logLevelerror {
+  color: var(--cds-support-error);
+}
+
+.logMessage {
+  overflow-wrap: anywhere;
 }
 
 .sideTile {
@@ -87,7 +134,6 @@
 }
 
 .metaRow {
-  margin: 0;
   display: grid;
   gap: spacing.$spacing-02;
   padding-bottom: spacing.$spacing-03;
@@ -101,22 +147,101 @@
 
 .metaRow dd {
   margin: 0;
+  font-size: var(--cds-body-compact-01-font-size);
   overflow-wrap: anywhere;
+}
+
+.traceList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 28rem;
+  overflow: auto;
+  border-top: 1px solid var(--cds-border-subtle);
+}
+
+.traceItem {
+  display: grid;
+  grid-template-columns: 5rem 3.5rem 1fr;
+  gap: spacing.$spacing-03;
+  padding: spacing.$spacing-03 0;
+  border-bottom: 1px dashed var(--cds-border-subtle);
   font-size: var(--cds-body-compact-01-font-size);
 }
 
-.sequenceList {
-  margin: 0;
-  padding-left: spacing.$spacing-05;
+.traceTime {
+  color: var(--cds-text-secondary);
+}
+
+.traceSpeaker {
+  font-weight: 600;
+}
+
+.traceText {
+  overflow-wrap: anywhere;
+}
+
+.transcriptGrid {
+  display: grid;
+  gap: spacing.$spacing-04;
+}
+
+.transcriptCard {
+  padding: spacing.$spacing-04;
+  border: 1px solid var(--cds-border-subtle);
+  background: var(--cds-layer-accent);
   display: grid;
   gap: spacing.$spacing-03;
-  color: var(--cds-text-primary);
+}
+
+.transcriptHeading {
+  margin: 0;
+  font-size: var(--cds-heading-compact-01-font-size);
+  line-height: var(--cds-heading-compact-01-line-height);
+}
+
+.transcriptBody {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
   font-size: var(--cds-body-compact-01-font-size);
   line-height: 1.5;
+  max-height: 12rem;
+  overflow: auto;
+}
+
+.dialogueHistoryList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 16rem;
+  overflow: auto;
+  border-top: 1px solid var(--cds-border-subtle);
+}
+
+.dialogueHistoryItem {
+  display: grid;
+  grid-template-columns: 5.25rem 3rem 1fr;
+  gap: spacing.$spacing-03;
+  padding: spacing.$spacing-03 0;
+  border-bottom: 1px dashed var(--cds-border-subtle);
+  font-size: var(--cds-body-compact-01-font-size);
+}
+
+.dialogueHistoryTime {
+  color: var(--cds-text-secondary);
+}
+
+.dialogueHistoryRole {
+  font-weight: 600;
+}
+
+.dialogueHistoryText {
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 1055px) {
-  .moduleGrid {
+  .formGrid {
     grid-template-columns: 1fr;
   }
 }
@@ -125,5 +250,12 @@
   .headerRow {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .logItem,
+  .traceItem,
+  .dialogueHistoryItem {
+    grid-template-columns: 1fr;
+    gap: spacing.$spacing-02;
   }
 }

@@ -27,5 +27,5 @@ export interface UseUnifiedTestLabResult {
   handleStartSession: () => Promise<void>;
   handleSendMessage: (content: string) => Promise<void>;
   handleFinalize: () => Promise<void>;
-  handleClear: () => void;
+  handleClear: () => Promise<void>;
 }

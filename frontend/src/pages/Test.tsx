@@ -1,36 +1,34 @@
 import { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { 
-  Tabs, 
-  TabList, 
-  Tab, 
-  TabPanels, 
-  TabPanel
+import {
+  Tabs,
+  TabList,
+  Tab,
+  TabPanels,
+  TabPanel,
 } from '@carbon/react';
 import { PageTemplate } from '../components/templates/PageTemplate';
-import { testTabs } from '../config/navigation';
+import { normalizeTestTabId, testTabs } from '../config/navigation';
 import styles from './Test.module.scss';
 
 /**
  * TestPage - 实时调试实验室页面
  * 
- * 用于统一测试台、WebSocket 和 Twilio 入站 AI 等链路调试
+ * 用于文字测试、语音测试与审查链路调试
  * 
  * 设计特点:
- * - 完全声明式配置，所有Tab内容在 navigation.ts 中定义
- * - 动态生成Tab UI和TabPanel，无需手动维护顺序
- * - 遵循 Carbon Design System Tabs 最佳实践
+ * - 完全声明式配置，所有 Tab 内容在 navigation.ts 中定义
+ * - 动态生成 Tab UI 和 TabPanel，无需手动维护顺序
+ * - 保留旧 query tab 参数兼容，但统一收口到 text / voice / reviewer
  */
 export function Test() {
   const { t } = useTranslation(['pages', 'common']);
   const [searchParams, setSearchParams] = useSearchParams();
   const [enableReviewer, setEnableReviewer] = useState(true);
 
-  // 从 testTabs 动态生成 tabMap
   const tabMap = useMemo(() => testTabs.map(tab => tab.id), []);
-  const currentTabRaw = searchParams.get('tab') || tabMap[0];
-  const currentTab = currentTabRaw === 'websocket' ? 'live' : currentTabRaw;
+  const currentTab = normalizeTestTabId(searchParams.get('tab') || tabMap[0]);
   const selectedIndex = tabMap.indexOf(currentTab);
   const safeIndex = selectedIndex >= 0 ? selectedIndex : 0;
 

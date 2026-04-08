@@ -230,18 +230,15 @@
   },
   "test": {
     "title": "リアルタイムデバッグラボ",
-    "subtitle": "統合テストラボで Prompt 駆動の通話をシミュレーションして DB 連携を確認しつつ、同じ画面で WebSocket と Twilio のデバッグも実行できます。",
+    "subtitle": "統合テスト画面で Prompt 応答と音声接続性を検証します。ブラウザ直結と電話ゲートウェイの両方を同一画面で扱えます。",
     "emptyState": "テスト機能は開発中",
-    "emptyDescription": "このページでは、WebSocket と Twilio 入電 AI のリアルタイムデバッグ機能を提供します。",
+    "emptyDescription": "このページは音声リンクのリアルタイム検証に特化しています。電話ゲートウェイは接続方式の一つです。",
     "tabs": {
       "ariaLabel": "テストオプション",
-      "simulation": "統合テストラボ",
-      "appointment": "予約シミュレーション",
-      "chat": "LLM チャット",
+      "text": "テキストテスト",
+      "voice": "音声テスト",
       "reviewer": "レビュアーモード",
-      "live": "Gemini Live",
-      "websocket": "WebSocket",
-      "twilio": "Twilio Inbound AI"
+      "appointment": "予約シミュレーション"
     },
     "chat": {
       "input": {
@@ -343,7 +340,9 @@
         "streamFailed": "ストリーミング応答に失敗しました",
         "sendMessageFailed": "メッセージ送信に失敗しました",
         "noActiveSession": "先にテストセッションを作成してください",
-        "finalizeFailed": "セッション終了に失敗しました"
+        "finalizeFailed": "セッション終了に失敗しました",
+        "closeBeforeNewSessionFailed": "新しいセッション開始前に前のセッションを終了できませんでした",
+        "clearRequiresClose": "現在のセッションを終了できませんでした。もう一度お試しください。"
       },
       "info": {
         "sessionCreated": "テストセッションを作成しました: {{phone}}",

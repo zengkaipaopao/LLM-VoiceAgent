@@ -11,7 +11,6 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
-import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
@@ -20,7 +19,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.services.live_gateway import infer_provider_from_model, normalize_provider
+from app.services.prompt_runtime_resolver import resolve_prompt_runtime
 from app.services.prompt_service import PromptService
+from app.services.transcript_sanitizer import sanitize_assistant_turn
 from app.services.voice_runtime import (
     VoiceProviderNotImplementedError,
     VoiceProviderUnavailableError,
@@ -90,45 +91,33 @@ class TwilioVoiceAgentService:
             prompt_code or settings.twilio_default_prompt_code or "general_appointment"
         ).strip()
         prompt_service = PromptService(db)
-        template = await prompt_service.get_template(resolved_code)
-        if not template and resolved_code != "general_appointment":
-            template = await prompt_service.get_template("general_appointment")
-
-        system_prompt = (
-            template.system_prompt
-            if template and template.system_prompt
-            else (
+        runtime = await resolve_prompt_runtime(
+            prompt_service,
+            template_code=resolved_code,
+            default_code=resolved_code,
+            fallback_code="general_appointment",
+            fallback_instruction=(
                 "あなたは日本語のコールセンター受付AIです。"
                 "丁寧に1項目ずつ確認し、推測せず、自然な会話で応答してください。"
-            )
+            ),
         )
-        llm_provider = template.llm_provider if template and template.llm_provider else None
-        llm_model = (
-            template.llm_model
-            if template and template.llm_model
-            else settings.default_llm_model
-        )
-        temperature = float(
-            template.temperature
-            if template and template.temperature is not None
-            else settings.llm_temperature
-        )
-        max_tokens = int(
-            template.max_tokens if template and template.max_tokens else settings.llm_max_tokens
+        system_prompt = runtime.system_instruction or (
+            "あなたは日本語のコールセンター受付AIです。"
+            "丁寧に1項目ずつ確認し、推測せず、自然な会話で応答してください。"
         )
         llm_provider = self._resolve_provider(
-            provider=llm_provider,
-            model=llm_model,
+            provider=runtime.llm_provider,
+            model=runtime.llm_model,
         )
 
         session = TwilioVoiceSession(
             call_sid=call_sid,
-            prompt_code=(template.code if template else resolved_code),
+            prompt_code=runtime.template_code,
             system_prompt=system_prompt,
             llm_provider=llm_provider,
-            llm_model=llm_model,
-            temperature=temperature,
-            max_tokens=max_tokens,
+            llm_model=runtime.llm_model or settings.default_llm_model,
+            temperature=float(runtime.temperature),
+            max_tokens=int(runtime.max_tokens),
         )
         logger.info(
             "Twilio voice session bound. call_sid=%s prompt_code=%s provider=%s model=%s",
@@ -155,19 +144,7 @@ class TwilioVoiceAgentService:
 
     @staticmethod
     def sanitize_reply(text: str) -> str:
-        if not text:
-            return ""
-        normalized = text.strip()
-
-        # Cut hallucinated next-turn transcript.
-        injected_user = re.search(r"(?im)(^|\n)\s*user\s*[:：]", normalized)
-        if injected_user:
-            normalized = normalized[: injected_user.start()].strip()
-
-        # Remove speaker role labels.
-        normalized = re.sub(r"(?im)^\s*(assistant|ai助手|助手)\s*[:：]\s*", "", normalized).strip()
-        normalized = re.sub(r"\n{3,}", "\n\n", normalized).strip()
-        return normalized
+        return sanitize_assistant_turn(text)
 
     async def generate_reply(
         self,

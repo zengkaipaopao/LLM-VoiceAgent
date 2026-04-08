@@ -5,6 +5,8 @@ interface StreamUnifiedChatResponseOptions {
   callId: string;
   message: string;
   templateCode: string;
+  provider?: string;
+  model?: string;
   signal: AbortSignal;
   requestFailedWithStatusMessage: (status: number) => string;
   streamFailedMessage: string;
@@ -17,6 +19,8 @@ export async function streamUnifiedChatResponse({
   callId,
   message,
   templateCode,
+  provider,
+  model,
   signal,
   requestFailedWithStatusMessage,
   streamFailedMessage,
@@ -34,6 +38,8 @@ export async function streamUnifiedChatResponse({
       call_id: callId,
       message,
       template_code: templateCode,
+      provider,
+      model,
     }),
     signal,
   });

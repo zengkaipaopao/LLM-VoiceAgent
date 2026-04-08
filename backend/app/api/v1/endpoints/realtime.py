@@ -16,8 +16,8 @@ from app.api.deps import verify_websocket_api_key
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.services.live_gateway import provider_available, resolve_live_provider
+from app.services.prompt_runtime_resolver import resolve_prompt_runtime
 from app.services.prompt_service import PromptService
-from app.utils.datetime_utils import now_tokyo_naive
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -117,6 +117,14 @@ def _build_live_config(
     if system_instruction:
         config_payload["system_instruction"] = system_instruction
 
+    # Use Gemini automatic activity detection for conversational streaming.
+    # This endpoint intentionally runs in auto mode to avoid mixed manual/auto turn control.
+    config_payload["realtime_input_config"] = types.RealtimeInputConfig(
+        automatic_activity_detection=types.AutomaticActivityDetection(
+            disabled=False,
+        )
+    )
+
     return types.LiveConnectConfig(**config_payload)
 
 
@@ -124,26 +132,28 @@ async def _resolve_system_instruction(
     *,
     system_instruction: str | None,
     template_code: str | None,
-) -> tuple[str | None, str | None]:
+) -> tuple[str | None, str | None, str | None]:
     manual_instruction = (system_instruction or "").strip()
     if manual_instruction:
-        return manual_instruction, None
+        return manual_instruction, None, None
 
     code = (template_code or "").strip()
     if not code:
-        return None, None
+        return None, None, None
 
     async with AsyncSessionLocal() as db:
         prompt_service = PromptService(db)
-        template = await prompt_service.get_template(code)
-        if not template:
-            return None, f"Prompt template '{code}' not found or inactive."
-
-        rendered = prompt_service.render_prompt(
-            template,
-            {"current_time": now_tokyo_naive().isoformat()},
+        runtime = await resolve_prompt_runtime(
+            prompt_service,
+            template_code=code,
+            default_code=code,
+            render_system_instruction=True,
+            missing_notice=f"Prompt template '{code}' not found or inactive.",
         )
-        return rendered, f"Loaded prompt template: {template.name} ({template.code})"
+        if not runtime.template:
+            return None, f"Prompt template '{code}' not found or inactive.", None
+
+        return runtime.system_instruction, runtime.notice, runtime.voice_id
 
 
 @router.websocket("/ws")
@@ -223,11 +233,15 @@ async def live_websocket(
         selected_model,
         requested_modalities,
     )
-    selected_voice = (voice or settings.default_live_voice or "").strip() or None
-    resolved_system_instruction, prompt_notice = await _resolve_system_instruction(
+    requested_voice = (voice or "").strip() or None
+    resolved_system_instruction, prompt_notice, prompt_voice = await _resolve_system_instruction(
         system_instruction=system_instruction,
         template_code=template_code,
     )
+    selected_voice = requested_voice or prompt_voice or (settings.default_live_voice or "").strip() or None
+    prompt_voice_notice = None
+    if not requested_voice and prompt_voice:
+        prompt_voice_notice = f"Using prompt voice_id: {prompt_voice}"
 
     send_lock = asyncio.Lock()
     client = genai.Client(api_key=settings.google_api_key)
@@ -262,6 +276,12 @@ async def live_websocket(
                     websocket,
                     send_lock,
                     {"type": "warning", "message": prompt_notice},
+                )
+            if prompt_voice_notice:
+                await _safe_send_json(
+                    websocket,
+                    send_lock,
+                    {"type": "warning", "message": prompt_voice_notice},
                 )
 
             async def client_to_live() -> None:
@@ -331,23 +351,16 @@ async def live_websocket(
                         )
                         continue
 
-                    if event_type == "activity_start":
-                        await _safe_forward_realtime_input(
-                            session=session,
-                            websocket=websocket,
-                            lock=send_lock,
-                            input_name="activity_start",
-                            activity_start=types.ActivityStart(),
-                        )
-                        continue
-
-                    if event_type == "activity_end":
-                        await _safe_forward_realtime_input(
-                            session=session,
-                            websocket=websocket,
-                            lock=send_lock,
-                            input_name="activity_end",
-                            activity_end=types.ActivityEnd(),
+                    if event_type in {"activity_start", "activity_end"}:
+                        await _safe_send_json(
+                            websocket,
+                            send_lock,
+                            {
+                                "type": "warning",
+                                "message": (
+                                    f"Ignored {event_type}: this endpoint uses Gemini auto activity detection."
+                                ),
+                            },
                         )
                         continue
 

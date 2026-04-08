@@ -16,11 +16,9 @@
     "mainNav": "Main navigation"
   },
   "test": {
-    "simulation": "Unified Test Lab",
-    "appointment": "Appointment Sim",
+    "text": "Text Test",
+    "voice": "Voice Test",
     "reviewer": "Reviewer Mode",
-    "websocket": "WebSocket",
-    "twilio": "Twilio WebCall",
-    "chat": "LLM Chat"
+    "appointment": "Appointment Sim"
   }
 }

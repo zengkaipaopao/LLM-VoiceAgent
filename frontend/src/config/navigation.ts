@@ -2,20 +2,18 @@ import {
   Calendar,
   Dashboard,
   ModelBuilder,
+  Chat,
   Phone,
   SettingsAdjust,
   WatsonHealthTextAnnotationToggle,
-  Network_3,
   PhoneVoice,
   WatsonHealthAiStatus,
 } from '@carbon/icons-react';
 import type { ComponentType } from 'react';
-import { 
-  UnifiedTestLabTabContent,
-  ReviewerTabContent, 
-  WebSocketTabContent, 
-  TwilioTabContent
-} from '../components/organisms/TestTabs';
+import { ReviewerTabContent } from '../components/organisms/TestTabs';
+import { normalizeTestTabId } from '../features/test-lab/shared/navigation/tabIds';
+import { TextTestTab } from '../features/test-lab/text/components/TextTestTab';
+import { VoiceTestTab } from '../features/test-lab/voice/components/VoiceTestTab';
 
 export const navLinks = [
   { to: '/', label: 'dashboard', icon: Dashboard },
@@ -40,36 +38,32 @@ export interface TestTabConfig {
   component: ComponentType<TabComponentProps>;
 }
 
+export { normalizeTestTabId };
+
 // 单一数据源：Test Page 的所有 Tab 配置（包含组件）
 export const testTabs: TestTabConfig[] = [
-  { 
-    id: 'simulation', 
-    label: 'simulation', 
-    icon: Phone,
-    component: UnifiedTestLabTabContent
+  {
+    id: 'text',
+    label: 'text',
+    icon: Chat,
+    component: TextTestTab,
   },
-  { 
-    id: 'live', 
-    label: 'live', 
-    icon: Network_3,
-    component: WebSocketTabContent
-  },
-  { 
-    id: 'twilio', 
-    label: 'twilio', 
+  {
+    id: 'voice',
+    label: 'voice',
     icon: PhoneVoice,
-    component: TwilioTabContent
+    component: VoiceTestTab,
   },
-  { 
-    id: 'reviewer', 
-    label: 'reviewer', 
+  {
+    id: 'reviewer',
+    label: 'reviewer',
     icon: WatsonHealthAiStatus,
-    component: ReviewerTabContent
+    component: ReviewerTabContent,
   },
 ];
 
 // 用于 SideNav 的简化版本（向后兼容）
-export const testNavItems = testTabs.map(tab => ({
+export const testNavItems = testTabs.map((tab) => ({
   tab: tab.id,
   label: tab.label,
 }));

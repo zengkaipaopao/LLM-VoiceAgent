@@ -1,10 +1,11 @@
 import { NumberInput, Select, SelectItem, Stack, TextArea } from '@carbon/react';
-import { PromptFormValues } from '../../../../types/shared';
+import { LlmModelOption, PromptFormValues } from '../../../../types/shared';
 
 interface PromptEditorModelTabProps {
   form: PromptFormValues;
-  models: string[];
+  models: LlmModelOption[];
   loadingModels: boolean;
+  modelLoadError: string | null;
   onChange: <K extends keyof PromptFormValues>(field: K, value: PromptFormValues[K]) => void;
   t: (key: string) => string;
 }
@@ -18,6 +19,7 @@ export function PromptEditorModelTab({
   form,
   models,
   loadingModels,
+  modelLoadError,
   onChange,
   t,
 }: PromptEditorModelTabProps) {
@@ -38,13 +40,17 @@ export function PromptEditorModelTab({
         labelText={t('prompts.editor.fields.model')}
         value={form.llmModel}
         onChange={(event) => onChange('llmModel', event.target.value)}
-        helperText="Select a model supported by the provider"
+        helperText={
+          modelLoadError
+            ? `模型列表加载失败：${modelLoadError}`
+            : '尽可能展示更多官方模型，标签含义：[文本]/[实时]/[文本+实时]/[其他]'
+        }
         disabled={loadingModels}
       >
         {models.map((model) => (
-          <SelectItem key={model} value={model} text={model} />
+          <SelectItem key={model.value} value={model.value} text={model.label} />
         ))}
-        {!models.includes(form.llmModel) && form.llmModel && (
+        {!models.some((model) => model.value === form.llmModel) && form.llmModel && (
           <SelectItem value={form.llmModel} text={`${form.llmModel} (Current)`} />
         )}
       </Select>

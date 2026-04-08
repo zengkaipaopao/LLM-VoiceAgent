@@ -35,6 +35,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
     saving,
     models,
     loadingModels,
+    modelLoadError,
     isEditMode,
     handleChange,
     handleSave,
@@ -79,6 +80,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
               form={form}
               models={models}
               loadingModels={loadingModels}
+              modelLoadError={modelLoadError}
               onChange={handleChange}
               t={t}
             />

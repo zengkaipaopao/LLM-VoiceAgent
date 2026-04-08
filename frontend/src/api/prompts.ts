@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { http } from './http';
-import { PromptFormValues, PromptTemplate, VoiceConfig } from '../types/shared';
+import { LlmModelCapability, LlmModelOption, PromptFormValues, PromptTemplate, VoiceConfig } from '../types/shared';
 
 const JsonObjectSchema = z.record(z.string(), z.unknown());
 
@@ -82,8 +82,21 @@ const PromptListPayloadSchema = z.object({
   total: z.number().optional(),
 });
 
+const ModelCapabilitySchema = z.enum(['generate', 'live', 'both', 'other']);
+
+const PromptModelItemSchema = z.object({
+  name: z.string(),
+  capability: ModelCapabilitySchema.optional(),
+  is_generate: z.boolean().optional(),
+  is_live: z.boolean().optional(),
+  supported_actions: z.array(z.string()).optional(),
+});
+
 const PromptModelsPayloadSchema = z.object({
   models: z.array(z.string()),
+  items: z.array(PromptModelItemSchema).optional(),
+  source: z.string().optional(),
+  fetched_at: z.number().optional(),
 });
 
 type ApiPrompt = z.infer<typeof ApiPromptSchema>;
@@ -212,8 +225,68 @@ export async function deletePrompt(id: string): Promise<void> {
   await http.delete(`/prompts/${id}`);
 }
 
-export async function fetchModels(provider: string): Promise<string[]> {
+function modelCapabilityLabel(capability: LlmModelCapability): string {
+  switch (capability) {
+    case 'both':
+      return '文本+实时';
+    case 'generate':
+      return '文本';
+    case 'live':
+      return '实时';
+    default:
+      return '其他';
+  }
+}
+
+function capabilityOrder(capability: LlmModelCapability): number {
+  switch (capability) {
+    case 'both':
+      return 0;
+    case 'generate':
+      return 1;
+    case 'live':
+      return 2;
+    default:
+      return 3;
+  }
+}
+
+export async function fetchModels(provider: string): Promise<LlmModelOption[]> {
   const response = await http.get('/llm/models', { params: { provider } });
   const payload = PromptModelsPayloadSchema.parse(response.data.data);
-  return payload.models;
+
+  const fromItems = (payload.items || []).map((item) => {
+    const value = item.name.trim();
+    const capability = (item.capability || 'other') as LlmModelCapability;
+    const isGenerate = item.is_generate ?? (capability === 'generate' || capability === 'both');
+    const isLive = item.is_live ?? (capability === 'live' || capability === 'both');
+    return {
+      value,
+      label: `[${modelCapabilityLabel(capability)}] ${value}`,
+      capability,
+      isGenerate,
+      isLive,
+    } satisfies LlmModelOption;
+  });
+
+  const existing = new Set(fromItems.map((item) => item.value));
+  const fallbackOnly = payload.models
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0 && !existing.has(name))
+    .map(
+      (value) =>
+        ({
+          value,
+          label: `[其他] ${value}`,
+          capability: 'other' as const,
+          isGenerate: false,
+          isLive: false,
+        }) satisfies LlmModelOption
+    );
+
+  return [...fromItems, ...fallbackOnly].sort((a, b) => {
+    const orderDiff = capabilityOrder(a.capability) - capabilityOrder(b.capability);
+    if (orderDiff !== 0) return orderDiff;
+    return a.value.localeCompare(b.value);
+  });
 }

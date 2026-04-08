@@ -111,6 +111,16 @@ export interface ModelInfo {
   description?: string;
 }
 
+export type LlmModelCapability = 'generate' | 'live' | 'both' | 'other';
+
+export interface LlmModelOption {
+  value: string;
+  label: string;
+  capability: LlmModelCapability;
+  isGenerate: boolean;
+  isLive: boolean;
+}
+
 export interface ReservationRecord {
   id: string;
   timestamp: string;

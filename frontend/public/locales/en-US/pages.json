@@ -230,18 +230,15 @@
   },
   "test": {
     "title": "Real-time Debug Lab",
-    "subtitle": "Use the Unified Test Lab to simulate prompt-driven calls with data persistence, while keeping WebSocket and Twilio debugging in the same workspace.",
+    "subtitle": "Use one workspace to validate prompt behavior and voice connectivity, with both browser-direct and phone-gateway access modes.",
     "emptyState": "Test features under development",
-    "emptyDescription": "This page provides real-time debugging for WebSocket and Twilio inbound AI.",
+    "emptyDescription": "This page focuses on real-time voice link debugging. The phone gateway is an access mode, not the core business surface.",
     "tabs": {
       "ariaLabel": "Test Options",
-      "simulation": "Unified Test Lab",
-      "appointment": "Appointment Sim",
-      "chat": "LLM Chat",
+      "text": "Text Test",
+      "voice": "Voice Test",
       "reviewer": "Reviewer Mode",
-      "live": "Gemini Live",
-      "websocket": "WebSocket",
-      "twilio": "Twilio Inbound AI"
+      "appointment": "Appointment Sim"
     },
     "chat": {
       "input": {
@@ -343,7 +340,9 @@
         "streamFailed": "Streaming response failed",
         "sendMessageFailed": "Failed to send message",
         "noActiveSession": "Please create a test session first",
-        "finalizeFailed": "Failed to finalize session"
+        "finalizeFailed": "Failed to finalize session",
+        "closeBeforeNewSessionFailed": "Failed to close previous session before starting a new one",
+        "clearRequiresClose": "Failed to close current session. Please try again."
       },
       "info": {
         "sessionCreated": "Test session created: {{phone}}",

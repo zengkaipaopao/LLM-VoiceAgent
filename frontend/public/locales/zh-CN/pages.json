@@ -230,18 +230,15 @@
   },
   "test": {
     "title": "实时调试实验室",
-    "subtitle": "通过文字对话测试台模拟 Prompt 驱动通话并落库，同时在同一页保留 WebSocket 与 Twilio 调试链路。",
+    "subtitle": "通过统一测试台验证 Prompt 与语音链路，支持浏览器直连与电话网关两种接入方式。",
     "emptyState": "测试功能开发中",
-    "emptyDescription": "此页面将提供 WebSocket 与 Twilio 入站 AI 的实时调试功能。",
+    "emptyDescription": "此页面将提供语音链路实时调试能力，电话网关仅作为接入方式。",
     "tabs": {
       "ariaLabel": "测试选项",
-      "simulation": "文字对话测试台",
-      "appointment": "预约模拟",
-      "chat": "LLM 对话",
+      "text": "文字测试",
+      "voice": "语音测试",
       "reviewer": "审查员模式",
-      "live": "Gemini Live",
-      "websocket": "WebSocket",
-      "twilio": "Twilio 入站 AI"
+      "appointment": "预约模拟"
     },
     "chat": {
       "input": {
@@ -343,7 +340,9 @@
         "streamFailed": "流式响应失败",
         "sendMessageFailed": "发送消息失败",
         "noActiveSession": "请先创建测试会话",
-        "finalizeFailed": "结束会话失败"
+        "finalizeFailed": "结束会话失败",
+        "closeBeforeNewSessionFailed": "关闭旧会话失败，无法开始新会话",
+        "clearRequiresClose": "关闭当前会话失败，请重试。"
       },
       "info": {
         "sessionCreated": "测试会话已创建：{{phone}}",

@@ -1,82 +1,96 @@
-# Twilio Inbound Voice Engine Architecture
+# 语音连接测试与 Gemini Live 架构（企业实现）
 
-## Goal
-- Twilio only handles telephony ingress/egress.
-- AI conversation engine is selectable per inbound flow (`twilio` or `gemini`).
-- Prompt template controls `llm_provider/llm_model/system_prompt`.
-- No silent fallback across providers in production path.
+## 1. 目标与边界
+- 本系统的语音核心是 **Gemini Live 会话**，不是 Twilio。
+- Twilio 仅作为“电话网关接入方式”，用于 PSTN 呼入/呼出。
+- 语音测试页面的核心目标是：验证“能连通、能收音、能转写、能回复、多轮可持续”。
 
-## Runtime Modes
-- `voice_engine=twilio`: Legacy `<Gather>` + `<Say>` loop (Twilio ASR/TTS, backend LLM text generation).
-- `voice_engine=gemini`: Twilio Media Stream bridge to Gemini Live (Google handles realtime understanding + speech generation).
+## 2. 接入方式
 
-### Gemini Turn Segmentation
-- `TWILIO_GEMINI_ACTIVITY_MODE=auto` (recommended): rely on Gemini Live automatic activity detection.
-- `TWILIO_GEMINI_ACTIVITY_MODE=manual`: backend VAD + explicit `ActivityEnd` signals (debug fallback only).
+### 2.1 方式 A（推荐）: 浏览器直连 Gemini Live
+- 链路: Browser Mic -> `/api/v1/live/ws` -> Gemini Live
+- 用途: 最快定位语音理解/对话问题，不受电信网络干扰。
+- 优点: 调试成本最低，回归速度快。
 
-## High-Level Architecture
+### 2.2 方式 B（电话网关）: Twilio + Gemini Live
+- 链路: PSTN/Twilio Voice SDK -> Twilio Number -> `/api/v1/twilio/voice/incoming` -> Media Stream -> Gemini Live
+- 用途: 端到端电话场景回归。
+- 定位: 这是“接入层验证”，不是模型能力验证的首选入口。
+
+## 3. 对话模式（关键）
+
+### 3.1 A 模式（默认）: Gemini 自动 Activity Detection
+- 原则: **持续发送 `audio_chunk`**，由 Gemini Live 自动判定回合边界。
+- 前端不再手动发送 `activity_start` / `activity_end`。
+- `audio_end` 仅在用户明确停止麦克风或会话关闭时发送。
+
+### 3.2 手动模式（仅调试）
+- 仅在排查极端噪声或特定设备问题时启用。
+- 手动模式下可发送 `activity_start` / `activity_end`。
+- 不可与自动模式混用，否则容易出现“只回复一句/回合卡死”。
+
+## 4. 运行时控制面
+
+### 4.1 Prompt 与模型
+- Prompt 模板决定:
+  - `system_prompt`
+  - `llm_provider`
+  - `llm_model`
+  - `voice_id`（可选）
+- 语音测试页可覆盖音色；留空则回落到 Prompt/后端默认。
+
+### 4.2 Twilio 入站路由
+- Voice URL 示例:
+  - `https://<ngrok>/api/v1/twilio/voice/incoming?mode=agent&voice_engine=gemini`
+- 引擎解析优先级:
+  1. query `voice_engine`
+  2. `TWILIO_INCOMING_VOICE_ENGINE`
+
+### 4.3 Prompt 解析优先级（入站）
+1. query `prompt_code`
+2. `TWILIO_INCOMING_PROMPT_MAP`
+3. `TWILIO_DEFAULT_PROMPT_CODE`
+
+## 5. 高层架构
 ```mermaid
 flowchart LR
-  PSTN["Caller (PSTN)"] --> TW["Twilio Number"]
-  TW --> IN["/api/v1/twilio/voice/incoming"]
+  subgraph Direct["方式 A: 浏览器直连"]
+    B["Browser Mic"] --> R["/api/v1/live/ws"]
+    R --> G["Gemini Live Session"]
+    G --> R
+    R --> B
+  end
 
-  IN -->|voice_engine=twilio| GATHER["TwiML <Gather>/<Say>"]
-  GATHER --> TURN["/api/v1/twilio/voice/agent/turn"]
-  TURN --> LLM["Prompt Runtime + Provider Engine"]
-  LLM --> GATHER
-
-  IN -->|voice_engine=gemini| STREAM["TwiML <Connect><Stream>"]
-  STREAM --> BRIDGE["/api/v1/twilio/voice/stream (WS Bridge)"]
-  BRIDGE --> GLIVE["Gemini Live Session"]
-  GLIVE --> BRIDGE
-  BRIDGE --> STREAM
+  subgraph PSTN["方式 B: 电话网关接入"]
+    U["Caller / Voice SDK"] --> T["Twilio Number"]
+    T --> I["/api/v1/twilio/voice/incoming"]
+    I --> S["TwiML <Connect><Stream>"]
+    S --> W["/api/v1/twilio/voice/stream"]
+    W --> G2["Gemini Live Session"]
+    G2 --> W
+    W --> S
+  end
 ```
 
-## Gemini Stream Sequence
-```mermaid
-sequenceDiagram
-  participant U as Caller
-  participant T as Twilio
-  participant B as Backend WS Bridge
-  participant G as Gemini Live
+## 6. 关键工程约束
+- 单会话只允许一种回合控制策略（自动或手动），严禁混用。
+- 语音链路的可观测性必须包含:
+  - 会话建立事件
+  - 输入/输出转写
+  - turn complete / interrupted
+  - 音频输入是否持续（chunk 计数）
+- 生产路径启用 Twilio Webhook 验签:
+  - `TWILIO_VALIDATE_WEBHOOKS=true`
 
-  U->>T: Phone call
-  T->>B: WS start/media events (mulaw/8k)
-  B->>G: audio_chunk (pcm/16k)
-  G-->>B: audio_chunk (pcm/24k) + transcripts
-  B-->>T: WS media events (mulaw/8k)
-  T-->>U: Realtime voice playback
-```
+## 7. 配置清单
+- `TWILIO_INCOMING_VOICE_ENGINE=twilio|gemini`
+- `TWILIO_GEMINI_ACTIVITY_MODE=auto|manual`
+- `TWILIO_DEFAULT_PROMPT_CODE=base_appointment`
+- `TWILIO_INCOMING_PROMPT_MAP=+8150xxxx:base_appointment`
+- `TWILIO_STRICT_TEMPLATE_PROVIDER=true`
 
-## Control Plane Rules
-- Inbound prompt resolution priority:
-  1. `prompt_code` query parameter
-  2. `TWILIO_INCOMING_PROMPT_MAP`
-  3. `TWILIO_DEFAULT_PROMPT_CODE`
-- Voice engine resolution:
-  1. `voice_engine` query parameter
-  2. `TWILIO_INCOMING_VOICE_ENGINE` (default)
-- Gemini stream mode requires resolved provider to be `gemini`.
-
-## Enterprise Guardrails
-- Webhook signature validation enabled (`TWILIO_VALIDATE_WEBHOOKS=true`).
-- Explicit provider availability checks before stream connect.
-- Prompt template lookup is server-side only; client does not choose provider directly.
-- Structured logs include `CallSid`, engine, prompt code, provider, model.
-- No implicit provider downgrade when strict template-provider mode is enabled.
-
-## Configuration
-- Inbound number Voice URL example:
-  - `https://<your-ngrok>/api/v1/twilio/voice/incoming?mode=agent&voice_engine=gemini`
-- Env switches:
-  - `TWILIO_INCOMING_VOICE_ENGINE=twilio|gemini`
-  - `TWILIO_GEMINI_ACTIVITY_MODE=auto|manual`
-  - `TWILIO_DEFAULT_PROMPT_CODE=base_appointment`
-  - `TWILIO_INCOMING_PROMPT_MAP=+8150xxxx:base_appointment`
-  - `TWILIO_STRICT_TEMPLATE_PROVIDER=true`
-
-## Rollout Plan
-1. Keep default `voice_engine=twilio` for baseline stability.
-2. Enable `voice_engine=gemini` on one test number.
-3. Observe call success rate, latency, interruption behavior, and transcript quality.
-4. Promote to production number after SLO pass.
+## 8. 回归顺序（建议）
+1. 先跑方式 A（浏览器直连）验证多轮对话稳定性。
+2. 再跑方式 B（Twilio 电话网关）验证 PSTN 端到端。
+3. 对比两者转写质量、打断表现、平均首包时延。
+4. 仅在方式 A 稳定后，放量电话入口。

@@ -10,6 +10,7 @@ interface HandleLiveEventOptions {
   appendAssistantText: (value: string) => void;
   appendInputTranscript: (value: string, isFinal: boolean) => void;
   appendOutputTranscript: (value: string, isFinal: boolean) => void;
+  flushTranscriptTurns: () => void;
   playPcmAudioChunk: (chunk: string, mimeType?: string) => Promise<void>;
   setTotalTokens: (value: number) => void;
   setError: (value: string) => void;
@@ -24,6 +25,7 @@ export async function handleLiveEventPayload({
   appendAssistantText,
   appendInputTranscript,
   appendOutputTranscript,
+  flushTranscriptTurns,
   playPcmAudioChunk,
   setTotalTokens,
   setError,
@@ -66,6 +68,7 @@ export async function handleLiveEventPayload({
       }
       return;
     case 'turn_complete':
+      flushTranscriptTurns();
       appendAssistantText('\n');
       if (event.reason) {
         pushLog('info', `Turn complete: ${event.reason}`);
@@ -74,6 +77,7 @@ export async function handleLiveEventPayload({
       }
       return;
     case 'interrupted':
+      flushTranscriptTurns();
       pushLog('warning', 'Model response interrupted by activity.');
       return;
     case 'warning':

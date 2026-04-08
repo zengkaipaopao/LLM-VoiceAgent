@@ -21,7 +21,7 @@ interface UnifiedSidebarPanelsProps {
   canClearPanel: boolean;
   onStartSession: () => Promise<void>;
   onFinalize: () => Promise<void>;
-  onClear: () => void;
+  onClear: () => Promise<void>;
   selectedPrompt: PromptTemplate | undefined;
   session: StartTestSessionResponse | null;
   totalTokens: number;

@@ -16,11 +16,9 @@
     "mainNav": "メインナビゲーション"
   },
   "test": {
-    "simulation": "統合テストラボ",
-    "appointment": "予約シミュレーション",
+    "text": "テキストテスト",
+    "voice": "音声テスト",
     "reviewer": "レビュアーモード",
-    "websocket": "WebSocket",
-    "twilio": "Twilio WebCall",
-    "chat": "LLMチャット"
+    "appointment": "予約シミュレーション"
   }
 }

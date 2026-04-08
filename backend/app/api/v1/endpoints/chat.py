@@ -21,6 +21,7 @@ from app.schemas.chat import (
     TestSessionStartResponse,
 )
 from app.services.chat_service import ChatService
+from app.services.test_session_service import TestSessionService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -52,7 +53,7 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
 async def start_test_session(request: TestSessionStartRequest, db: AsyncSession = Depends(get_db)):
     """Start a unified test session with generated simulated phone number."""
     try:
-        service = ChatService(db)
+        service = TestSessionService(db)
         result = await service.start_test_session(
             template_code=request.template_code,
             provider=request.provider,
@@ -82,7 +83,14 @@ async def start_test_session(request: TestSessionStartRequest, db: AsyncSession 
 async def finalize_test_session(request: TestSessionFinalizeRequest, db: AsyncSession = Depends(get_db)):
     """Finalize test session and optionally extract appointment (idempotent)."""
     try:
-        service = ChatService(db)
+        chat_service = ChatService(db)
+        service = TestSessionService(
+            db,
+            call_repo=chat_service.call_repo,
+            appointment_repo=chat_service.appointment_repo,
+            prompt_service=chat_service.prompt_service,
+            extract_appointment=chat_service.extract_appointment,
+        )
         result = await service.finalize_test_session(
             call_id=request.call_id,
             template_code=request.template_code,

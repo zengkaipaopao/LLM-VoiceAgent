@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { createPrompt, fetchModels, updatePrompt } from '../../../api/prompts';
-import { PromptFormValues, PromptTemplate } from '../../../types/shared';
+import { LlmModelOption, PromptFormValues, PromptTemplate } from '../../../types/shared';
 import {
   buildPromptFormValues,
   defaultPromptFormValues,
@@ -17,8 +17,9 @@ interface UsePromptEditorFormArgs {
 export interface UsePromptEditorFormResult {
   form: PromptFormValues;
   saving: boolean;
-  models: string[];
+  models: LlmModelOption[];
   loadingModels: boolean;
+  modelLoadError: string | null;
   isEditMode: boolean;
   handleChange: <K extends keyof PromptFormValues>(field: K, value: PromptFormValues[K]) => void;
   handleSave: () => Promise<void>;
@@ -44,8 +45,9 @@ export function usePromptEditorForm({
 }: UsePromptEditorFormArgs): UsePromptEditorFormResult {
   const [form, setForm] = useState<PromptFormValues>({ ...defaultPromptFormValues });
   const [saving, setSaving] = useState(false);
-  const [models, setModels] = useState<string[]>([]);
+  const [models, setModels] = useState<LlmModelOption[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
+  const [modelLoadError, setModelLoadError] = useState<string | null>(null);
   const isEditMode = !!prompt;
 
   useEffect(() => {
@@ -65,11 +67,13 @@ export function usePromptEditorForm({
         const fetchedModels = await fetchModels(provider);
         if (!cancelled) {
           setModels(fetchedModels);
+          setModelLoadError(null);
         }
       } catch (error) {
         console.error('Failed to fetch models', error);
         if (!cancelled) {
           setModels([]);
+          setModelLoadError(error instanceof Error ? error.message : String(error));
         }
       } finally {
         if (!cancelled) {
@@ -121,6 +125,7 @@ export function usePromptEditorForm({
     saving,
     models,
     loadingModels,
+    modelLoadError,
     isEditMode,
     handleChange,
     handleSave,

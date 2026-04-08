@@ -1,7 +1,7 @@
 import { MouseEvent, RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import { testNavItems } from '../../../config/navigation';
+import { normalizeTestTabId, testNavItems } from '../../../config/navigation';
 
 interface UseAppLayoutShellResult {
   pathname: string;
@@ -26,8 +26,8 @@ export function useAppLayoutShell(): UseAppLayoutShellResult {
       return null;
     }
 
-    const fallback = testNavItems[0]?.tab ?? 'simulation';
-    return new URLSearchParams(location.search).get('tab') ?? fallback;
+    const fallback = testNavItems[0]?.tab ?? 'text';
+    return normalizeTestTabId(new URLSearchParams(location.search).get('tab') ?? fallback);
   }, [location.pathname, location.search]);
 
   const expandNav = useCallback(() => {

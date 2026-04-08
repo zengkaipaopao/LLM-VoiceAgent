@@ -3,6 +3,7 @@ Google Gemini LLM service implementation.
 """
 import json
 import logging
+import re
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from google import genai
@@ -244,22 +245,60 @@ class GeminiService(BaseLLMService):
 
     async def list_models(self) -> List[str]:
         """List available Gemini models."""
+        catalog = await self.list_models_catalog()
+        return [item["name"] for item in catalog]
+
+    @staticmethod
+    def _normalize_action_name(action: str) -> str:
+        return re.sub(r"[^a-z]", "", (action or "").lower())
+
+    async def list_models_catalog(self) -> List[Dict[str, Any]]:
+        """List Gemini models with capability metadata for UI grouping."""
         try:
             pager = await self.client.aio.models.list()
-            models: List[str] = []
+            models: List[Dict[str, Any]] = []
 
             async for model in pager:
                 name = (model.name or "").replace("models/", "")
                 if not name or "gemini" not in name.lower():
                     continue
 
-                supported_actions = model.supported_actions or []
-                if supported_actions and "generateContent" not in supported_actions:
-                    continue
+                supported_actions = [
+                    str(action).strip()
+                    for action in (model.supported_actions or [])
+                    if str(action).strip()
+                ]
+                normalized_actions = {self._normalize_action_name(action) for action in supported_actions}
+                is_generate = "generatecontent" in normalized_actions
+                is_live = "bidigeneratecontent" in normalized_actions or "live" in name.lower()
 
-                models.append(name)
+                capability = "other"
+                if is_generate and is_live:
+                    capability = "both"
+                elif is_generate:
+                    capability = "generate"
+                elif is_live:
+                    capability = "live"
 
-            return sorted(set(models))
+                models.append(
+                    {
+                        "name": name,
+                        "capability": capability,
+                        "is_generate": is_generate,
+                        "is_live": is_live,
+                        "supported_actions": sorted(set(supported_actions)),
+                    }
+                )
+
+            unique_by_name: Dict[str, Dict[str, Any]] = {}
+            for item in models:
+                unique_by_name[item["name"]] = item
+
+            capability_order = {"both": 0, "generate": 1, "live": 2, "other": 3}
+            return sorted(
+                unique_by_name.values(),
+                key=lambda item: (capability_order.get(str(item.get("capability")), 9), str(item.get("name", "")).lower()),
+            )
         except Exception as e:
             raise LLMAPIError(f"Gemini list models error: {e}")
 

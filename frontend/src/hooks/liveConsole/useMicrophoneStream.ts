@@ -86,6 +86,8 @@ export function useMicrophoneStream({
 
   const stopMicrophone = useCallback(() => {
     releaseMicrophoneResources();
+    // Keep a single long-running audio stream and let Gemini Live auto-detect turns.
+    // Send audio_end only when user explicitly stops microphone streaming.
     sendLiveEvent({ type: 'audio_end' });
     setMicStatus('off');
     pushLog('info', 'Microphone streaming stopped.');

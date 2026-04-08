@@ -21,7 +21,7 @@ interface UnifiedSetupPanelProps {
   canClearPanel: boolean;
   onStartSession: () => Promise<void>;
   onFinalize: () => Promise<void>;
-  onClear: () => void;
+  onClear: () => Promise<void>;
 }
 
 export function UnifiedSetupPanel({

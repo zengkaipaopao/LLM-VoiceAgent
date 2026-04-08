@@ -24,10 +24,14 @@ from app.schemas.chat import (
     TestSessionFinalizeResponse,
     TestSessionStartResponse,
 )
+from app.services.chat_runtime_service import ChatRuntimeService
 from app.services.extraction_service import ExtractionService
 from app.services.llm.exceptions import LLMRateLimitError
 from app.services.llm.factory import LLMFactory
+from app.services.prompt_runtime_resolver import resolve_prompt_runtime
 from app.services.prompt_service import PromptService
+from app.services.test_session_service import TestSessionService
+from app.services.transcript_sanitizer import find_injected_user_turn_start, sanitize_assistant_turn
 from app.utils.datetime_utils import now_tokyo_naive, to_tokyo_naive
 
 
@@ -123,22 +127,7 @@ class ChatService:
 
     @classmethod
     def _sanitize_assistant_response(cls, text: str) -> str:
-        if not text:
-            return ""
-        normalized = text.lstrip("\ufeff")
-        normalized = cls._ASSISTANT_PREFIX_PATTERN.sub("", normalized, count=1)
-
-        # Guardrail: trim model-injected next-turn snippets like
-        # "User: ... / Assistant: ...", keeping only the current assistant turn.
-        injected_turn_start = cls._find_injected_user_turn_start(normalized)
-        if injected_turn_start is not None:
-            normalized = normalized[:injected_turn_start]
-
-        # Remove accidental role labels that appear mid-response during stream generation.
-        normalized = cls._ASSISTANT_INLINE_PREFIX_PATTERN.sub("\n", normalized)
-        normalized = re.sub(r"\n{3,}", "\n\n", normalized)
-
-        return normalized.strip()
+        return sanitize_assistant_turn(text)
 
     @classmethod
     def _extract_leading_sentence(cls, text: str) -> str:
@@ -198,12 +187,7 @@ class ChatService:
 
     @classmethod
     def _find_injected_user_turn_start(cls, text: str) -> Optional[int]:
-        if not text:
-            return None
-        injected_turn = cls._INJECTED_USER_TURN_PATTERN.search(text)
-        if not injected_turn:
-            return None
-        return injected_turn.start()
+        return find_injected_user_turn_start(text)
 
     @classmethod
     def _normalize_messages(cls, raw_messages: Any) -> list[dict[str, str]]:
@@ -1665,6 +1649,23 @@ class ChatService:
             raise ValueError(f"Template '{template_code}' not found")
         return template
 
+    def _build_chat_runtime_service(self) -> ChatRuntimeService:
+        return ChatRuntimeService(
+            self.db,
+            call_repo=self.call_repo,
+            prompt_service=self.prompt_service,
+            normalize_messages=self._normalize_messages,
+        )
+
+    def _build_test_session_service(self) -> TestSessionService:
+        return TestSessionService(
+            self.db,
+            call_repo=self.call_repo,
+            appointment_repo=self.appointment_repo,
+            prompt_service=self.prompt_service,
+            extract_appointment=self.extract_appointment,
+        )
+
     async def start_test_session(
         self,
         *,
@@ -1673,50 +1674,11 @@ class ChatService:
         model: Optional[str] = None,
         caller_name: Optional[str] = None,
     ) -> TestSessionStartResponse:
-        """Create a unified test session with a simulated phone number."""
-        template = await self.prompt_service.get_template(template_code)
-        if not template:
-            raise ValueError(f"Template '{template_code}' not found")
-
-        llm_provider = provider or getattr(template, "llm_provider", None) or "gemini"
-        llm_model = model or getattr(template, "llm_model", None) or settings.default_llm_model
-
-        started_at = now_tokyo_naive()
-        simulated_phone = self._generate_simulated_phone()
-
-        extra_data = {
-            "simulation": True,
-            "source": "test_lab",
-            "simulated_phone": simulated_phone,
-            "template_code": template_code,
-            "llm_provider": llm_provider,
-            "llm_model": llm_model,
-            "messages": [],
-        }
-
-        call_data = {
-            "direction": "inbound",
-            "counterpart": simulated_phone,
-            "caller_name": caller_name or "Test Caller",
-            "status": "ongoing",
-            "handler_type": "ai",
-            "is_answered": True,
-            "started_at": started_at,
-            "answered_at": started_at,
-            "prompt_id": template.id,
-            "extra_data": extra_data,
-            "summary": "Unified test session",
-        }
-
-        call = await self.call_repo.create(call_data)
-
-        return TestSessionStartResponse(
-            call_id=call.id,
-            simulated_phone=simulated_phone,
-            started_at=call.started_at,
+        return await self._build_test_session_service().start_test_session(
             template_code=template_code,
-            llm_provider=llm_provider,
-            llm_model=llm_model,
+            provider=provider,
+            model=model,
+            caller_name=caller_name,
         )
 
     async def finalize_test_session(
@@ -1726,174 +1688,25 @@ class ChatService:
         template_code: Optional[str] = None,
         run_extraction: bool = True,
     ) -> TestSessionFinalizeResponse:
-        """Finalize call lifecycle and optionally extract appointment (idempotent)."""
-        call = await self.call_repo.get(call_id)
-        if not call:
-            raise ValueError(f"Call {call_id} not found")
-
-        now = now_tokyo_naive()
-        if not call.started_at:
-            call.started_at = now
-        if not call.answered_at:
-            call.answered_at = call.started_at
-        if not call.ended_at:
-            call.ended_at = now
-
-        call.duration_seconds = self._compute_duration_seconds(call.started_at, call.ended_at)
-        call.status = "completed"
-        call.is_answered = True
-
-        extra_data = call.extra_data or {}
-        extra_data.setdefault("simulation", True)
-        extra_data.setdefault("source", "test_lab")
-        if template_code:
-            extra_data["template_code"] = template_code
-        extra_data["finalized_at"] = now.isoformat()
-        call.extra_data = extra_data
-
-        await self.db.commit()
-        await self.db.refresh(call)
-
-        extraction_result: Optional[ExtractionResponse] = None
-        appointment_id = None
-        already_extracted = False
-
-        if run_extraction:
-            operation_execution = (call.extra_data or {}).get("operation_execution")
-            if isinstance(operation_execution, dict):
-                op_type = str(operation_execution.get("operation") or "").lower()
-                appt_id = operation_execution.get("appointment_id")
-                if op_type in {"update", "cancel"} and appt_id:
-                    try:
-                        appointment_id = UUID(str(appt_id))
-                    except (TypeError, ValueError):
-                        appointment_id = None
-                    if appointment_id:
-                        already_extracted = True
-                        extraction_result = ExtractionResponse(
-                            success=True,
-                            appointment_id=appointment_id,
-                            extracted_data=operation_execution,
-                            confidence=1.0,
-                            message="已执行预约变更/取消，跳过新建提取",
-                        )
-                        return TestSessionFinalizeResponse(
-                            call_id=call.id,
-                            status=call.status,
-                            ended_at=call.ended_at,
-                            duration_seconds=call.duration_seconds or 0,
-                            appointment_id=appointment_id,
-                            extraction=extraction_result,
-                            already_extracted=already_extracted,
-                        )
-
-            existing = await self.appointment_repo.get_by_call_id(call.id)
-            if existing:
-                already_extracted = True
-                appointment_id = existing.id
-                extraction_result = ExtractionResponse(
-                    success=True,
-                    appointment_id=existing.id,
-                    extracted_data=existing.extracted_data or {},
-                    confidence=1.0,
-                    message="已有预约记录，跳过重复提取",
-                )
-            else:
-                extraction_request = ExtractionRequest(
-                    call_id=call.id,
-                    template_code=template_code or extra_data.get("template_code"),
-                )
-                extraction_result = await self.extract_appointment(extraction_request)
-                appointment_id = extraction_result.appointment_id
-
-        return TestSessionFinalizeResponse(
-            call_id=call.id,
-            status=call.status,
-            ended_at=call.ended_at,
-            duration_seconds=call.duration_seconds or 0,
-            appointment_id=appointment_id,
-            extraction=extraction_result,
-            already_extracted=already_extracted,
+        return await self._build_test_session_service().finalize_test_session(
+            call_id=call_id,
+            template_code=template_code,
+            run_extraction=run_extraction,
         )
 
     async def get_or_create_call(self, call_id: Optional[UUID] = None) -> Call:
         """Get existing call or create a new one."""
-        if call_id:
-            call = await self.call_repo.get(call_id)
-            if not call:
-                raise ValueError(f"Call {call_id} not found")
-            return call
-
-        call_data = {
-            "direction": "inbound",
-            "counterpart": "chat_user",
-            "status": "ongoing",
-            "handler_type": "ai",
-        }
-        return await self.call_repo.create(call_data)
+        return await self._build_chat_runtime_service().get_or_create_call(call_id)
 
     async def _setup_chat_context(self, request: ChatRequest, call: Call) -> dict[str, Any]:
         """Setup context for a chat message including templates and LLM client."""
-        extra_data = call.extra_data or {}
-        if request.template_code and request.template_code != "general_appointment":
-            resolved_template_code = request.template_code
-        else:
-            resolved_template_code = extra_data.get("template_code", request.template_code)
-
-        template = await self._resolve_template(resolved_template_code)
-
-        llm_provider = (
-            request.provider
-            or extra_data.get("llm_provider")
-            or getattr(template, "llm_provider", None)
-            or "gemini"
-        )
-        llm_model = (
-            request.model
-            or extra_data.get("llm_model")
-            or getattr(template, "llm_model", None)
-            or settings.default_llm_model
-        )
-
-        llm_service = LLMFactory.create(
-            provider=llm_provider,
-            api_key=settings.google_api_key,
-            model=llm_model,
-        )
-
-        messages = self._normalize_messages(extra_data.get("messages"))
-
-        system_prompt = ""
-        if template:
-            system_prompt = self.prompt_service.render_prompt(
-                template,
-                {"current_time": now_tokyo_naive().isoformat()},
-            )
-        else:
-            system_prompt = f"""
-            You are an AI assistant for appointment booking.
-            Current time: {now_tokyo_naive().isoformat()}
-            User wants to book an appointment.
-            Extract: name, time, purpose.
-            """
-
-        if not messages:
-            messages.append({"role": "system", "content": system_prompt})
-
-        return {
-            "template": template,
-            "llm_service": llm_service,
-            "messages": messages,
-            "system_prompt": system_prompt,
-            "template_code": resolved_template_code,
-            "llm_provider": llm_provider,
-            "llm_model": llm_model,
-        }
+        return await self._build_chat_runtime_service().setup_chat_context(request, call)
 
     async def process_chat(self, request: ChatRequest) -> ChatResponse:
         """Process a single chat request and return a response."""
-        call = await self.get_or_create_call(request.call_id)
-        context = await self._setup_chat_context(request, call)
+        chat_runtime = self._build_chat_runtime_service()
+        call = await chat_runtime.get_or_create_call(request.call_id)
+        context = await chat_runtime.setup_chat_context(request, call)
 
         template = context["template"]
         llm_service = context["llm_service"]
@@ -1947,32 +1760,14 @@ class ChatService:
             prior_assistant_messages=prior_assistant_messages,
         )
         messages.append({"role": "assistant", "content": response})
-
-        extra_data = dict(call.extra_data or {})
-        extra_data["messages"] = self._normalize_messages(messages)
-        extra_data["template_code"] = context["template_code"]
-        extra_data["llm_provider"] = context["llm_provider"]
-        extra_data["llm_model"] = context["llm_model"]
-        if quota_notice_reason:
-            extra_data["llm_quota_notice"] = {
-                "reason": quota_notice_reason,
-                "timestamp": now_tokyo_naive().isoformat(),
-            }
-        else:
-            extra_data.pop("llm_quota_notice", None)
-
-        transcript_update = call.transcript or ""
-        transcript_update += (
-            f"\n\n用户: {request.message}\n助手: {response}"
-            if transcript_update
-            else f"用户: {request.message}\n助手: {response}"
+        await chat_runtime.persist_turn(
+            call=call,
+            user_message=request.message,
+            assistant_message=response,
+            context=context,
+            messages=messages,
+            quota_notice_reason=quota_notice_reason,
         )
-
-        call.extra_data = extra_data
-        call.transcript = transcript_update
-
-        await self.db.commit()
-        await self.db.refresh(call)
 
         input_text = request.message + (system_prompt if len(messages) <= 2 else "") + json.dumps(messages)
         total_tokens = count_tokens(input_text) + count_tokens(response)
@@ -1982,12 +1777,13 @@ class ChatService:
     async def stream_chat(self, request: ChatRequest) -> AsyncIterator[str]:
         """Process a chat request and stream the response via SSE."""
         try:
-            call = await self.get_or_create_call(request.call_id)
+            chat_runtime = self._build_chat_runtime_service()
+            call = await chat_runtime.get_or_create_call(request.call_id)
 
             if not request.call_id:
                 yield f"data: {json.dumps({'type': 'call_id', 'call_id': str(call.id)})}\n\n"
 
-            context = await self._setup_chat_context(request, call)
+            context = await chat_runtime.setup_chat_context(request, call)
             template = context["template"]
             llm_service = context["llm_service"]
             messages = context["messages"]
@@ -2065,31 +1861,15 @@ class ChatService:
                 prior_assistant_messages=prior_assistant_messages,
             )
             messages.append({"role": "assistant", "content": full_response})
-
-            extra_data = dict(call.extra_data or {})
-            extra_data["messages"] = self._normalize_messages(messages)
-            extra_data["template_code"] = context["template_code"]
-            extra_data["llm_provider"] = context["llm_provider"]
-            extra_data["llm_model"] = context["llm_model"]
-            if quota_notice_reason:
-                extra_data["llm_quota_notice"] = {
-                    "reason": quota_notice_reason,
-                    "timestamp": now_tokyo_naive().isoformat(),
-                }
-            else:
-                extra_data.pop("llm_quota_notice", None)
-
-            transcript_update = call.transcript or ""
-            transcript_update += (
-                f"\n\n用户: {request.message}\n助手: {full_response}"
-                if transcript_update
-                else f"用户: {request.message}\n助手: {full_response}"
+            await chat_runtime.persist_turn(
+                call=call,
+                user_message=request.message,
+                assistant_message=full_response,
+                context=context,
+                messages=messages,
+                quota_notice_reason=quota_notice_reason,
+                refresh_call=False,
             )
-
-            call.extra_data = extra_data
-            call.transcript = transcript_update
-
-            await self.db.commit()
 
             input_text = request.message + (system_prompt if len(messages) <= 2 else "") + json.dumps(messages)
             total_tokens = count_tokens(input_text) + count_tokens(full_response)
@@ -2149,10 +1929,17 @@ class ChatService:
                 raise ValueError("No conversation found in call")
 
             template_code = request.template_code or extra_data.get("template_code", "general_appointment")
-            template = await self._resolve_template(template_code)
+            runtime = await resolve_prompt_runtime(
+                self.prompt_service,
+                template_code=template_code,
+                default_code=template_code,
+            )
+            template = runtime.template
+            if not template:
+                raise ValueError(f"Template '{template_code}' not found")
 
-            llm_provider = extra_data.get("llm_provider", "gemini")
-            llm_model = extra_data.get("llm_model", settings.default_llm_model)
+            llm_provider = extra_data.get("llm_provider") or runtime.llm_provider or "gemini"
+            llm_model = extra_data.get("llm_model") or runtime.llm_model or settings.default_llm_model
 
             llm_service = LLMFactory.create(
                 provider=llm_provider,

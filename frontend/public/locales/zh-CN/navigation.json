@@ -16,11 +16,9 @@
     "mainNav": "主要导航"
   },
   "test": {
-    "simulation": "文字对话测试台",
-    "appointment": "预约模拟",
+    "text": "文字测试",
+    "voice": "语音测试",
     "reviewer": "审查员模式",
-    "websocket": "WebSocket",
-    "twilio": "Twilio WebCall",
-    "chat": "LLM 聊天"
+    "appointment": "预约模拟"
   }
 }

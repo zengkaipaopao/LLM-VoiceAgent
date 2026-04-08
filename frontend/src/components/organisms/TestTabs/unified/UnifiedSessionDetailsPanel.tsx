@@ -30,7 +30,14 @@ export function UnifiedSessionDetailsPanel({
         </p>
       </div>
 
-      {selectedPrompt && (
+      {session ? (
+        <p className={styles.promptInfo}>
+          {t('pages:test.unified.meta.currentSessionModel', '当前会话模型: {{provider}}/{{model}}', {
+            provider: session.llm_provider || 'gemini',
+            model: session.llm_model || '-',
+          })}
+        </p>
+      ) : selectedPrompt ? (
         <p className={styles.promptInfo}>
           {t('pages:test.unified.meta.currentModel', 'Model: {{provider}}/{{model}} · Temp {{temperature}}', {
             provider: selectedPrompt.llmProvider,
@@ -38,7 +45,7 @@ export function UnifiedSessionDetailsPanel({
             temperature: selectedPrompt.temperature,
           })}
         </p>
-      )}
+      ) : null}
 
       {session ? (
         <dl className={styles.metaList}>

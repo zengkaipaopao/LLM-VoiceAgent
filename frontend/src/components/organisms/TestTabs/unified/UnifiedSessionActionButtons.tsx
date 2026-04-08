@@ -11,7 +11,7 @@ interface UnifiedSessionActionButtonsProps {
   canClearPanel: boolean;
   onStartSession: () => Promise<void>;
   onFinalize: () => Promise<void>;
-  onClear: () => void;
+  onClear: () => Promise<void>;
 }
 
 export function UnifiedSessionActionButtons({
@@ -52,7 +52,14 @@ export function UnifiedSessionActionButtons({
         {t('pages:test.unified.actions.finalize', 'Finalize & Extract')}
       </Button>
 
-      <Button kind="ghost" size="sm" onClick={onClear} disabled={!canClearPanel}>
+      <Button
+        kind="ghost"
+        size="sm"
+        onClick={() => {
+          void onClear();
+        }}
+        disabled={!canClearPanel || isBusy}
+      >
         {t('pages:test.unified.actions.clearPanel', 'Clear Panel')}
       </Button>
     </div>
