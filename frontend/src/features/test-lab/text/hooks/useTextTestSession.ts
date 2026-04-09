@@ -14,19 +14,8 @@ import { streamUnifiedChatResponse } from '../../../../hooks/unifiedTestLab/stre
 import { resolveErrorMessage } from '../../../../hooks/unifiedTestLab/streamUtils';
 import { buildQuickMessages, deriveSessionStatus } from '../../../../hooks/unifiedTestLab/viewModel';
 import { usePromptTemplates } from '../../../../hooks/usePromptTemplates';
+import { shouldAutoFinalizeByClosingPhrase } from '../../shared/session/closingPhrase';
 import { getSessionCloseRequest, resolveTextStreamRuntime } from '../../shared/session/lifecycle';
-
-function shouldAutoFinalizeByClosingPhrase(content: string): boolean {
-  if (!content) return false;
-  const normalized = content.replace(/\s+/g, '');
-  const tail = normalized.slice(-80);
-  const hasThanks = tail.includes('ご利用ありがとうございます');
-  const hasAccepted = tail.includes('承りました') || tail.includes('承知いたしました');
-  if (/[?？]$/.test(tail)) {
-    return false;
-  }
-  return hasThanks && hasAccepted;
-}
 
 export function useTextTestSession(): UseUnifiedTestLabResult {
   const { t } = useTranslation(['pages']);

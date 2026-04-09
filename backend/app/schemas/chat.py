@@ -51,6 +51,7 @@ class TestSessionStartRequest(BaseModel):
     provider: Optional[str] = Field(None, description="LLM provider override")
     model: Optional[str] = Field(None, description="LLM model override")
     caller_name: Optional[str] = Field(None, description="Simulated caller name")
+    mode: str = Field(default="text", description="Test mode: text or voice")
 
 
 class TestSessionStartResponse(BaseModel):
@@ -79,6 +80,22 @@ class TestSessionFinalizeResponse(BaseModel):
     appointment_id: Optional[UUID] = Field(None, description="Created or existing appointment ID")
     extraction: Optional[ExtractionResponse] = Field(None, description="Extraction details")
     already_extracted: bool = Field(False, description="Whether appointment already existed")
+
+
+class TestSessionAppendMessagesRequest(BaseModel):
+    """Append normalized conversation messages to an existing test session."""
+    call_id: UUID = Field(..., description="Call ID to update")
+    template_code: Optional[str] = Field(None, description="Template code bound to the test session")
+    provider: Optional[str] = Field(None, description="LLM provider in use")
+    model: Optional[str] = Field(None, description="LLM model in use")
+    messages: List[ChatMessage] = Field(default_factory=list, description="Messages to append")
+
+
+class TestSessionAppendMessagesResponse(BaseModel):
+    """Result returned after appending messages to a test session."""
+    call_id: UUID = Field(..., description="Updated call ID")
+    appended_count: int = Field(..., description="Number of messages appended")
+    transcript_length: int = Field(..., description="Current transcript character length")
 
 
 class PromptTemplateResponse(BaseModel):

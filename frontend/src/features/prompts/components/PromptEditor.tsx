@@ -36,6 +36,9 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
     models,
     loadingModels,
     modelLoadError,
+    geminiVoices,
+    loadingGeminiVoices,
+    geminiVoiceLoadError,
     isEditMode,
     handleChange,
     handleSave,
@@ -89,7 +92,14 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
             <PromptEditorPromptTab form={form} onChange={handleChange} t={t} />
           </TabPanel>
           <TabPanel>
-            <PromptEditorVoiceTab form={form} onChange={handleChange} t={t} />
+            <PromptEditorVoiceTab
+              form={form}
+              geminiVoices={geminiVoices}
+              loadingGeminiVoices={loadingGeminiVoices}
+              geminiVoiceLoadError={geminiVoiceLoadError}
+              onChange={handleChange}
+              t={t}
+            />
           </TabPanel>
         </TabPanels>
       </Tabs>

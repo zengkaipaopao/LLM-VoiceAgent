@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { createPrompt, fetchModels, updatePrompt } from '../../../api/prompts';
+import { useGeminiVoiceCatalog } from '../../../hooks/useGeminiVoiceCatalog';
 import { LlmModelOption, PromptFormValues, PromptTemplate } from '../../../types/shared';
 import {
   buildPromptFormValues,
@@ -20,6 +21,9 @@ export interface UsePromptEditorFormResult {
   models: LlmModelOption[];
   loadingModels: boolean;
   modelLoadError: string | null;
+  geminiVoices: string[];
+  loadingGeminiVoices: boolean;
+  geminiVoiceLoadError: string | null;
   isEditMode: boolean;
   handleChange: <K extends keyof PromptFormValues>(field: K, value: PromptFormValues[K]) => void;
   handleSave: () => Promise<void>;
@@ -48,6 +52,11 @@ export function usePromptEditorForm({
   const [models, setModels] = useState<LlmModelOption[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [modelLoadError, setModelLoadError] = useState<string | null>(null);
+  const {
+    voiceCatalog,
+    loadingVoices: loadingGeminiVoices,
+    voiceLoadError: geminiVoiceLoadError,
+  } = useGeminiVoiceCatalog({ enabled: open });
   const isEditMode = !!prompt;
 
   useEffect(() => {
@@ -126,6 +135,9 @@ export function usePromptEditorForm({
     models,
     loadingModels,
     modelLoadError,
+    geminiVoices: voiceCatalog.voices,
+    loadingGeminiVoices,
+    geminiVoiceLoadError,
     isEditMode,
     handleChange,
     handleSave,

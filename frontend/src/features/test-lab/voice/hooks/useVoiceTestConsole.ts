@@ -8,6 +8,13 @@ import {
 } from '@google/genai';
 
 import { fetchLiveAuthToken } from '../../../../api/live';
+import {
+  appendTestSessionMessages,
+  finalizeTestSession,
+  startTestSession,
+  type FinalizeTestSessionResponse,
+  type StartTestSessionResponse,
+} from '../../../../api/testLab';
 import { DEFAULT_LIVE_MODEL, isLiveModelId } from '../../../../config/llmModels';
 import { PromptTemplate } from '../../../../types/shared';
 import { appendEventLog, EventLog, LogLevel } from '../../../../hooks/testTabs/eventLog';
@@ -16,11 +23,17 @@ import { LiveEventPayload, MicStatus, SocketStatus } from '../../../../hooks/liv
 import { useMicrophoneStream } from '../../../../hooks/liveConsole/useMicrophoneStream';
 import { useRemoteAudioPlayback } from '../../../../hooks/liveConsole/useRemoteAudioPlayback';
 import { usePromptTemplates } from '../../../../hooks/usePromptTemplates';
+import { shouldAutoFinalizeByClosingPhrase } from '../../shared/session/closingPhrase';
 
 export type { LiveEventPayload, MicStatus, SocketStatus } from '../../../../hooks/liveConsole/types';
 export type { EventLog, LogLevel } from '../../../../hooks/testTabs/eventLog';
 
 const DEFAULT_DISPLAY_ENDPOINT = 'Gemini Live client-to-server (ephemeral token)';
+
+type PersistableMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+};
 
 export interface UseLiveWebSocketConsoleResult {
   socketStatus: SocketStatus;
@@ -28,6 +41,8 @@ export interface UseLiveWebSocketConsoleResult {
   micStatus: MicStatus;
   error: string | null;
   setError: (value: string | null) => void;
+  info: string | null;
+  setInfo: (value: string | null) => void;
   model: string;
   setModel: (value: string) => void;
   modalities: string;
@@ -49,6 +64,8 @@ export interface UseLiveWebSocketConsoleResult {
   totalTokens: number;
   logs: EventLog[];
   displayWsUrl: string;
+  testCallId: string;
+  finalizeResult: FinalizeTestSessionResponse | null;
   canUseRealtimeInput: boolean;
   voiceOnlyMode: boolean;
   connectSocket: () => void;
@@ -201,6 +218,7 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
   const [socketStatus, setSocketStatus] = useState<SocketStatus>('disconnected');
   const [wsOpen, setWsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
 
   const [model, setModel] = useState(DEFAULT_LIVE_MODEL);
   const [modalities, setModalities] = useState('AUDIO');
@@ -217,22 +235,101 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
   const [outputTranscript, setOutputTranscript] = useState('');
   const [totalTokens, setTotalTokens] = useState<number>(0);
   const [logs, setLogs] = useState<EventLog[]>([]);
+  const [testSession, setTestSession] = useState<StartTestSessionResponse | null>(null);
+  const [finalizeResult, setFinalizeResult] = useState<FinalizeTestSessionResponse | null>(null);
   const voiceOnlyMode = true;
 
   const sessionRef = useRef<Session | null>(null);
+  const testSessionRef = useRef<StartTestSessionResponse | null>(null);
   const inputTranscriptHistoryRef = useRef('');
   const inputTranscriptTurnRef = useRef('');
   const outputTranscriptHistoryRef = useRef('');
   const outputTranscriptTurnRef = useRef('');
+  const queuedPersistMessagesRef = useRef<PersistableMessage[]>([]);
+  const appendRequestChainRef = useRef<Promise<unknown>>(Promise.resolve());
   const lastLoggedInputRef = useRef('');
   const lastLoggedOutputRef = useRef('');
+  const lastCompletedAssistantTurnRef = useRef('');
   const lastLoadedPromptLogRef = useRef('');
   const lastTextSendRef = useRef<{ text: string; ts: number }>({ text: '', ts: 0 });
   const isManualDisconnectRef = useRef(false);
+  const finalizeInFlightRef = useRef(false);
+  const autoFinalizeTriggeredRef = useRef(false);
 
   const pushLog = useCallback((level: LogLevel, message: string) => {
     setLogs((prev) => appendEventLog(prev, level, message, 180));
   }, []);
+
+  const queuePersistableMessage = useCallback((role: 'user' | 'assistant', content: string) => {
+    const normalized = content.trim();
+    if (!normalized) {
+      return;
+    }
+    queuedPersistMessagesRef.current.push({ role, content: normalized });
+  }, []);
+
+  const flushPersistedMessages = useCallback(async () => {
+    const activeSession = testSessionRef.current;
+    if (!activeSession) {
+      return;
+    }
+
+    const entries = queuedPersistMessagesRef.current.splice(0);
+    if (!entries.length) {
+      return;
+    }
+
+    const task = appendTestSessionMessages({
+      call_id: activeSession.call_id,
+      template_code: activeSession.template_code || undefined,
+      provider: activeSession.llm_provider,
+      model: activeSession.llm_model,
+      messages: entries,
+    }).catch((persistError) => {
+      queuedPersistMessagesRef.current = [...entries, ...queuedPersistMessagesRef.current];
+      pushLog(
+        'error',
+        `Failed to persist voice test transcript: ${persistError instanceof Error ? persistError.message : String(persistError)}`
+      );
+    });
+
+    appendRequestChainRef.current = appendRequestChainRef.current.then(() => task);
+    await appendRequestChainRef.current;
+  }, [pushLog]);
+
+  const finalizeActiveTestSession = useCallback(
+    async (runExtraction: boolean) => {
+      const activeSession = testSessionRef.current;
+      if (!activeSession || finalizeInFlightRef.current) {
+        return null;
+      }
+
+      finalizeInFlightRef.current = true;
+      try {
+        const result = await finalizeTestSession({
+          call_id: activeSession.call_id,
+          template_code: activeSession.template_code || undefined,
+          run_extraction: runExtraction,
+        });
+        setFinalizeResult(result);
+        setInfo(
+          runExtraction
+            ? result.extraction?.message || '语音测试会话已结束，预约提取已完成。'
+            : '语音测试会话已结束。'
+        );
+        return result;
+      } catch (finalizeError) {
+        const message =
+          finalizeError instanceof Error ? finalizeError.message : String(finalizeError);
+        setError(message);
+        pushLog('error', `Failed to finalize voice test session: ${message}`);
+        return null;
+      } finally {
+        finalizeInFlightRef.current = false;
+      }
+    },
+    [pushLog]
+  );
 
   const handlePromptLoadError = useCallback(
     (loadError: unknown) => {
@@ -245,6 +342,10 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
     preferredCode: 'base_appointment',
     onError: handlePromptLoadError,
   });
+
+  useEffect(() => {
+    testSessionRef.current = testSession;
+  }, [testSession]);
 
   const { playPcmAudioChunk, isRemotePlaybackActive, resetRemotePlayback } = useRemoteAudioPlayback({ pushLog });
 
@@ -281,6 +382,23 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
   });
 
   const canUseRealtimeInput = wsOpen && socketStatus === 'connected';
+
+  const closeDirectTransport = useCallback(
+    (logMessage: string) => {
+      isManualDisconnectRef.current = true;
+      if (hasActiveMicrophoneResources()) {
+        stopMicrophone();
+      }
+      sessionRef.current?.close();
+      sessionRef.current = null;
+      setSocketStatus('disconnected');
+      setWsOpen(false);
+      setSessionId('');
+      resetRemotePlayback();
+      pushLog('info', logMessage);
+    },
+    [hasActiveMicrophoneResources, pushLog, resetRemotePlayback, stopMicrophone]
+  );
 
   useEffect(() => {
     if (!voiceOnlyMode) return;
@@ -332,8 +450,11 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
         pushLog('info', `用户: ${finalized}`);
         lastLoggedInputRef.current = finalized;
       }
+      if (finalized) {
+        queuePersistableMessage('user', finalized);
+      }
     },
-    [pushLog]
+    [pushLog, queuePersistableMessage]
   );
 
   const appendOutputTranscript = useCallback(
@@ -359,8 +480,12 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
         pushLog('success', `AI: ${finalized}`);
         lastLoggedOutputRef.current = finalized;
       }
+      if (finalized) {
+        lastCompletedAssistantTurnRef.current = finalized;
+        queuePersistableMessage('assistant', finalized);
+      }
     },
-    [pushLog]
+    [pushLog, queuePersistableMessage]
   );
 
   const flushTranscriptTurns = useCallback(() => {
@@ -374,6 +499,7 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
         pushLog('info', `用户: ${pendingInput}`);
         lastLoggedInputRef.current = pendingInput;
       }
+      queuePersistableMessage('user', pendingInput);
     }
 
     const pendingOutput = outputTranscriptTurnRef.current.trim();
@@ -386,8 +512,10 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
         pushLog('success', `AI: ${pendingOutput}`);
         lastLoggedOutputRef.current = pendingOutput;
       }
+      lastCompletedAssistantTurnRef.current = pendingOutput;
+      queuePersistableMessage('assistant', pendingOutput);
     }
-  }, [pushLog]);
+  }, [pushLog, queuePersistableMessage]);
 
   const handlePayload = useCallback(
     async (payload: LiveEventPayload) => {
@@ -408,11 +536,37 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
         setTotalTokens,
         setError: (value) => setError(value),
       });
+
+      const normalizedType = (payload.type || '').toLowerCase();
+      if (normalizedType === 'turn_complete' || normalizedType === 'interrupted') {
+        await flushPersistedMessages();
+      }
+
+      if (
+        normalizedType === 'turn_complete' &&
+        !autoFinalizeTriggeredRef.current &&
+        !finalizeResult &&
+        shouldAutoFinalizeByClosingPhrase(lastCompletedAssistantTurnRef.current)
+      ) {
+        autoFinalizeTriggeredRef.current = true;
+        pushLog('info', 'Detected closing phrase. Auto-finalizing voice test session.');
+        closeDirectTransport('Gemini Live direct session auto-closed after closing phrase.');
+        const result = await finalizeActiveTestSession(true);
+        if (result) {
+          setInfo(
+            result.extraction?.message || '检测到结束语，已自动断开语音会话并完成提取。'
+          );
+        }
+      }
     },
     [
+      closeDirectTransport,
       appendAssistantText,
       appendInputTranscript,
       appendOutputTranscript,
+      finalizeActiveTestSession,
+      finalizeResult,
+      flushPersistedMessages,
       flushTranscriptTurns,
       playPcmAudioChunk,
       pushLog,
@@ -420,36 +574,61 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
   );
 
   const clearConsole = useCallback(() => {
-    setAssistantText('');
-    setInputTranscript('');
-    setOutputTranscript('');
-    inputTranscriptHistoryRef.current = '';
-    inputTranscriptTurnRef.current = '';
-    outputTranscriptHistoryRef.current = '';
-    outputTranscriptTurnRef.current = '';
-    lastLoggedInputRef.current = '';
-    lastLoggedOutputRef.current = '';
-    lastLoadedPromptLogRef.current = '';
-    lastTextSendRef.current = { text: '', ts: 0 };
-    setLogs([]);
-    setTotalTokens(0);
-    setError(null);
-  }, []);
+    void (async () => {
+      const activeSession = testSessionRef.current;
+      const hasDialogue = Boolean(
+        inputTranscriptHistoryRef.current.trim() ||
+          outputTranscriptHistoryRef.current.trim() ||
+          queuedPersistMessagesRef.current.length
+      );
+
+      if (activeSession && !finalizeResult) {
+        await flushPersistedMessages();
+        await finalizeActiveTestSession(hasDialogue);
+      }
+
+      setAssistantText('');
+      setInputTranscript('');
+      setOutputTranscript('');
+      inputTranscriptHistoryRef.current = '';
+      inputTranscriptTurnRef.current = '';
+      outputTranscriptHistoryRef.current = '';
+      outputTranscriptTurnRef.current = '';
+      queuedPersistMessagesRef.current = [];
+      lastLoggedInputRef.current = '';
+      lastLoggedOutputRef.current = '';
+      lastCompletedAssistantTurnRef.current = '';
+      lastLoadedPromptLogRef.current = '';
+      lastTextSendRef.current = { text: '', ts: 0 };
+      autoFinalizeTriggeredRef.current = false;
+      setLogs([]);
+      setTotalTokens(0);
+      setError(null);
+      setInfo(null);
+      setTestSession(null);
+      setFinalizeResult(null);
+    })();
+  }, [finalizeActiveTestSession, finalizeResult, flushPersistedMessages]);
 
   const disconnectSocket = useCallback(() => {
-    isManualDisconnectRef.current = true;
-    flushTranscriptTurns();
-    if (hasActiveMicrophoneResources()) {
-      stopMicrophone();
-    }
-    sessionRef.current?.close();
-    sessionRef.current = null;
-    setSocketStatus('disconnected');
-    setWsOpen(false);
-    setSessionId('');
-    resetRemotePlayback();
-    pushLog('info', 'Gemini Live direct session closed.');
-  }, [flushTranscriptTurns, hasActiveMicrophoneResources, pushLog, resetRemotePlayback, stopMicrophone]);
+    void (async () => {
+      flushTranscriptTurns();
+      await flushPersistedMessages();
+
+      const hasDialogue = Boolean(
+        inputTranscriptHistoryRef.current.trim() || outputTranscriptHistoryRef.current.trim()
+      );
+
+      closeDirectTransport('Gemini Live direct session closed.');
+
+      await finalizeActiveTestSession(hasDialogue);
+    })();
+  }, [
+    closeDirectTransport,
+    finalizeActiveTestSession,
+    flushPersistedMessages,
+    flushTranscriptTurns,
+  ]);
 
   const connectSocket = useCallback(() => {
     const normalizedModel = model.trim();
@@ -462,6 +641,12 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
     void (async () => {
       try {
         isManualDisconnectRef.current = false;
+        const previousSession = testSessionRef.current;
+        if (previousSession && !finalizeResult) {
+          await finalizeActiveTestSession(
+            Boolean(inputTranscriptHistoryRef.current.trim() || outputTranscriptHistoryRef.current.trim())
+          );
+        }
         if (sessionRef.current) {
           sessionRef.current.close();
           sessionRef.current = null;
@@ -472,6 +657,7 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
         resetRemotePlayback();
 
         setError(null);
+        setInfo(null);
         setSocketStatus('connecting');
         setWsOpen(false);
         setAssistantText('');
@@ -480,13 +666,26 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
         setTotalTokens(0);
         setSessionId('');
         setDisplayWsUrl(DEFAULT_DISPLAY_ENDPOINT);
+        setFinalizeResult(null);
         inputTranscriptHistoryRef.current = '';
         inputTranscriptTurnRef.current = '';
         outputTranscriptHistoryRef.current = '';
         outputTranscriptTurnRef.current = '';
+        queuedPersistMessagesRef.current = [];
         lastLoggedInputRef.current = '';
         lastLoggedOutputRef.current = '';
+        lastCompletedAssistantTurnRef.current = '';
         lastTextSendRef.current = { text: '', ts: 0 };
+        autoFinalizeTriggeredRef.current = false;
+
+        const createdSession = await startTestSession({
+          template_code: selectedPromptCode.trim() || 'base_appointment',
+          caller_name: 'Voice Test Caller',
+          model: normalizedModel,
+          mode: 'voice',
+        });
+        setTestSession(createdSession);
+        pushLog('info', `Voice test session created: ${createdSession.call_id}`);
 
         pushLog('info', 'Requesting Gemini Live ephemeral token...');
         const auth = await fetchLiveAuthToken({
@@ -499,6 +698,14 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
 
         setDisplayWsUrl(auth.display_endpoint);
         setModel(auth.model);
+        setTestSession((previous) =>
+          previous
+            ? {
+                ...previous,
+                llm_model: auth.model,
+              }
+            : previous
+        );
         if (!voice.trim() && auth.voice) {
           setVoice(auth.voice);
         }
@@ -574,6 +781,8 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
     selectedPromptCode,
     systemInstruction,
     voice,
+    finalizeActiveTestSession,
+    finalizeResult,
   ]);
 
   const sendText = useCallback(() => {
@@ -639,6 +848,8 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
     micStatus,
     error,
     setError,
+    info,
+    setInfo,
     model,
     setModel,
     modalities,
@@ -660,6 +871,8 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
     totalTokens,
     logs,
     displayWsUrl,
+    testCallId: finalizeResult?.call_id || testSession?.call_id || '',
+    finalizeResult,
     canUseRealtimeInput,
     voiceOnlyMode,
     connectSocket,

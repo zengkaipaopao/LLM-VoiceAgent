@@ -15,6 +15,8 @@ from app.schemas.chat import (
     ChatResponse,
     ExtractionRequest,
     ExtractionResponse,
+    TestSessionAppendMessagesRequest,
+    TestSessionAppendMessagesResponse,
     TestSessionFinalizeRequest,
     TestSessionFinalizeResponse,
     TestSessionStartRequest,
@@ -59,6 +61,7 @@ async def start_test_session(request: TestSessionStartRequest, db: AsyncSession 
             provider=request.provider,
             model=request.model,
             caller_name=request.caller_name,
+            mode=request.mode,
         )
         return ResponseBase(success=True, data=result)
     except ValueError as e:
@@ -66,6 +69,40 @@ async def start_test_session(request: TestSessionStartRequest, db: AsyncSession 
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid test session request.",
+        ) from e
+
+
+@router.post(
+    "/test/append-messages",
+    response_model=ResponseBase[TestSessionAppendMessagesResponse],
+    status_code=status.HTTP_200_OK,
+)
+async def append_test_session_messages(
+    request: TestSessionAppendMessagesRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Append normalized transcript messages to an existing test session."""
+    try:
+        service = TestSessionService(db)
+        result = await service.append_test_session_messages(
+            call_id=request.call_id,
+            messages=request.messages,
+            template_code=request.template_code,
+            provider=request.provider,
+            model=request.model,
+        )
+        return ResponseBase(success=True, data=result)
+    except ValueError as e:
+        logger.warning("Invalid append test session request: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid append test session request.",
+        ) from e
+    except Exception as e:
+        logger.exception("Failed to append test session messages.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to append test session messages.",
         ) from e
     except Exception as e:
         logger.exception("Failed to start test session.")

@@ -11,10 +11,12 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.model_defaults import require_generate_model
+from app.core.model_defaults import require_generate_model, require_live_model
 from app.repositories.appointment_repository import AppointmentRepository
 from app.repositories.call_repository import CallRepository
 from app.schemas.chat import (
+    ChatMessage,
+    TestSessionAppendMessagesResponse,
     ExtractionResponse,
     TestSessionFinalizeResponse,
     TestSessionStartResponse,
@@ -22,6 +24,7 @@ from app.schemas.chat import (
 from app.services.extraction_bridge import ExtractAppointmentRunner, ExtractionBridgeService
 from app.services.prompt_runtime_resolver import resolve_prompt_runtime
 from app.services.prompt_service import PromptService
+from app.services.transcript_sanitizer import sanitize_assistant_turn
 from app.utils.datetime_utils import now_tokyo_naive
 
 
@@ -61,6 +64,35 @@ class TestSessionService:
             return 0
         return max(0, int((ended_at - started_at).total_seconds()))
 
+    @staticmethod
+    def _normalize_test_mode(mode: str | None) -> str:
+        token = (mode or "text").strip().lower()
+        return "voice" if token == "voice" else "text"
+
+    @staticmethod
+    def _normalize_message_entries(raw_messages: list[ChatMessage] | list[dict[str, str]] | None) -> list[dict[str, str]]:
+        normalized: list[dict[str, str]] = []
+        for item in raw_messages or []:
+            if isinstance(item, ChatMessage):
+                role_raw = item.role
+                content_raw = item.content
+            elif isinstance(item, dict):
+                role_raw = str(item.get("role", ""))
+                content_raw = str(item.get("content", ""))
+            else:
+                continue
+
+            role = role_raw.strip().lower()
+            if role not in {"user", "assistant", "system"}:
+                continue
+            content = content_raw.strip()
+            if role == "assistant":
+                content = sanitize_assistant_turn(content).strip()
+            if not content:
+                continue
+            normalized.append({"role": role, "content": content})
+        return normalized
+
     async def start_test_session(
         self,
         *,
@@ -68,22 +100,30 @@ class TestSessionService:
         provider: Optional[str] = None,
         model: Optional[str] = None,
         caller_name: Optional[str] = None,
+        mode: str = "text",
     ) -> TestSessionStartResponse:
+        normalized_mode = self._normalize_test_mode(mode)
         runtime = await resolve_prompt_runtime(
             self.prompt_service,
             template_code=template_code,
             default_code=template_code,
-            model_capability="generate",
+            model_capability="live" if normalized_mode == "voice" else "generate",
         )
         template = runtime.template
         if not template:
             raise ValueError(f"Template '{template_code}' not found")
 
         llm_provider = provider or runtime.llm_provider or "gemini"
-        llm_model = require_generate_model(
-            model or runtime.llm_model,
-            source="Prompt llm_model",
-        )
+        if normalized_mode == "voice":
+            llm_model = require_live_model(
+                model or runtime.llm_model,
+                source="Prompt llm_model",
+            )
+        else:
+            llm_model = require_generate_model(
+                model or runtime.llm_model,
+                source="Prompt llm_model",
+            )
         started_at = now_tokyo_naive()
         simulated_phone = self._generate_simulated_phone()
 
@@ -101,6 +141,7 @@ class TestSessionService:
                 "extra_data": {
                     "simulation": True,
                     "source": "test_lab",
+                    "test_mode": normalized_mode,
                     "simulated_phone": simulated_phone,
                     "template_code": runtime.template_code,
                     "llm_provider": llm_provider,
@@ -118,6 +159,55 @@ class TestSessionService:
             template_code=runtime.template_code,
             llm_provider=llm_provider,
             llm_model=llm_model,
+        )
+
+    async def append_test_session_messages(
+        self,
+        *,
+        call_id: UUID,
+        messages: list[ChatMessage] | list[dict[str, str]],
+        template_code: Optional[str] = None,
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
+    ) -> TestSessionAppendMessagesResponse:
+        call = await self.call_repo.get(call_id)
+        if not call:
+            raise ValueError(f"Call {call_id} not found")
+
+        normalized_entries = self._normalize_message_entries(messages)
+        extra_data = dict(call.extra_data or {})
+        stored_messages = self._normalize_message_entries(extra_data.get("messages") or [])
+        stored_messages.extend(normalized_entries)
+        extra_data["messages"] = stored_messages
+        if template_code:
+            extra_data["template_code"] = template_code
+        if provider:
+            extra_data["llm_provider"] = provider
+        if model:
+            extra_data["llm_model"] = model
+
+        transcript_lines: list[str] = []
+        for item in normalized_entries:
+            if item["role"] == "system":
+                continue
+            speaker = "用户" if item["role"] == "user" else "助手"
+            transcript_lines.append(f"{speaker}: {item['content']}")
+
+        transcript_update = call.transcript or ""
+        if transcript_lines:
+            block = "\n".join(transcript_lines)
+            transcript_update = f"{transcript_update}\n\n{block}" if transcript_update else block
+
+        call.extra_data = extra_data
+        call.transcript = transcript_update
+
+        await self.db.commit()
+        await self.db.refresh(call)
+
+        return TestSessionAppendMessagesResponse(
+            call_id=call.id,
+            appended_count=len(normalized_entries),
+            transcript_length=len(call.transcript or ""),
         )
 
     async def finalize_test_session(

@@ -105,6 +105,10 @@ export function VoiceSidePanel({
               <dd>{liveWebsocket.sessionId || '-'}</dd>
             </div>
             <div className={styles.metaRow}>
+              <dt>Call ID</dt>
+              <dd>{liveWebsocket.testCallId || '-'}</dd>
+            </div>
+            <div className={styles.metaRow}>
               <dt>总 Tokens</dt>
               <dd>{liveWebsocket.totalTokens}</dd>
             </div>
@@ -115,6 +119,10 @@ export function VoiceSidePanel({
             <div className={styles.metaRow}>
               <dt>当前模型</dt>
               <dd>{liveWebsocket.model || '-'}</dd>
+            </div>
+            <div className={styles.metaRow}>
+              <dt>预约记录</dt>
+              <dd>{liveWebsocket.finalizeResult?.appointment_id || '-'}</dd>
             </div>
           </dl>
           <div className={styles.transcriptGrid}>

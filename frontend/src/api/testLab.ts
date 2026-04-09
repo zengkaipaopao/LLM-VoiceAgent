@@ -5,6 +5,7 @@ export interface StartTestSessionRequest {
   provider?: string;
   model?: string;
   caller_name?: string;
+  mode?: 'text' | 'voice';
 }
 
 export interface StartTestSessionResponse {
@@ -40,6 +41,23 @@ export interface FinalizeTestSessionResponse {
   already_extracted: boolean;
 }
 
+export interface AppendTestSessionMessagesRequest {
+  call_id: string;
+  template_code?: string;
+  provider?: string;
+  model?: string;
+  messages: Array<{
+    role: 'user' | 'assistant' | 'system';
+    content: string;
+  }>;
+}
+
+export interface AppendTestSessionMessagesResponse {
+  call_id: string;
+  appended_count: number;
+  transcript_length: number;
+}
+
 export async function startTestSession(
   payload: StartTestSessionRequest
 ): Promise<StartTestSessionResponse> {
@@ -51,5 +69,12 @@ export async function finalizeTestSession(
   payload: FinalizeTestSessionRequest
 ): Promise<FinalizeTestSessionResponse> {
   const response = await http.post('/chat/test/finalize', payload);
+  return response.data.data;
+}
+
+export async function appendTestSessionMessages(
+  payload: AppendTestSessionMessagesRequest
+): Promise<AppendTestSessionMessagesResponse> {
+  const response = await http.post('/chat/test/append-messages', payload);
   return response.data.data;
 }

@@ -53,6 +53,80 @@ async def test_start_test_session_uses_prompt_runtime_and_creates_call():
 
 
 @pytest.mark.asyncio
+async def test_start_test_session_supports_voice_mode_with_live_model():
+    started_at = datetime(2026, 4, 8, 10, 0, 0)
+    template = SimpleNamespace(
+        id="prompt-id",
+        code="base_appointment",
+        name="Base Appointment",
+        llm_provider="gemini",
+        llm_model="gemini-2.5-flash-native-audio-latest",
+        temperature=0.4,
+        max_tokens=512,
+        voice_id="Aoede",
+        system_prompt="system prompt",
+    )
+    created_call = SimpleNamespace(id=uuid4(), started_at=started_at)
+    call_repo = SimpleNamespace(create=AsyncMock(return_value=created_call))
+    service = TestSessionService(
+        db=SimpleNamespace(),
+        call_repo=call_repo,
+        appointment_repo=SimpleNamespace(),
+        prompt_service=SimpleNamespace(get_template=AsyncMock(return_value=template)),
+    )
+
+    result = await service.start_test_session(
+        template_code="base_appointment",
+        mode="voice",
+    )
+
+    assert result.llm_model == "gemini-2.5-flash-native-audio-latest"
+    payload = call_repo.create.await_args.args[0]
+    assert payload["extra_data"]["test_mode"] == "voice"
+    assert payload["extra_data"]["llm_model"] == "gemini-2.5-flash-native-audio-latest"
+
+
+@pytest.mark.asyncio
+async def test_append_test_session_messages_updates_transcript_and_stored_messages():
+    call_id = uuid4()
+    call = SimpleNamespace(
+        id=call_id,
+        extra_data={"messages": [{"role": "system", "content": "sys"}], "template_code": "base_appointment"},
+        transcript="用户: 旧消息",
+    )
+    db = SimpleNamespace(commit=AsyncMock(), refresh=AsyncMock())
+    service = TestSessionService(
+        db=db,
+        call_repo=SimpleNamespace(get=AsyncMock(return_value=call)),
+        appointment_repo=SimpleNamespace(),
+        prompt_service=SimpleNamespace(),
+    )
+
+    result = await service.append_test_session_messages(
+        call_id=call_id,
+        template_code="base_appointment",
+        provider="gemini",
+        model="gemini-2.5-flash-native-audio-latest",
+        messages=[
+            {"role": "user", "content": "こんにちは"},
+            {"role": "assistant", "content": "承知しました。"},
+        ],
+    )
+
+    assert result.call_id == call_id
+    assert result.appended_count == 2
+    assert call.extra_data["llm_provider"] == "gemini"
+    assert call.extra_data["llm_model"] == "gemini-2.5-flash-native-audio-latest"
+    assert call.extra_data["messages"][-2:] == [
+        {"role": "user", "content": "こんにちは"},
+        {"role": "assistant", "content": "承知しました。"},
+    ]
+    assert call.transcript.endswith("用户: こんにちは\n助手: 承知しました。")
+    db.commit.assert_awaited_once()
+    db.refresh.assert_awaited_once_with(call)
+
+
+@pytest.mark.asyncio
 async def test_finalize_test_session_reuses_existing_appointment_without_reextracting():
     call_id = uuid4()
     appointment_id = uuid4()

@@ -1,8 +1,9 @@
-import { Button, InlineLoading, TextInput } from '@carbon/react';
+import { Button, InlineLoading, Select, SelectItem, TextInput } from '@carbon/react';
 
 import type { UseLiveWebSocketConsoleResult } from '../../../../hooks/useLiveWebSocketConsole';
 import type { UseTwilioVoiceGatewayResult } from '../../../../hooks/testTabs/useTwilioVoiceGateway';
 import type { PromptTemplate } from '../../../../types/shared';
+import type { GeminiVoiceCatalog } from '../../../../api/geminiVoices';
 import styles from '../TwilioTabContent.module.scss';
 import { PromptTemplateSelect } from './PromptTemplateSelect';
 import type { VoiceRouteMode } from './types';
@@ -15,6 +16,8 @@ interface VoiceSessionSectionProps {
   selectedPrompt?: PromptTemplate;
   effectiveVoice: string;
   isPromptVoiceConfigured: boolean;
+  geminiVoiceCatalog: GeminiVoiceCatalog;
+  loadingGeminiVoices: boolean;
   directSessionActive: boolean;
   twilioSessionActive: boolean;
   canDirectConnect: boolean;
@@ -34,6 +37,8 @@ export function VoiceSessionSection({
   selectedPrompt,
   effectiveVoice,
   isPromptVoiceConfigured,
+  geminiVoiceCatalog,
+  loadingGeminiVoices,
   directSessionActive,
   twilioSessionActive,
   canDirectConnect,
@@ -97,14 +102,22 @@ export function VoiceSessionSection({
               disabled={directSessionActive}
             />
 
-            <TextInput
+            <Select
               id="direct-voice"
               labelText="Gemini 音色（可选）"
               value={liveWebsocket.voice}
               onChange={(event) => liveWebsocket.setVoice(event.target.value)}
-              placeholder="留空则由后端默认或 Prompt 决定"
-              disabled={directSessionActive}
-            />
+              helperText="留空则优先跟随 Prompt 的默认音色，否则使用系统默认音色。"
+              disabled={directSessionActive || loadingGeminiVoices}
+            >
+              <SelectItem
+                value=""
+                text={loadingGeminiVoices ? '正在加载 Gemini 音色...' : '自动（Prompt/默认）'}
+              />
+              {geminiVoiceCatalog.voices.map((voice) => (
+                <SelectItem key={voice} value={voice} text={voice} />
+              ))}
+            </Select>
 
             <TextInput id="direct-ws-endpoint" labelText="当前接入方式" value={liveWebsocket.displayWsUrl} readOnly />
           </div>
@@ -172,7 +185,7 @@ export function VoiceSessionSection({
               连接语音会话
             </Button>
             <Button kind="danger--tertiary" size="sm" onClick={liveWebsocket.disconnectSocket} disabled={!canDirectDisconnect}>
-              断开会话
+              断开并提取
             </Button>
             <Button
               kind={directMicActive ? 'danger--tertiary' : 'secondary'}
