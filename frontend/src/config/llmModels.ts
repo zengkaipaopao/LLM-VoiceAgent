@@ -43,3 +43,16 @@ export function describeVoiceTabOverrideWarning(model: string | null | undefined
 
   return `当前语音会话模型 ${token} 不是 Gemini Live / Native Audio 模型。连接前请改成语音模型，或重新选择一个使用语音模型的 Prompt。`;
 }
+
+export function describeTwilioTabPromptModelWarning(
+  model: string | null | undefined,
+  promptCode?: string | null
+): string | null {
+  const token = (model ?? '').trim();
+  if (!token || !isLiveModelId(token)) {
+    return null;
+  }
+
+  const promptLabel = (promptCode ?? '').trim() ? `当前 Prompt（${promptCode?.trim()}）` : '当前 Prompt';
+  return `${promptLabel} 配置的是语音模型 ${token}。Twilio ConversationRelay 按官方方式接收文字 token 并由 Twilio 负责电话语音层，因此这里需要可用于文本生成的模型；请把 Prompt 模型改成 generate 模型后再测试电话网关。`;
+}

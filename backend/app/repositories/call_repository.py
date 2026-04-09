@@ -28,6 +28,11 @@ class CallRepository(BaseRepository[Call]):
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_by_sip_call_id(self, sip_call_id: str) -> Optional[Call]:
+        stmt = select(Call).where(Call.sip_call_id == sip_call_id).limit(1)
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def get_recent(self, limit: int = 10, status: Optional[CallStatus] = None) -> List[Call]:
         stmt = select(Call)
         if status:

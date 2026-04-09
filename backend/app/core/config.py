@@ -35,10 +35,11 @@ class Settings(BaseSettings):
     twilio_incoming_prompt_map: str = ""
     twilio_incoming_default_mode: str = "agent"
     twilio_incoming_voice_engine: str = "twilio"
+    twilio_default_conversationrelay_voice: str = "jqcCZkN6Knx8BJ5TBdYR"
     # Gemini Live turn segmentation mode for Twilio media streams:
     # - auto: Gemini automatic activity detection (recommended)
     # - manual: backend VAD + explicit ActivityEnd control (debug fallback)
-    twilio_gemini_activity_mode: str = "auto"
+    twilio_gemini_activity_mode: str = "manual"
     twilio_agent_language: str = "ja-JP"
     twilio_strict_template_provider: bool = True
     

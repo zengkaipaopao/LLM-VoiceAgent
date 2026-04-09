@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from app.core.config import settings
-from app.core.model_defaults import resolve_generate_model, resolve_live_model
+from app.core.model_defaults import normalize_model_selection, resolve_generate_model, resolve_live_model
 from app.services.prompt_service import PromptService
 from app.utils.datetime_utils import now_tokyo_naive
 
@@ -22,6 +22,7 @@ class PromptRuntimeConfig:
     llm_model: str | None
     temperature: float
     max_tokens: int
+    voice_provider: str | None
     voice_id: str | None
     notice: str | None
 
@@ -65,20 +66,24 @@ async def resolve_prompt_runtime(
             if render_system_instruction
             else ((template.system_prompt or "").strip() or fallback_instruction)
         )
-        template_model = (template.llm_model or "").strip()
+        template_provider, template_model = normalize_model_selection(
+            (template.llm_provider or "").strip() or None,
+            (template.llm_model or "").strip() or None,
+        )
         llm_model = template_model or _resolve_runtime_model(None, model_capability=model_capability)
         return PromptRuntimeConfig(
             template=template,
             template_code=(template.code or requested_code).strip(),
             template_name=(template.name or "").strip() or None,
             system_instruction=system_instruction,
-            llm_provider=(template.llm_provider or "").strip() or None,
+            llm_provider=template_provider,
             llm_model=llm_model,
             temperature=float(
                 template.temperature if template.temperature is not None else settings.llm_temperature
             ),
             max_tokens=int(template.max_tokens or settings.llm_max_tokens),
-            voice_id=(template.voice_id or "").strip() or None,
+            voice_provider=(getattr(template, "voice_provider", None) or "").strip() or None,
+            voice_id=(getattr(template, "voice_id", None) or "").strip() or None,
             notice=f"Loaded prompt template: {template.name} ({template.code})",
         )
 
@@ -91,6 +96,7 @@ async def resolve_prompt_runtime(
         llm_model=_resolve_runtime_model(None, model_capability=model_capability),
         temperature=float(settings.llm_temperature),
         max_tokens=int(settings.llm_max_tokens),
+        voice_provider=None,
         voice_id=None,
         notice=missing_notice or f"Prompt template '{requested_code}' not found or inactive.",
     )

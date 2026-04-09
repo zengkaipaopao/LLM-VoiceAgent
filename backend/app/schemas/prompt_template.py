@@ -1,12 +1,12 @@
 """
 Prompt Template Pydantic schemas.
 """
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from uuid import UUID
 
-from app.core.model_defaults import DEFAULT_GENERATE_MODEL
+from app.core.model_defaults import DEFAULT_GENERATE_MODEL, normalize_model_selection
 
 
 class PromptTemplateBase(BaseModel):
@@ -41,6 +41,22 @@ class PromptTemplateBase(BaseModel):
     example_conversations: Optional[List[Dict[str, Any]]] = Field(None, description="Example conversations")
     is_active: bool = Field(True, description="Is active")
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_llm_reference(cls, data):
+        if not isinstance(data, dict):
+            return data
+
+        provider, model = normalize_model_selection(
+            data.get("llm_provider"),
+            data.get("llm_model"),
+        )
+        if model:
+            data["llm_model"] = model
+        if provider:
+            data["llm_provider"] = provider
+        return data
+
 
 class PromptTemplateCreate(PromptTemplateBase):
     """Schema for creating a prompt template."""
@@ -71,6 +87,22 @@ class PromptTemplateUpdate(BaseModel):
     variables: Optional[Dict[str, Any]] = None
     example_conversations: Optional[List[Dict[str, Any]]] = None
     is_active: Optional[bool] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_llm_reference(cls, data):
+        if not isinstance(data, dict):
+            return data
+
+        provider, model = normalize_model_selection(
+            data.get("llm_provider"),
+            data.get("llm_model"),
+        )
+        if model:
+            data["llm_model"] = model
+        if provider:
+            data["llm_provider"] = provider
+        return data
 
 
 class PromptTemplateResponse(PromptTemplateBase):

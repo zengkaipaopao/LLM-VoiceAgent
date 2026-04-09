@@ -55,6 +55,7 @@ async def test_setup_chat_context_prefers_call_bound_runtime_and_messages(monkey
         llm_model="gemini-2.5-flash",
         temperature=0.4,
         max_tokens=512,
+        voice_provider="gemini",
         voice_id="Aoede",
         notice="loaded",
     )
@@ -123,6 +124,7 @@ async def test_setup_chat_context_rejects_live_only_model_for_text_runtime(monke
         llm_model="gemini-3.1-flash-live-preview",
         temperature=0.4,
         max_tokens=512,
+        voice_provider="gemini",
         voice_id="Aoede",
         notice="loaded",
     )

@@ -21,6 +21,10 @@ async def capability_matrix():
                 "status": "implemented" if settings.live_gateway_enabled else "disabled",
                 "requires": ["GOOGLE_API_KEY"],
             },
+            "gemini_generate_gateway": {
+                "status": "implemented" if (settings.google_api_key or "").strip() else "disabled",
+                "requires": ["GOOGLE_API_KEY"],
+            },
             "twilio_webcall": {
                 "status": "implemented" if settings.twilio_webcall_enabled else "disabled",
                 "requires": ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_TWIML_APP_SID"],

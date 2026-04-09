@@ -6,6 +6,7 @@ import type { UseTwilioVoiceGatewayResult } from '../../../../hooks/testTabs/use
 import type { PromptTemplate } from '../../../../types/shared';
 import styles from '../TwilioTabContent.module.scss';
 import type { DialogueHistoryItem, VoiceRouteMode } from './types';
+import type { TwilioTtsProvider } from '../../../../features/test-lab/voice/adapters/twilio/useTwilioVoiceGateway';
 
 interface VoiceSidePanelProps {
   routeMode: VoiceRouteMode;
@@ -14,6 +15,7 @@ interface VoiceSidePanelProps {
   selectedPromptCode: string;
   selectedPrompt?: PromptTemplate;
   isPromptVoiceConfigured: boolean;
+  twilioTtsProvider: TwilioTtsProvider;
 }
 
 function resolveTraceSpeaker(type: string): 'AI' | '用户' | '事件' {
@@ -48,6 +50,7 @@ export function VoiceSidePanel({
   selectedPromptCode,
   selectedPrompt,
   isPromptVoiceConfigured,
+  twilioTtsProvider,
 }: VoiceSidePanelProps) {
   const directDialogueHistory = useMemo<DialogueHistoryItem[]>(() => {
     const items: DialogueHistoryItem[] = [];
@@ -174,8 +177,12 @@ export function VoiceSidePanel({
             <dd>
               {isPromptVoiceConfigured
                 ? `Prompt: ${selectedPrompt?.code}`
-                : `Default: ${twilioGateway.voiceCatalog.defaultVoice || 'Aoede'}`}
+                : `Default: ${twilioGateway.voiceCatalog.defaultVoice || '-'}`}
             </dd>
+          </div>
+          <div className={styles.metaRow}>
+            <dt>TTS Provider</dt>
+            <dd>{twilioTtsProvider}</dd>
           </div>
           <div className={styles.metaRow}>
             <dt>系统能力</dt>
@@ -184,8 +191,8 @@ export function VoiceSidePanel({
                 电话网关（Twilio）{twilioGateway.capability.twilioWebcallImplemented ? ' OK' : ' Unavailable'}
               </Tag>
               &nbsp;
-              <Tag type={twilioGateway.capability.geminiLiveImplemented ? 'green' : 'red'}>
-                Gemini Live {twilioGateway.capability.geminiLiveImplemented ? ' OK' : ' Unavailable'}
+              <Tag type={twilioGateway.capability.geminiGenerateImplemented ? 'green' : 'red'}>
+                Gemini 文本生成 {twilioGateway.capability.geminiGenerateImplemented ? ' OK' : ' Unavailable'}
               </Tag>
             </dd>
           </div>

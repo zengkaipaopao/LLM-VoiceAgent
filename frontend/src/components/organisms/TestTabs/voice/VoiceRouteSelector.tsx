@@ -36,7 +36,7 @@ export function VoiceRouteSelector({ routeMode, isAnySessionActive, onChange }: 
       <p className={styles.routeHint}>
         {routeMode === 'direct'
           ? '浏览器麦克风会直接送到 Gemini Live，最适合先做模型对话连通验证。'
-          : '通过电话网关进行端到端验证，适合回归真实入站通话链路。'}
+          : '通过 Twilio 电话网关进行端到端验证。可在页面内发起浏览器外呼，也可先在页面准备下一通入呼，再用真实手机拨打 Twilio 号码。'}
       </p>
     </Tile>
   );
