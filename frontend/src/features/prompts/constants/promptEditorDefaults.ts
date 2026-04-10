@@ -17,6 +17,8 @@ export const defaultPromptFormValues: PromptFormValues = {
   outputSchema: '',
   voiceProvider: '',
   voiceId: '',
+  twilioInboundNumbers: '',
+  isTwilioIncomingDefault: false,
 };
 
 export function buildPromptFormValues(prompt?: PromptTemplate): PromptFormValues {
@@ -44,5 +46,7 @@ export function buildPromptFormValues(prompt?: PromptTemplate): PromptFormValues
         : '',
     voiceProvider: prompt.voiceProvider || '',
     voiceId: prompt.voiceId || '',
+    twilioInboundNumbers: (prompt.twilioInboundNumbers || []).join('\n'),
+    isTwilioIncomingDefault: prompt.isTwilioIncomingDefault || false,
   };
 }

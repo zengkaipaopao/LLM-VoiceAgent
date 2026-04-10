@@ -3,12 +3,30 @@ Prompt template service.
 
 Manages prompt templates for different scenarios.
 """
+import re
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.prompt_template import PromptTemplate
+
+
+_TWILIO_E164_PATTERN = re.compile(r"^\+[1-9]\d{7,14}$")
+
+
+def normalize_twilio_inbound_numbers(numbers: Optional[List[str]]) -> List[str]:
+    normalized: List[str] = []
+    seen: set[str] = set()
+    for raw in numbers or []:
+        candidate = str(raw or "").strip()
+        if not candidate or not _TWILIO_E164_PATTERN.fullmatch(candidate):
+            continue
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        normalized.append(candidate)
+    return normalized
 
 
 class PromptService:
@@ -50,6 +68,79 @@ class PromptService:
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
+    async def find_template_by_twilio_inbound_number(self, number: str | None) -> Optional[PromptTemplate]:
+        candidate = str(number or "").strip()
+        if not candidate:
+            return None
+
+        templates = await self.list_templates(active_only=True)
+        for template in templates:
+            assigned = normalize_twilio_inbound_numbers(
+                getattr(template, "twilio_inbound_numbers", None)
+            )
+            if candidate in assigned:
+                return template
+        return None
+
+    async def get_twilio_incoming_default_template(self) -> Optional[PromptTemplate]:
+        stmt = (
+            select(PromptTemplate)
+            .where(
+                PromptTemplate.is_active.is_(True),
+                PromptTemplate.is_twilio_incoming_default.is_(True),
+            )
+            .order_by(PromptTemplate.updated_at.desc())
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def validate_twilio_inbound_numbers(
+        self,
+        *,
+        numbers: Optional[List[str]],
+        exclude_template_id: str | None = None,
+    ) -> List[str]:
+        normalized = normalize_twilio_inbound_numbers(numbers)
+        if not normalized:
+            return []
+
+        templates = await self.list_templates(active_only=True)
+        conflicts: dict[str, str] = {}
+        for template in templates:
+            template_id = str(template.id)
+            if exclude_template_id and template_id == exclude_template_id:
+                continue
+            assigned = normalize_twilio_inbound_numbers(
+                getattr(template, "twilio_inbound_numbers", None)
+            )
+            for number in assigned:
+                conflicts[number] = template.code
+
+        duplicates = [number for number in normalized if number in conflicts]
+        if duplicates:
+            conflict_details = ", ".join(f"{number} -> {conflicts[number]}" for number in duplicates)
+            raise ValueError(f"Twilio inbound numbers already assigned: {conflict_details}")
+
+        return normalized
+
+    async def sync_twilio_incoming_default(self, template: PromptTemplate) -> None:
+        if not template.is_active:
+            template.is_twilio_incoming_default = False
+            return
+
+        if not template.is_twilio_incoming_default:
+            return
+
+        stmt = (
+            update(PromptTemplate)
+            .where(
+                PromptTemplate.id != template.id,
+                PromptTemplate.is_twilio_incoming_default.is_(True),
+            )
+            .values(is_twilio_incoming_default=False)
+        )
+        await self.db.execute(stmt)
+
     def render_prompt(
         self,
         template: PromptTemplate,
@@ -86,7 +177,14 @@ class PromptService:
             **kwargs,
         )
 
+        template.twilio_inbound_numbers = normalize_twilio_inbound_numbers(
+            getattr(template, "twilio_inbound_numbers", None)
+        )
+        await self.validate_twilio_inbound_numbers(numbers=template.twilio_inbound_numbers)
+
         self.db.add(template)
+        await self.db.flush()
+        await self.sync_twilio_incoming_default(template)
         await self.db.commit()
         await self.db.refresh(template)
 

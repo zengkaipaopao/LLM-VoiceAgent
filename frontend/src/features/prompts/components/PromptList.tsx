@@ -16,10 +16,10 @@ export const PromptList: React.FC<PromptListProps> = ({ onEdit, onCreate }) => {
   const { t } = useTranslation('pages');
   const [prompts, setPrompts] = useState<PromptTemplate[]>([]);
   const [loading, setLoading] = useState(true);
-
   const headers = [
     { key: 'name', header: t('prompts.list.headers.name') },
     { key: 'code', header: t('prompts.list.headers.code') },
+    { key: 'twilioPhoneNumber', header: '电话号码' },
     { key: 'llmModel', header: t('prompts.list.headers.model') },
     { key: 'temperature', header: t('prompts.list.headers.temperature') },
     { key: 'updatedAt', header: t('prompts.list.headers.updatedAt') },
@@ -54,6 +54,12 @@ export const PromptList: React.FC<PromptListProps> = ({ onEdit, onCreate }) => {
     id: p.id,
     name: p.name,
     code: p.code,
+    twilioPhoneNumber:
+      (p.twilioInboundNumbers || []).length > 0
+        ? (p.twilioInboundNumbers || []).join(', ')
+        : p.isTwilioIncomingDefault
+          ? '未匹配号码时回退'
+          : '-',
     llmModel: `${p.llmProvider}/${p.llmModel}`,
     temperature: p.temperature,
     updatedAt: new Date(p.updatedAt).toLocaleDateString(),
@@ -63,7 +69,16 @@ export const PromptList: React.FC<PromptListProps> = ({ onEdit, onCreate }) => {
   const renderCell = (cellValue: any, cellKey: string, row: any) => {
       switch (cellKey) {
           case 'code':
-              return <code>{cellValue}</code>;
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <code>{cellValue}</code>
+                  {row.original.isTwilioIncomingDefault ? (
+                    <Tag type="green">Twilio 入呼默认</Tag>
+                  ) : null}
+                </div>
+              );
+          case 'twilioPhoneNumber':
+              return cellValue === '-' || cellValue === '未匹配号码时回退' ? cellValue : <code>{cellValue}</code>;
           case 'llmModel':
               return <Tag type="blue">{cellValue}</Tag>;
           case 'actions':

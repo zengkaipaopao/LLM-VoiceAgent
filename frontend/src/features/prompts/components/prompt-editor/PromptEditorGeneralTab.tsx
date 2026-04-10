@@ -1,4 +1,4 @@
-import { Select, SelectItem, Stack, TextInput } from '@carbon/react';
+import { Checkbox, Select, SelectItem, Stack, TextArea, TextInput } from '@carbon/react';
 import { PromptFormValues } from '../../../../types/shared';
 
 interface PromptEditorGeneralTabProps {
@@ -38,6 +38,14 @@ export function PromptEditorGeneralTab({
         value={form.description || ''}
         onChange={(event) => onChange('description', event.target.value)}
       />
+      <TextArea
+        id="twilio_inbound_numbers"
+        labelText="Twilio 入呼号码"
+        value={form.twilioInboundNumbers || ''}
+        onChange={(event) => onChange('twilioInboundNumbers', event.target.value)}
+        helperText="一行一个 E.164 号码，或用逗号分隔。真实电话直接打入这些号码时，会路由到当前 Agent。"
+        rows={4}
+      />
       <Select
         id="category"
         labelText="Category"
@@ -50,6 +58,15 @@ export function PromptEditorGeneralTab({
         <SelectItem value="sales" text="Sales" />
         <SelectItem value="other" text="Other" />
       </Select>
+      <Checkbox
+        id="is_twilio_incoming_default"
+        labelText="设为 Twilio 入呼回退 Agent"
+        checked={Boolean(form.isTwilioIncomingDefault)}
+        onChange={(_, { checked }) => onChange('isTwilioIncomingDefault', Boolean(checked))}
+      />
+      <p style={{ marginTop: '-0.5rem', color: 'var(--cds-text-secondary)' }}>
+        当来电号码没有命中上面的号码绑定，且没有测试页临时覆盖时，才会回退到这个 Agent。
+      </p>
     </Stack>
   );
 }

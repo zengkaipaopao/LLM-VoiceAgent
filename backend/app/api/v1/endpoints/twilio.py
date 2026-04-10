@@ -1090,6 +1090,33 @@ async def _resolve_prompt_runtime(
     )
 
 
+async def _resolve_twilio_incoming_prompt_code(
+    *,
+    db: AsyncSession,
+    prompt_code: str | None,
+    to_number: str | None,
+) -> str | None:
+    from_request = _normalize_prompt_code_token(prompt_code)
+    if from_request:
+        return from_request
+
+    prompt_service = PromptService(db)
+    normalized_to = _normalize_e164_number(to_number)
+    if normalized_to:
+        template = await prompt_service.find_template_by_twilio_inbound_number(normalized_to)
+        if template:
+            return template.code
+        mapped = _normalize_prompt_code_token(settings.twilio_incoming_prompt_mapping.get(normalized_to))
+        if mapped:
+            return mapped
+
+    default_template = await prompt_service.get_twilio_incoming_default_template()
+    if default_template:
+        return default_template.code
+
+    return _normalize_prompt_code_token(settings.twilio_default_prompt_code)
+
+
 def _build_gemini_live_config(
     *,
     model: str,
@@ -1391,7 +1418,11 @@ async def incoming_voice_webhook(
     pending_tts_provider = pending_override.get("tts_provider") if pending_override else None
     pending_voice_name = pending_override.get("voice_name") if pending_override else None
     effective_prompt = prompt_code or pending_prompt
-    resolved_prompt_code = service.resolve_incoming_prompt_code(prompt_code=effective_prompt, to_number=To)
+    resolved_prompt_code = await _resolve_twilio_incoming_prompt_code(
+        db=db,
+        prompt_code=effective_prompt,
+        to_number=To,
+    )
     mode_value = ((mode or settings.twilio_incoming_default_mode or "agent").strip().lower())
     effective_engine = voice_engine or pending_engine
     engine_value = _normalize_voice_engine(effective_engine)

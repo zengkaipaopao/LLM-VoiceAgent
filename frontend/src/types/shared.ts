@@ -46,6 +46,8 @@ export interface PromptTemplate {
   voiceProvider?: string;
   voiceId?: string;
   voiceSettings?: Record<string, any>;
+  twilioInboundNumbers?: string[];
+  isTwilioIncomingDefault?: boolean;
   
   // Legacy fields mapped
   instructions?: string;
@@ -79,6 +81,8 @@ export interface PromptFormValues {
   
   voiceProvider?: string;
   voiceId?: string;
+  twilioInboundNumbers?: string;
+  isTwilioIncomingDefault?: boolean;
   
   // Legacy
   capabilities?: PromptCapabilities;

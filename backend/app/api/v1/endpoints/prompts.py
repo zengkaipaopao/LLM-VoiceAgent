@@ -76,7 +76,13 @@ async def create_template(template_in: PromptTemplateCreate, db: AsyncSession = 
             detail=f"Template code '{template_in.code}' already exists",
         )
 
-    template = await prompt_service.create_template(**template_in.dict())
+    try:
+        template = await prompt_service.create_template(**template_in.dict())
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
 
     return ResponseBase(success=True, data=PromptTemplateResponse.from_orm(template))
 
@@ -97,9 +103,21 @@ async def update_template(
         )
 
     update_data = template_in.dict(exclude_unset=True)
+    if "twilio_inbound_numbers" in update_data:
+        try:
+            update_data["twilio_inbound_numbers"] = await prompt_service.validate_twilio_inbound_numbers(
+                numbers=update_data["twilio_inbound_numbers"],
+                exclude_template_id=str(template.id),
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
     for field, value in update_data.items():
         setattr(template, field, value)
 
+    await prompt_service.sync_twilio_incoming_default(template)
     await db.commit()
     await db.refresh(template)
 

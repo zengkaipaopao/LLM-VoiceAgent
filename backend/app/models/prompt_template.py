@@ -49,6 +49,8 @@ class PromptTemplate(Base, TimestampMixin):
     voice_provider = Column(String(50))
     voice_id = Column(String(100))
     voice_settings = Column(JSONB)
+    is_twilio_incoming_default = Column(Boolean, default=False, nullable=False, index=True)
+    twilio_inbound_numbers = Column(JSONB)
     
     # Status
     is_active = Column(Boolean, default=True, nullable=False, index=True)

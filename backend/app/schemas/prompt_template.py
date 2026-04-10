@@ -35,6 +35,14 @@ class PromptTemplateBase(BaseModel):
     voice_provider: Optional[str] = Field(None, description="Voice provider")
     voice_id: Optional[str] = Field(None, description="Voice ID")
     voice_settings: Optional[Dict[str, Any]] = Field(None, description="Voice settings")
+    twilio_inbound_numbers: Optional[List[str]] = Field(
+        None,
+        description="Twilio inbound phone numbers (E.164) routed to this prompt.",
+    )
+    is_twilio_incoming_default: bool = Field(
+        False,
+        description="Whether this prompt is the default for direct inbound Twilio calls.",
+    )
     
     # Other
     variables: Optional[Dict[str, Any]] = Field(None, description="Variables")
@@ -83,6 +91,8 @@ class PromptTemplateUpdate(BaseModel):
     voice_provider: Optional[str] = None
     voice_id: Optional[str] = None
     voice_settings: Optional[Dict[str, Any]] = None
+    twilio_inbound_numbers: Optional[List[str]] = None
+    is_twilio_incoming_default: Optional[bool] = None
     
     variables: Optional[Dict[str, Any]] = None
     example_conversations: Optional[List[Dict[str, Any]]] = None

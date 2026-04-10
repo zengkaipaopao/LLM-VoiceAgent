@@ -35,6 +35,31 @@ const OptionalJsonObjectSchema = z.preprocess(
   JsonObjectSchema.optional()
 );
 
+const parseStringList = (value: unknown): string[] | undefined => {
+  if (value === null || value === undefined || value === '') {
+    return undefined;
+  }
+
+  if (Array.isArray(value)) {
+    const normalized = value
+      .map((item) => String(item || '').trim())
+      .filter((item) => item.length > 0);
+    return normalized.length > 0 ? normalized : undefined;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value
+      .split(/\r?\n|,/)
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+    return normalized.length > 0 ? normalized : undefined;
+  }
+
+  return undefined;
+};
+
+const OptionalStringListSchema = z.preprocess((value) => parseStringList(value), z.array(z.string()).optional());
+
 const ApiVoiceConfigSchema = z
   .object({
     voice: z.string().optional(),
@@ -61,6 +86,8 @@ const ApiPromptSchema = z.object({
   voice_provider: z.string().optional().nullable(),
   voice_id: z.string().optional().nullable(),
   voice_settings: OptionalJsonObjectSchema,
+  twilio_inbound_numbers: OptionalStringListSchema,
+  is_twilio_incoming_default: z.boolean().optional().nullable(),
   instructions: z.string().optional().nullable(),
   welcome_message: z.string().optional().nullable(),
   closing_message: z.string().optional().nullable(),
@@ -117,6 +144,8 @@ type PromptPayloadInput = {
   outputSchema?: unknown;
   voiceProvider?: string;
   voiceId?: string;
+  twilioInboundNumbers?: unknown;
+  isTwilioIncomingDefault?: boolean;
 };
 
 const mapVoiceConfig = (config?: z.infer<typeof ApiVoiceConfigSchema>): VoiceConfig | undefined => {
@@ -148,6 +177,8 @@ const mapPrompt = (prompt: ApiPrompt): PromptTemplate => ({
   voiceProvider: prompt.voice_provider ?? undefined,
   voiceId: prompt.voice_id ?? undefined,
   voiceSettings: prompt.voice_settings,
+  twilioInboundNumbers: prompt.twilio_inbound_numbers ?? [],
+  isTwilioIncomingDefault: prompt.is_twilio_incoming_default ?? false,
   modelId: prompt.llm_model || DEFAULT_GENERATE_MODEL,
   instructions: prompt.instructions ?? prompt.system_prompt,
   welcomeMessage: prompt.welcome_message ?? undefined,
@@ -184,6 +215,8 @@ const toApiPayload = (payload: PromptPayloadInput): Record<string, unknown> => {
     output_schema: outputSchema,
     voice_provider: payload.voiceProvider,
     voice_id: payload.voiceId,
+    twilio_inbound_numbers: parseStringList(payload.twilioInboundNumbers),
+    is_twilio_incoming_default: payload.isTwilioIncomingDefault,
   };
 
   Object.keys(apiPayload).forEach((key) => {
