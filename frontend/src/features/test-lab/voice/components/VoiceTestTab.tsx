@@ -14,11 +14,13 @@ import { VoiceSidePanel } from '../../../../components/organisms/TestTabs/voice/
 import type { VoiceRouteMode } from '../../../../components/organisms/TestTabs/voice/types';
 import {
   useTwilioVoiceGateway,
+  type TwilioTransportMode,
   type TwilioTtsProvider,
   type UseTwilioVoiceGatewayResult,
 } from '../adapters/twilio/useTwilioVoiceGateway';
 import { useGeminiVoiceCatalog } from '../../../../hooks/useGeminiVoiceCatalog';
 import { resolveVoiceRouteTransition } from '../routeMode';
+import { matchGeminiLiveVoice, resolveGeminiLiveVoice } from '../voiceSelection';
 import { useVoiceTestConsole } from '../hooks/useVoiceTestConsole';
 
 const DEFAULT_IDENTITY = 'webcall-tester';
@@ -117,8 +119,11 @@ export function VoiceTestTab() {
     useGeminiVoiceCatalog();
 
   const [routeMode, setRouteMode] = useState<VoiceRouteMode>('direct');
+  const [twilioTransportMode, setTwilioTransportMode] =
+    useState<TwilioTransportMode>('conversationrelay');
   const [twilioTtsProvider, setTwilioTtsProvider] = useState<TwilioTtsProvider | ''>('');
   const [twilioVoiceOverride, setTwilioVoiceOverride] = useState('');
+  const [twilioMediaStreamVoiceOverride, setTwilioMediaStreamVoiceOverride] = useState('');
   const previousRouteModeRef = useRef<VoiceRouteMode>('direct');
   const twilioConfigBootstrappedRef = useRef(false);
 
@@ -177,6 +182,23 @@ export function VoiceTestTab() {
     const directOverrideVoice = (liveWebsocket.voice || '').trim();
     if (routeMode === 'direct' && directOverrideVoice) return directOverrideVoice;
     if (routeMode === 'twilio') {
+      if (twilioTransportMode === 'media_stream_live') {
+        const supportedGeminiVoices = geminiVoiceCatalog.voices;
+        const defaultGeminiVoice = geminiVoiceCatalog.defaultVoice || 'Aoede';
+        const mediaStreamOverride = twilioMediaStreamVoiceOverride.trim();
+        if (mediaStreamOverride) {
+          return resolveGeminiLiveVoice(mediaStreamOverride, {
+            voiceProvider: 'gemini',
+            supportedVoices: supportedGeminiVoices,
+            defaultVoice: defaultGeminiVoice,
+          });
+        }
+        return resolveGeminiLiveVoice(selectedPrompt?.voiceId, {
+          voiceProvider: selectedPrompt?.voiceProvider,
+          supportedVoices: supportedGeminiVoices,
+          defaultVoice: defaultGeminiVoice,
+        });
+      }
       const overrideVoice = resolveTwilioVoiceOverride(
         twilioVoiceOverride,
         twilioVoiceOptions,
@@ -190,18 +212,31 @@ export function VoiceTestTab() {
     if (promptVoice) return promptVoice;
     return geminiVoiceCatalog.defaultVoice || twilioGateway.voiceCatalog.defaultVoice || 'Aoede';
   }, [
+    geminiVoiceCatalog.voices,
     geminiVoiceCatalog.defaultVoice,
     liveWebsocket.voice,
     routeMode,
     selectedPrompt?.voiceId,
+    selectedPrompt?.voiceProvider,
+    twilioTransportMode,
     twilioVoiceOptions,
     twilioGateway.voiceCatalog.defaultVoice,
     effectiveTwilioTtsProvider,
+    twilioMediaStreamVoiceOverride,
     twilioPromptVoice,
     twilioVoiceOverride,
   ]);
   const isPromptVoiceConfigured =
-    routeMode === 'twilio' ? Boolean(twilioPromptVoice) : Boolean((selectedPrompt?.voiceId || '').trim());
+    routeMode === 'twilio'
+      ? twilioTransportMode === 'media_stream_live'
+        ? Boolean(
+            matchGeminiLiveVoice(selectedPrompt?.voiceId, {
+              voiceProvider: selectedPrompt?.voiceProvider,
+              supportedVoices: geminiVoiceCatalog.voices,
+            })
+          )
+        : Boolean(twilioPromptVoice)
+      : Boolean((selectedPrompt?.voiceId || '').trim());
 
   useEffect(() => {
     if (routeMode !== 'twilio') {
@@ -218,8 +253,16 @@ export function VoiceTestTab() {
     if (routeMode !== 'twilio') {
       return;
     }
+    if (twilioTransportMode !== 'conversationrelay') {
+      return;
+    }
     void twilioGateway.refreshVoiceCatalog({ provider: effectiveTwilioTtsProvider });
-  }, [effectiveTwilioTtsProvider, routeMode, twilioGateway.refreshVoiceCatalog]);
+  }, [
+    effectiveTwilioTtsProvider,
+    routeMode,
+    twilioGateway.refreshVoiceCatalog,
+    twilioTransportMode,
+  ]);
 
   useEffect(() => {
     const previousMode = previousRouteModeRef.current;
@@ -283,7 +326,12 @@ export function VoiceTestTab() {
     {
       id: 'route',
       label: '接入方式',
-      value: routeMode === 'direct' ? '浏览器直连 Gemini' : '电话网关接入（Twilio）',
+      value:
+        routeMode === 'direct'
+          ? '浏览器直连 Gemini'
+          : twilioTransportMode === 'conversationrelay'
+            ? '电话网关（ConversationRelay）'
+            : '电话网关（Media Streams）',
       tone: 'teal',
     },
     {
@@ -308,12 +356,17 @@ export function VoiceTestTab() {
     },
     {
       id: 'voice',
-      label: routeMode === 'direct' ? 'Gemini 音色' : '电话音色',
+      label:
+        routeMode === 'direct'
+          ? 'Gemini 音色'
+          : twilioTransportMode === 'conversationrelay'
+            ? '电话音色'
+            : 'Gemini 音色',
       value: routeMode === 'direct' ? effectiveVoice || '默认' : effectiveVoice || '-',
       mono: true,
       tone: routeMode === 'twilio' && isPromptVoiceConfigured ? 'teal' : 'cool-gray',
     },
-    ...(routeMode === 'twilio'
+    ...(routeMode === 'twilio' && twilioTransportMode === 'conversationrelay'
       ? ([
           {
             id: 'tts-provider',
@@ -332,7 +385,9 @@ export function VoiceTestTab() {
     const promptWarning =
       routeMode === 'direct'
         ? describeVoiceTabPromptModelWarning(selectedPrompt?.llmModel, selectedPromptCode)
-        : describeTwilioTabPromptModelWarning(selectedPrompt?.llmModel, selectedPromptCode);
+        : twilioTransportMode === 'conversationrelay'
+          ? describeTwilioTabPromptModelWarning(selectedPrompt?.llmModel, selectedPromptCode)
+          : describeVoiceTabPromptModelWarning(selectedPrompt?.llmModel, selectedPromptCode);
     if (promptWarning) {
       return promptWarning;
     }
@@ -340,7 +395,13 @@ export function VoiceTestTab() {
       return describeVoiceTabOverrideWarning(liveWebsocket.model);
     }
     return null;
-  }, [liveWebsocket.model, routeMode, selectedPrompt?.llmModel, selectedPromptCode]);
+  }, [
+    liveWebsocket.model,
+    routeMode,
+    selectedPrompt?.llmModel,
+    selectedPromptCode,
+    twilioTransportMode,
+  ]);
   const directLogs = useMemo(() => [...liveWebsocket.logs].slice(-180).reverse(), [liveWebsocket.logs]);
 
   return (
@@ -388,12 +449,16 @@ export function VoiceTestTab() {
               selectedPrompt={selectedPrompt}
               effectiveVoice={effectiveVoice}
               isPromptVoiceConfigured={isPromptVoiceConfigured}
+              twilioTransportMode={twilioTransportMode}
+              setTwilioTransportMode={setTwilioTransportMode}
               twilioTtsProvider={effectiveTwilioTtsProvider}
               setTwilioTtsProvider={setTwilioTtsProvider}
               twilioVoiceOptions={twilioVoiceOptions}
               twilioVoicePreset={twilioVoicePreset}
               twilioVoiceOverride={twilioVoiceOverride}
               setTwilioVoiceOverride={setTwilioVoiceOverride}
+              twilioMediaStreamVoiceOverride={twilioMediaStreamVoiceOverride}
+              setTwilioMediaStreamVoiceOverride={setTwilioMediaStreamVoiceOverride}
               promptVoiceSupportedByTwilio={Boolean(twilioPromptVoice)}
               geminiVoiceCatalog={geminiVoiceCatalog}
               loadingGeminiVoices={loadingGeminiVoices}
@@ -419,6 +484,7 @@ export function VoiceTestTab() {
           selectedPromptCode={selectedPromptCode}
           selectedPrompt={selectedPrompt}
           isPromptVoiceConfigured={isPromptVoiceConfigured}
+          twilioTransportMode={twilioTransportMode}
           twilioTtsProvider={effectiveTwilioTtsProvider}
         />
       }

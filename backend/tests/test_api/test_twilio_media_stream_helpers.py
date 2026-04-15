@@ -15,9 +15,11 @@ from app.api.v1.endpoints.twilio import (
     _normalize_twilio_conversationrelay_voice_id,
     _normalize_twilio_google_voice_id,
     _resolve_twilio_conversationrelay_default_voice,
+    _resolve_twilio_inbound_voice_route,
     _set_pending_inbound_override_for_number,
     _use_manual_vad_control,
 )
+from app.services.twilio.normalizers import _normalize_gemini_live_voice_name
 
 
 def test_build_twilio_media_stream_twiml_uses_custom_parameters_instead_of_query_string():
@@ -259,7 +261,7 @@ def test_resolve_twilio_conversationrelay_default_voice_prefers_configured_defau
     )
 
 
-def test_build_gemini_live_config_disables_thinking_and_enables_explicit_vad_for_manual_twilio():
+def test_build_gemini_live_config_disables_thinking_for_manual_twilio_without_explicit_vad_flag():
     config = _build_gemini_live_config(
         model="gemini-2.5-flash-native-audio-latest",
         system_instruction="hello",
@@ -267,11 +269,35 @@ def test_build_gemini_live_config_disables_thinking_and_enables_explicit_vad_for
         manual_vad=True,
     )
 
-    assert config.explicit_vad_signal is True
     assert config.realtime_input_config.automatic_activity_detection.disabled is True
+    assert getattr(config, "explicit_vad_signal", None) is None
     assert config.thinking_config is not None
     assert config.thinking_config.thinking_budget == 0
     assert config.thinking_config.include_thoughts is False
+
+
+def test_normalize_gemini_live_voice_name_accepts_short_and_twilio_google_names():
+    assert _normalize_gemini_live_voice_name("Aoede") == "Aoede"
+    assert _normalize_gemini_live_voice_name("ja-JP-Chirp3-HD-Aoede") == "Aoede"
+    assert _normalize_gemini_live_voice_name("Google.Aoede") == "Aoede"
+
+
+def test_normalize_gemini_live_voice_name_falls_back_for_non_gemini_voices():
+    assert (
+        _normalize_gemini_live_voice_name(
+            "3JDquces8E8bkmvbh6Bc",
+            default_voice="Aoede",
+        )
+        == "Aoede"
+    )
+    assert (
+        _normalize_gemini_live_voice_name(
+            "Mizuki",
+            voice_provider="amazon",
+            default_voice="Aoede",
+        )
+        == "Aoede"
+    )
 
 
 def test_extract_stream_custom_parameters_reads_start_payload():
@@ -306,6 +332,7 @@ async def test_pending_inbound_override_can_be_prepared_and_consumed():
     queued = await _set_pending_inbound_override_for_number(
         number="+815012345678",
         prompt_code="base_appointment",
+        voice_route=None,
         voice_engine="gemini",
         tts_provider="Google",
         voice_name="Aoede",
@@ -322,6 +349,47 @@ async def test_pending_inbound_override_can_be_prepared_and_consumed():
     }
 
     assert await _consume_pending_inbound_override_for_number("+815012345678") is None
+
+
+@pytest.mark.asyncio
+async def test_pending_inbound_override_can_store_voice_route():
+    queued = await _set_pending_inbound_override_for_number(
+        number="+815012345679",
+        prompt_code="base_appointment",
+        voice_route="media_stream_live",
+        voice_engine=None,
+        tts_provider=None,
+        voice_name="Aoede",
+    )
+
+    assert queued is True
+
+    payload = await _consume_pending_inbound_override_for_number("+815012345679")
+    assert payload == {
+        "prompt_code": "base_appointment",
+        "voice_route": "media_stream_live",
+        "voice_engine": None,
+        "tts_provider": None,
+        "voice_name": "Aoede",
+    }
+
+
+def test_resolve_twilio_inbound_voice_route_prefers_explicit_route():
+    assert (
+        _resolve_twilio_inbound_voice_route(
+            voice_route="media_stream_live",
+            voice_engine="twilio",
+        )
+        == "media_stream_live"
+    )
+
+
+def test_resolve_twilio_inbound_voice_route_maps_legacy_engine_values():
+    assert _resolve_twilio_inbound_voice_route(voice_route=None, voice_engine="twilio") == "gather"
+    assert (
+        _resolve_twilio_inbound_voice_route(voice_route=None, voice_engine="gemini")
+        == "conversationrelay_generate"
+    )
 
 
 def test_twilio_defaults_to_manual_vad_control():

@@ -1,58 +1,105 @@
 import asyncio
 import audioop
 import base64
-from collections import deque
-import html
 import json
 import logging
 import re
-import secrets
 import time
+from collections import deque
 from typing import Optional
-from urllib.parse import urlunsplit
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, WebSocket, WebSocketDisconnect, status
+
+from fastapi import (
+    APIRouter,
+    Depends,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 from fastapi.responses import Response
 from google import genai
 from google.genai import types
-import httpx
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from twilio.request_validator import RequestValidator
 
 from app.api.deps import get_db, require_api_key
 from app.core.config import settings
-from app.core.model_defaults import require_generate_model, require_live_model
 from app.core.database import AsyncSessionLocal
+from app.core.model_defaults import require_generate_model, require_live_model
 from app.repositories.call_repository import CallRepository
 from app.schemas.base import ResponseBase
 from app.schemas.twilio import TwilioTokenResponse
-from app.services.live_gateway import infer_provider_from_model, normalize_provider, provider_available, resolve_live_provider
+from app.services.chat_service import ChatService
+from app.services.live_gateway import (
+    infer_provider_from_model,
+    normalize_provider,
+    provider_available,
+    resolve_live_provider,
+)
 from app.services.llm.factory import LLMFactory
 from app.services.prompt_runtime_resolver import PromptRuntimeConfig, resolve_prompt_runtime
 from app.services.prompt_service import PromptService
 from app.services.test_session_service import TestSessionService
-from app.services.twilio_webcall_service import TwilioWebCallService
+from app.services.twilio.live_config import _build_gemini_live_config, _use_manual_vad_control
+from app.services.twilio.normalizers import (
+    _ELEVENLABS_VOICE_ID_PATTERN,
+    _TWILIO_SUPPORTED_TTS_PROVIDERS,
+    _match_case_insensitive_voice,
+    _normalize_e164_number,
+    _normalize_gemini_live_voice_name,
+    _normalize_prompt_code_token,
+    _normalize_twilio_tts_provider,
+    _normalize_twilio_voice_route,
+    _normalize_voice_engine,
+    _normalize_voice_name_token,
+    _resolve_twilio_inbound_voice_route,
+)
+from app.services.twilio.pending_overrides import (
+    _PENDING_PROMPT_TTL_SECONDS,
+    _consume_pending_inbound_override_for_number,
+    _set_pending_inbound_override_for_number,
+)
+from app.services.twilio.stream_runtime_store import (
+    _chunk_bytes,
+    _drain_manual_audio,
+    _enqueue_manual_audio,
+    _extract_audio_rate,
+    _is_stream_active,
+    _list_active_stream_calls,
+    _mark_stream_active,
+    _mark_stream_inactive,
+    _pcm16_audio_stats,
+)
+from app.services.twilio.trace_store import (
+    _append_call_trace,
+    _read_call_trace,
+    _read_latest_trace_call_sid,
+)
+from app.services.twilio.twiml_builders import (
+    _build_twilio_conversation_relay_twiml,
+    _build_twilio_media_stream_twiml,
+    _candidate_websocket_signature_urls,
+    _extract_stream_custom_parameters,
+    _verify_websocket_or_close,
+)
+from app.services.twilio.voice_catalog import (
+    _extract_twilio_conversationrelay_default_voice_settings,
+    _extract_twilio_google_voice_names,
+    _extract_twilio_tts_voice_ids,
+    _load_official_gemini_voices,
+    _load_twilio_conversationrelay_default_voice_settings,
+    _load_twilio_conversationrelay_voice_catalog,
+)
 from app.services.twilio_voice_agent_service import twilio_voice_agent_service
-from app.utils.twilio_security import compute_twilio_signature, verify_twilio_webhook_request
+from app.services.twilio_webcall_service import TwilioWebCallService
 from app.utils.datetime_utils import now_tokyo_naive
+from app.utils.twilio_security import verify_twilio_webhook_request
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-_VOICE_ENGINE_ALIASES = {
-    "twilio": "twilio",
-    "twilio_tts": "twilio",
-    "legacy": "twilio",
-    "gemini": "gemini",
-    "google": "gemini",
-    "gemini_live": "gemini",
-}
-_AUDIO_RATE_PATTERN = re.compile(r"rate=(\d+)")
-_E164_PATTERN = re.compile(r"^\+[1-9]\d{7,14}$")
-_PROMPT_CODE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
-_VOICE_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
-_ELEVENLABS_VOICE_ID_PATTERN = re.compile(
-    r"^[A-Za-z0-9]{20}(?:-[A-Za-z0-9_.]+)?(?:-[0-9.]+(?:_[0-9.]+){2})?$"
-)
 _TWILIO_FRAME_BYTES = 160  # 20ms at 8kHz G.711 mu-law
 _TWILIO_FALLBACK_OPENING = "いつもお世話になっております。光洲産業の自動受付AIです。本日はどのようなご用件でしょうか。"
 _VAD_RMS_THRESHOLD = 55
@@ -65,23 +112,8 @@ _VAD_START_CONSEC_FRAMES = 3
 _ASSISTANT_OUTPUT_LOCK_TIMEOUT_MS = 7000
 _VAD_PRE_ROLL_FRAMES = 15  # 15 * 20ms = 300ms
 _MANUAL_INJECT_MEDIA_SUPPRESS_MS = 8000
-_TRACE_MAX_CALLS = 200
-_TRACE_MAX_EVENTS_PER_CALL = 300
+_OPENING_STARTUP_SUPPRESS_MS = 2200
 _TWILIO_CONVERSATIONRELAY_MAX_HISTORY_MESSAGES = 24
-_TWILIO_TTS_DOC_URL = "https://www.twilio.com/docs/voice/twiml/say/text-speech.md"
-_TWILIO_CONVERSATIONRELAY_VOICE_CONFIG_DOC_URL = (
-    "https://www.twilio.com/docs/voice/conversationrelay/voice-configuration.md"
-)
-_GEMINI_VOICE_CACHE_TTL_SECONDS = 1800
-_TWILIO_SUPPORTED_TTS_PROVIDERS = ("Google", "Amazon", "ElevenLabs")
-_TWILIO_TTS_PROVIDER_ALIASES = {
-    "google": "Google",
-    "gemini": "Google",
-    "amazon": "Amazon",
-    "amazonpolly": "Amazon",
-    "amazon_polly": "Amazon",
-    "elevenlabs": "ElevenLabs",
-}
 _CONVERSATIONRELAY_SUPPORTED_DEBUG_MESSAGE_TYPES = {
     "setup",
     "prompt",
@@ -89,29 +121,28 @@ _CONVERSATIONRELAY_SUPPORTED_DEBUG_MESSAGE_TYPES = {
     "dtmf",
     "error",
 }
-_trace_lock = asyncio.Lock()
-_trace_events: dict[str, deque[dict[str, object]]] = {}
-_trace_seq: dict[str, int] = {}
-_trace_call_order: deque[str] = deque()
-_voice_catalog_lock = asyncio.Lock()
-_voice_catalog_cache: dict[tuple[str, str], dict[str, object]] = {}
-_conversationrelay_defaults_cache: dict[str, object] = {
-    "settings": {},
-    "source": "uninitialized",
-    "fetched_at": 0.0,
-}
-_manual_audio_lock = asyncio.Lock()
-_manual_audio_queues: dict[str, deque[bytes]] = {}
-_active_stream_calls: set[str] = set()
-_pending_prompt_lock = asyncio.Lock()
-_pending_inbound_override_by_number: dict[
-    str,
-    tuple[str | None, str | None, str | None, str | None, float],
-] = {}
-_PENDING_PROMPT_TTL_SECONDS = 180.0
 _TWILIO_CLOSING_REQUIRED_ALL = ("ご利用ありがとうございます",)
 _TWILIO_CLOSING_REQUIRED_ANY = ("承りました", "承知いたしました", "承知しました")
 _ECHO_COMPARE_NORMALIZER = re.compile(r"[\s\u3000。、，,．.!！?？・:：\"'「」『』（）()\-ー]")
+__all__ = (
+    "_build_gemini_live_config",
+    "_build_twilio_conversation_relay_twiml",
+    "_build_twilio_media_stream_twiml",
+    "_candidate_websocket_signature_urls",
+    "_consume_pending_inbound_override_for_number",
+    "_extract_stream_custom_parameters",
+    "_extract_twilio_conversationrelay_default_voice_settings",
+    "_extract_twilio_google_voice_names",
+    "_extract_twilio_tts_voice_ids",
+    "_is_auto_closing_reply",
+    "_load_official_gemini_voices",
+    "_normalize_twilio_conversationrelay_voice_id",
+    "_normalize_twilio_google_voice_id",
+    "_resolve_twilio_conversationrelay_default_voice",
+    "_resolve_twilio_inbound_voice_route",
+    "_set_pending_inbound_override_for_number",
+    "_use_manual_vad_control",
+)
 
 
 class TwilioManualAudioInjectRequest(BaseModel):
@@ -123,529 +154,10 @@ class TwilioManualAudioInjectRequest(BaseModel):
 class TwilioPrepareIncomingOverrideRequest(BaseModel):
     to_number: str = Field(min_length=1, description="Target Twilio inbound number in E.164 format.")
     prompt_code: str | None = Field(default=None, min_length=1, max_length=64)
+    voice_route: str | None = Field(default=None, min_length=1, max_length=64)
     voice_engine: str | None = Field(default="gemini", min_length=1, max_length=32)
     tts_provider: str | None = Field(default=None, min_length=1, max_length=32)
     voice_name: str | None = Field(default=None, min_length=1, max_length=128)
-
-
-def _normalize_e164_number(value: str | None) -> str | None:
-    normalized = re.sub(r"[\s\u3000\-()]", "", (value or "").strip())
-    if not normalized:
-        return None
-    return normalized if _E164_PATTERN.fullmatch(normalized) else None
-
-
-def _normalize_prompt_code_token(value: str | None) -> str | None:
-    token = (value or "").strip()
-    if not token:
-        return None
-    return token if _PROMPT_CODE_PATTERN.fullmatch(token) else None
-
-
-def _normalize_voice_engine(value: str | None) -> str:
-    token = (value or "").strip().lower()
-    if not token:
-        token = (settings.twilio_incoming_voice_engine or "twilio").strip().lower()
-    return _VOICE_ENGINE_ALIASES.get(token, token)
-
-
-def _normalize_twilio_tts_provider(value: str | None) -> str | None:
-    token = (value or "").strip().lower()
-    if not token:
-        return None
-    return _TWILIO_TTS_PROVIDER_ALIASES.get(token)
-
-
-async def _append_call_trace(
-    call_sid: str | None,
-    *,
-    event_type: str,
-    text: str | None = None,
-    final: bool | None = None,
-    level: str = "info",
-) -> None:
-    sid = (call_sid or "").strip()
-    if not sid:
-        return
-
-    snippet = (text or "").strip()
-    async with _trace_lock:
-        if sid not in _trace_events:
-            _trace_events[sid] = deque(maxlen=_TRACE_MAX_EVENTS_PER_CALL)
-            _trace_call_order.append(sid)
-            while len(_trace_call_order) > _TRACE_MAX_CALLS:
-                stale = _trace_call_order.popleft()
-                _trace_events.pop(stale, None)
-                _trace_seq.pop(stale, None)
-
-        next_seq = _trace_seq.get(sid, 0) + 1
-        _trace_seq[sid] = next_seq
-        payload: dict[str, object] = {
-            "seq": next_seq,
-            "ts": int(time.time() * 1000),
-            "type": event_type,
-            "level": level,
-        }
-        if snippet:
-            payload["text"] = snippet
-        if final is not None:
-            payload["final"] = final
-        _trace_events[sid].append(payload)
-
-
-async def _read_call_trace(call_sid: str, since: int) -> tuple[list[dict[str, object]], int]:
-    sid = (call_sid or "").strip()
-    if not sid:
-        return [], 0
-
-    async with _trace_lock:
-        events = list(_trace_events.get(sid, []))
-        last_seq = _trace_seq.get(sid, 0)
-
-    if since > 0:
-        events = [item for item in events if int(item.get("seq", 0)) > since]
-    return events, last_seq
-
-
-async def _read_latest_trace_call_sid() -> str | None:
-    async with _trace_lock:
-        if not _trace_call_order:
-            return None
-        return _trace_call_order[-1]
-
-
-async def _mark_stream_active(call_sid: str | None) -> None:
-    sid = (call_sid or "").strip()
-    if not sid:
-        return
-    async with _manual_audio_lock:
-        _active_stream_calls.add(sid)
-        _manual_audio_queues.setdefault(sid, deque())
-
-
-async def _mark_stream_inactive(call_sid: str | None) -> None:
-    sid = (call_sid or "").strip()
-    if not sid:
-        return
-    async with _manual_audio_lock:
-        _active_stream_calls.discard(sid)
-        _manual_audio_queues.pop(sid, None)
-
-
-async def _is_stream_active(call_sid: str | None) -> bool:
-    sid = (call_sid or "").strip()
-    if not sid:
-        return False
-    async with _manual_audio_lock:
-        return sid in _active_stream_calls
-
-
-async def _enqueue_manual_audio(call_sid: str, audio_bytes: bytes) -> int:
-    sid = call_sid.strip()
-    async with _manual_audio_lock:
-        queue = _manual_audio_queues.setdefault(sid, deque())
-        queue.append(audio_bytes)
-        return len(queue)
-
-
-async def _drain_manual_audio(call_sid: str | None) -> list[bytes]:
-    sid = (call_sid or "").strip()
-    if not sid:
-        return []
-    async with _manual_audio_lock:
-        queue = _manual_audio_queues.get(sid)
-        if not queue:
-            return []
-        items = list(queue)
-        queue.clear()
-        return items
-
-
-def _pcm16_audio_stats(audio_bytes: bytes, *, sample_rate: int = 16000) -> dict[str, int]:
-    aligned = audio_bytes if len(audio_bytes) % 2 == 0 else audio_bytes[:-1]
-    if not aligned:
-        return {"bytes": 0, "samples": 0, "duration_ms": 0, "rms": 0, "peak": 0}
-    samples = len(aligned) // 2
-    duration_ms = int((samples * 1000) / max(sample_rate, 1))
-    try:
-        rms = int(audioop.rms(aligned, 2))
-    except Exception:
-        rms = 0
-    try:
-        peak = int(audioop.max(aligned, 2))
-    except Exception:
-        peak = 0
-    return {
-        "bytes": len(aligned),
-        "samples": samples,
-        "duration_ms": duration_ms,
-        "rms": rms,
-        "peak": peak,
-    }
-
-
-async def _list_active_stream_calls() -> list[str]:
-    async with _manual_audio_lock:
-        return sorted(_active_stream_calls)
-
-
-def _normalize_voice_name_token(value: str | None) -> str | None:
-    token = (value or "").strip()
-    if not token:
-        return None
-    return token if _VOICE_NAME_PATTERN.fullmatch(token) else None
-
-
-async def _set_pending_inbound_override_for_number(
-    *,
-    number: str | None,
-    prompt_code: str | None,
-    voice_engine: str | None,
-    tts_provider: str | None,
-    voice_name: str | None,
-) -> bool:
-    normalized_number = _normalize_e164_number(number)
-    if not normalized_number:
-        return False
-
-    normalized_prompt = _normalize_prompt_code_token(prompt_code)
-    normalized_engine = None
-    if (voice_engine or "").strip():
-        resolved_engine = _normalize_voice_engine(voice_engine)
-        if resolved_engine in {"twilio", "gemini"}:
-            normalized_engine = resolved_engine
-    normalized_tts_provider = _normalize_twilio_tts_provider(tts_provider)
-    normalized_voice = _normalize_voice_name_token(voice_name)
-
-    if not any([normalized_prompt, normalized_engine, normalized_tts_provider, normalized_voice]):
-        return False
-
-    expires_at = time.monotonic() + _PENDING_PROMPT_TTL_SECONDS
-    async with _pending_prompt_lock:
-        _pending_inbound_override_by_number[normalized_number] = (
-            normalized_prompt,
-            normalized_engine,
-            normalized_tts_provider,
-            normalized_voice,
-            expires_at,
-        )
-    return True
-
-
-async def _consume_pending_inbound_override_for_number(number: str | None) -> dict[str, str | None] | None:
-    normalized_number = _normalize_e164_number(number)
-    if not normalized_number:
-        return None
-    now_ts = time.monotonic()
-    async with _pending_prompt_lock:
-        expired_keys = [
-            key for key, (_, _, _, _, expiry) in _pending_inbound_override_by_number.items() if expiry <= now_ts
-        ]
-        for key in expired_keys:
-            _pending_inbound_override_by_number.pop(key, None)
-        matched = _pending_inbound_override_by_number.pop(normalized_number, None)
-    if not matched:
-        return None
-    prompt_code, voice_engine, tts_provider, voice_name, expiry = matched
-    if expiry <= now_ts:
-        return None
-    return {
-        "prompt_code": prompt_code,
-        "voice_engine": voice_engine,
-        "tts_provider": tts_provider,
-        "voice_name": voice_name,
-    }
-
-
-def _normalize_gemini_voice_names(candidates: list[str]) -> list[str]:
-    ordered_unique: list[str] = []
-    seen: set[str] = set()
-    for item in candidates:
-        name = item.strip()
-        if not name:
-            continue
-        lowered = name.lower()
-        if lowered in seen:
-            continue
-        seen.add(lowered)
-        ordered_unique.append(name)
-    return ordered_unique
-
-
-def _normalize_twilio_voice_ids(candidates: list[str]) -> list[str]:
-    ordered_unique: list[str] = []
-    seen: set[str] = set()
-    for item in candidates:
-        voice_id = item.strip()
-        if not voice_id:
-            continue
-        lowered = voice_id.lower()
-        if lowered in seen:
-            continue
-        seen.add(lowered)
-        ordered_unique.append(voice_id)
-    return ordered_unique
-
-
-def _extract_twilio_tts_voice_ids(
-    markdown_doc: str,
-    *,
-    language_code: str,
-    provider: str,
-) -> list[str]:
-    normalized_provider = _normalize_twilio_tts_provider(provider)
-    if not normalized_provider:
-        return []
-
-    blocks = [block.strip() for block in markdown_doc.split("***")]
-    voices: list[str] = []
-    for block in blocks:
-        if not block:
-            continue
-        if f"Language code: {language_code}" not in block:
-            continue
-        if f"Provider: {normalized_provider}" not in block:
-            continue
-        matched = re.search(r"Voice:\s*([A-Za-z0-9_.-]+)", block)
-        if not matched:
-            continue
-        voices.append(matched.group(1).strip())
-    return _normalize_twilio_voice_ids(voices)
-
-
-def _extract_twilio_google_voice_names(markdown_doc: str, *, language_code: str) -> list[str]:
-    voices: list[str] = []
-    for voice_id in _extract_twilio_tts_voice_ids(
-        markdown_doc,
-        language_code=language_code,
-        provider="Google",
-    ):
-        if "-Chirp3-HD-" not in voice_id:
-            continue
-        _, short_name = voice_id.split("-Chirp3-HD-", 1)
-        voices.append(short_name.strip())
-    return _normalize_gemini_voice_names(voices)
-
-
-def _extract_twilio_conversationrelay_default_voice_settings(
-    markdown_doc: str,
-) -> dict[str, dict[str, str]]:
-    settings_by_language: dict[str, dict[str, str]] = {}
-    for raw_line in markdown_doc.splitlines():
-        line = raw_line.strip()
-        if not line.startswith("|") or line.startswith("| Language ") or line.startswith("| --------"):
-            continue
-        columns = [column.strip() for column in line.strip("|").split("|")]
-        if len(columns) < 5:
-            continue
-        language, voice_id, tts_provider, speech_model, transcription_provider = columns[:5]
-        if not language or not voice_id or not tts_provider:
-            continue
-        settings_by_language[language] = {
-            "voice_id": voice_id,
-            "tts_provider": tts_provider,
-            "speech_model": speech_model,
-            "transcription_provider": transcription_provider,
-        }
-    return settings_by_language
-
-
-async def _load_twilio_conversationrelay_default_voice_settings(
-    *,
-    force_refresh: bool = False,
-) -> tuple[dict[str, dict[str, str]], str, float]:
-    now_ts = time.time()
-    cached_settings = _conversationrelay_defaults_cache.get("settings")
-    cached_source = str(_conversationrelay_defaults_cache.get("source") or "cache")
-    cached_fetched_at = float(_conversationrelay_defaults_cache.get("fetched_at") or 0.0)
-    if (
-        not force_refresh
-        and isinstance(cached_settings, dict)
-        and cached_settings
-        and (now_ts - cached_fetched_at) < _GEMINI_VOICE_CACHE_TTL_SECONDS
-    ):
-        return dict(cached_settings), cached_source, cached_fetched_at
-
-    async with _voice_catalog_lock:
-        now_ts = time.time()
-        cached_settings = _conversationrelay_defaults_cache.get("settings")
-        cached_source = str(_conversationrelay_defaults_cache.get("source") or "cache")
-        cached_fetched_at = float(_conversationrelay_defaults_cache.get("fetched_at") or 0.0)
-        if (
-            not force_refresh
-            and isinstance(cached_settings, dict)
-            and cached_settings
-            and (now_ts - cached_fetched_at) < _GEMINI_VOICE_CACHE_TTL_SECONDS
-        ):
-            return dict(cached_settings), cached_source, cached_fetched_at
-
-        try:
-            async with httpx.AsyncClient(timeout=12.0, follow_redirects=True) as client:
-                response = await client.get(_TWILIO_CONVERSATIONRELAY_VOICE_CONFIG_DOC_URL)
-                response.raise_for_status()
-                markdown_doc = response.text
-            defaults = _extract_twilio_conversationrelay_default_voice_settings(markdown_doc)
-            if not defaults:
-                raise ValueError("No default ConversationRelay voice settings parsed from official source.")
-            fetched_at = time.time()
-            _conversationrelay_defaults_cache["settings"] = defaults
-            _conversationrelay_defaults_cache["source"] = "twilio_conversationrelay_voice_config_live"
-            _conversationrelay_defaults_cache["fetched_at"] = fetched_at
-            return defaults, "twilio_conversationrelay_voice_config_live", fetched_at
-        except Exception as exc:
-            logger.warning(
-                "Failed to refresh Twilio ConversationRelay default voice settings from official source: %s",
-                exc,
-            )
-            if isinstance(cached_settings, dict) and cached_settings:
-                return dict(cached_settings), "cache_stale", cached_fetched_at
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Unable to load Twilio ConversationRelay default voice settings from official source.",
-            ) from exc
-
-
-def _match_case_insensitive_voice(candidate: str, official_voices: list[str]) -> str | None:
-    lookup = {voice.strip().lower(): voice for voice in official_voices if voice.strip()}
-    return lookup.get(candidate.strip().lower())
-
-
-async def _load_twilio_conversationrelay_voice_catalog(
-    *,
-    provider: str | None,
-    language_code: str,
-    force_refresh: bool = False,
-) -> tuple[str, list[str], str, str, float]:
-    normalized_provider = _normalize_twilio_tts_provider(provider) or "ElevenLabs"
-    normalized_language = (language_code or settings.twilio_agent_language or "ja-JP").strip() or "ja-JP"
-    cache_key = (normalized_provider, normalized_language)
-    now_ts = time.time()
-    cached = _voice_catalog_cache.get(cache_key)
-    if (
-        not force_refresh
-        and isinstance(cached, dict)
-        and cached.get("voices")
-        and (now_ts - float(cached.get("fetched_at") or 0.0)) < _GEMINI_VOICE_CACHE_TTL_SECONDS
-    ):
-        return (
-            normalized_provider,
-            list(cached.get("voices") or []),
-            str(cached.get("source") or "cache"),
-            str(cached.get("default_voice") or ""),
-            float(cached.get("fetched_at") or 0.0),
-        )
-
-    defaults_by_language, defaults_source, defaults_fetched_at = await _load_twilio_conversationrelay_default_voice_settings(
-        force_refresh=force_refresh,
-    )
-    language_defaults = defaults_by_language.get(normalized_language) or {}
-
-    if normalized_provider == "ElevenLabs":
-        default_voice = str(language_defaults.get("voice_id") or "").strip()
-        if str(language_defaults.get("tts_provider") or "").strip() != "ElevenLabs":
-            default_voice = ""
-        if not default_voice:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Official Twilio ConversationRelay defaults do not expose an ElevenLabs voice for this language.",
-            )
-        fetched_at = defaults_fetched_at
-        voices = [default_voice]
-        _voice_catalog_cache[cache_key] = {
-            "voices": voices,
-            "source": defaults_source,
-            "default_voice": default_voice,
-            "fetched_at": fetched_at,
-        }
-        return normalized_provider, voices, defaults_source, default_voice, fetched_at
-
-    async with _voice_catalog_lock:
-        now_ts = time.time()
-        cached = _voice_catalog_cache.get(cache_key)
-        if (
-            not force_refresh
-            and isinstance(cached, dict)
-            and cached.get("voices")
-            and (now_ts - float(cached.get("fetched_at") or 0.0)) < _GEMINI_VOICE_CACHE_TTL_SECONDS
-        ):
-            return (
-                normalized_provider,
-                list(cached.get("voices") or []),
-                str(cached.get("source") or "cache"),
-                str(cached.get("default_voice") or ""),
-                float(cached.get("fetched_at") or 0.0),
-            )
-
-        try:
-            async with httpx.AsyncClient(timeout=12.0, follow_redirects=True) as client:
-                response = await client.get(_TWILIO_TTS_DOC_URL)
-                response.raise_for_status()
-                markdown_doc = response.text
-            voices = _extract_twilio_tts_voice_ids(
-                markdown_doc,
-                language_code=normalized_language,
-                provider=normalized_provider,
-            )
-            if not voices:
-                raise ValueError("No voice IDs parsed from official source.")
-            default_voice = ""
-            if str(language_defaults.get("tts_provider") or "").strip() == normalized_provider:
-                default_voice = str(language_defaults.get("voice_id") or "").strip()
-            if not default_voice and normalized_provider == "Google":
-                default_voice = next(
-                    (voice for voice in voices if voice.lower().endswith("-chirp3-hd-aoede")),
-                    voices[0],
-                )
-            elif not default_voice:
-                default_voice = voices[0]
-            fetched_at = time.time()
-            _voice_catalog_cache[cache_key] = {
-                "voices": voices,
-                "source": "twilio_tts_docs_live",
-                "default_voice": default_voice,
-                "fetched_at": fetched_at,
-            }
-            return normalized_provider, voices, "twilio_tts_docs_live", default_voice, fetched_at
-        except Exception as exc:
-            logger.warning(
-                "Failed to refresh Twilio ConversationRelay %s voice list from official source: %s",
-                normalized_provider,
-                exc,
-            )
-            cached = _voice_catalog_cache.get(cache_key)
-            if isinstance(cached, dict) and cached.get("voices"):
-                return (
-                    normalized_provider,
-                    list(cached.get("voices") or []),
-                    "cache_stale",
-                    str(cached.get("default_voice") or ""),
-                    float(cached.get("fetched_at") or 0.0),
-                )
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Unable to load Twilio ConversationRelay voice options from official source.",
-            ) from exc
-
-
-async def _load_official_gemini_voices(*, force_refresh: bool = False) -> tuple[list[str], str, float]:
-    _, voice_ids, source, _, fetched_at = await _load_twilio_conversationrelay_voice_catalog(
-        provider="Google",
-        language_code=(settings.twilio_agent_language or "ja-JP").strip() or "ja-JP",
-        force_refresh=force_refresh,
-    )
-    voices = _normalize_gemini_voice_names(
-        [
-            voice_id.split("-Chirp3-HD-", 1)[1].strip()
-            for voice_id in voice_ids
-            if "-Chirp3-HD-" in voice_id
-        ]
-    )
-    if not voices:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Unable to load Twilio ConversationRelay voice options from official source.",
-        )
-    return voices, source, fetched_at
 
 
 def _resolve_gemini_live_model(candidate_model: str | None) -> str:
@@ -655,22 +167,15 @@ def _resolve_gemini_live_model(candidate_model: str | None) -> str:
     )
 
 
-def _use_manual_vad_control() -> bool:
-    mode = (settings.twilio_gemini_activity_mode or "manual").strip().lower()
-    return mode in {"manual", "manual_vad", "explicit"}
-
-
-def _extract_audio_rate(mime_type: str | None, default: int = 24000) -> int:
-    text = (mime_type or "").strip().lower()
-    if not text:
-        return default
-    matched = _AUDIO_RATE_PATTERN.search(text)
-    if not matched:
-        return default
-    try:
-        return int(matched.group(1))
-    except ValueError:
-        return default
+def _build_test_session_service(db: AsyncSession) -> TestSessionService:
+    chat_service = ChatService(db)
+    return TestSessionService(
+        db,
+        call_repo=chat_service.call_repo,
+        appointment_repo=chat_service.appointment_repo,
+        prompt_service=chat_service.prompt_service,
+        extract_appointment=chat_service.extract_appointment,
+    )
 
 
 def _extract_opening_sentence(system_instruction: str | None) -> str | None:
@@ -839,215 +344,6 @@ def _resolve_twilio_conversationrelay_default_voice(
     )
 
 
-def _chunk_bytes(buffer: bytes, chunk_size: int) -> list[bytes]:
-    if not buffer or chunk_size <= 0:
-        return []
-    return [buffer[index : index + chunk_size] for index in range(0, len(buffer), chunk_size)]
-
-
-def _to_websocket_url(url: str) -> str:
-    if url.startswith("https://"):
-        return "wss://" + url[len("https://") :]
-    if url.startswith("http://"):
-        return "ws://" + url[len("http://") :]
-    return url
-
-
-def _build_twilio_media_stream_url(
-    *,
-    request: Request,
-) -> str:
-    return _to_websocket_url(str(request.url_for("twilio_voice_media_stream")))
-
-
-def _build_twilio_media_stream_twiml(
-    *,
-    request: Request,
-    prompt_code: str | None,
-    from_number: str | None,
-    to_number: str | None,
-    voice_name: str | None,
-    opening_text: str | None = None,
-) -> str:
-    stream_url = _build_twilio_media_stream_url(request=request)
-    parameters: list[tuple[str, str]] = []
-    if (prompt_code or "").strip():
-        parameters.append(("prompt_code", prompt_code.strip()))
-    if (from_number or "").strip():
-        parameters.append(("from", from_number.strip()))
-    if (to_number or "").strip():
-        parameters.append(("to", to_number.strip()))
-    if (voice_name or "").strip():
-        parameters.append(("voice_name", voice_name.strip()))
-
-    parameter_xml = "".join(
-        f'<Parameter name="{html.escape(name, quote=True)}" value="{html.escape(value, quote=True)}" />'
-        for name, value in parameters
-    )
-    opening_xml = ""
-    opening = (opening_text or "").strip()
-    if opening:
-        opening_xml = f'<Say language="{html.escape(settings.twilio_agent_language, quote=True)}">{html.escape(opening)}</Say>'
-    return (
-        '<?xml version="1.0" encoding="UTF-8"?>'
-        f"<Response>{opening_xml}<Connect>"
-        f'<Stream url="{html.escape(stream_url, quote=True)}">{parameter_xml}</Stream>'
-        "</Connect></Response>"
-    )
-
-
-def _build_public_websocket_url(websocket: WebSocket) -> str:
-    forwarded_proto = (websocket.headers.get("x-forwarded-proto") or "").split(",", 1)[0].strip()
-    forwarded_host = (websocket.headers.get("x-forwarded-host") or "").split(",", 1)[0].strip()
-
-    scheme = forwarded_proto or websocket.url.scheme
-    netloc = forwarded_host or websocket.headers.get("host") or websocket.url.netloc
-    return _to_websocket_url(urlunsplit((scheme, netloc, websocket.url.path, websocket.url.query, "")))
-
-
-def _candidate_websocket_signature_urls(websocket: WebSocket) -> list[str]:
-    public_url = _build_public_websocket_url(websocket)
-    candidates: list[str] = []
-
-    def _append(value: str) -> None:
-        token = value.strip()
-        if token and token not in candidates:
-            candidates.append(token)
-
-    _append(public_url)
-    if not public_url.endswith("/"):
-        _append(public_url + "/")
-
-    # Twilio's validator supports with/without port. Keep a non-websocket variant as a fallback
-    # for proxies that rewrite scheme headers in unexpected ways.
-    if public_url.startswith("wss://"):
-        https_url = "https://" + public_url[len("wss://") :]
-        _append(https_url)
-        _append(https_url + "/" if not https_url.endswith("/") else https_url)
-    elif public_url.startswith("ws://"):
-        http_url = "http://" + public_url[len("ws://") :]
-        _append(http_url)
-        _append(http_url + "/" if not http_url.endswith("/") else http_url)
-
-    return candidates
-
-
-async def _verify_websocket_or_close(websocket: WebSocket) -> bool:
-    if not settings.twilio_validate_webhooks:
-        return True
-
-    auth_token = (settings.twilio_auth_token or "").strip()
-    if settings.environment == "local" and not auth_token:
-        return True
-    if not auth_token:
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return False
-
-    signature = (websocket.headers.get("x-twilio-signature") or "").strip()
-    if not signature:
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return False
-
-    validator = RequestValidator(auth_token)
-    candidate_urls = _candidate_websocket_signature_urls(websocket)
-    if not any(validator.validate(candidate_url, {}, signature) for candidate_url in candidate_urls):
-        logger.warning(
-            "Twilio websocket signature verification failed. candidates=%s",
-            candidate_urls,
-        )
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return False
-
-    return True
-
-
-def _build_twilio_conversation_relay_url(
-    *,
-    request: Request,
-) -> str:
-    return _to_websocket_url(str(request.url_for("twilio_voice_conversation_relay")))
-
-
-def _build_twilio_conversation_relay_twiml(
-    *,
-    request: Request,
-    prompt_code: str | None,
-    from_number: str | None,
-    to_number: str | None,
-    tts_provider: str | None,
-    voice_name: str | None,
-    opening_text: str | None = None,
-) -> str:
-    relay_url = _build_twilio_conversation_relay_url(request=request)
-    action_url = str(request.url_for("voice_status_callback"))
-    language_code = (settings.twilio_agent_language or "ja-JP").strip() or "ja-JP"
-    normalized_tts_provider = _normalize_twilio_tts_provider(tts_provider) or "ElevenLabs"
-    conversation_relay_voice = (voice_name or "").strip()
-    parameters: list[tuple[str, str]] = []
-    if (prompt_code or "").strip():
-        parameters.append(("prompt_code", prompt_code.strip()))
-    if (from_number or "").strip():
-        parameters.append(("from", from_number.strip()))
-    if (to_number or "").strip():
-        parameters.append(("to", to_number.strip()))
-    if normalized_tts_provider:
-        parameters.append(("tts_provider", normalized_tts_provider))
-    if (voice_name or "").strip():
-        parameters.append(("voice_name", voice_name.strip()))
-
-    parameter_xml = "".join(
-        f'<Parameter name="{html.escape(name, quote=True)}" value="{html.escape(value, quote=True)}" />'
-        for name, value in parameters
-    )
-    welcome_greeting = (opening_text or "").strip()
-    welcome_attribute = (
-        f' welcomeGreeting="{html.escape(welcome_greeting, quote=True)}"' if welcome_greeting else ""
-    )
-    voice_attribute = (
-        f' voice="{html.escape(conversation_relay_voice, quote=True)}"'
-        if conversation_relay_voice
-        else ""
-    )
-    debug_attribute = ""
-    if settings.debug or (settings.environment or "").strip().lower() == "local":
-        debug_attribute = ' debug="debugging speaker-events tokens-played"'
-    return (
-        '<?xml version="1.0" encoding="UTF-8"?>'
-        f'<Response><Connect action="{html.escape(action_url, quote=True)}">'
-        f'<ConversationRelay url="{html.escape(relay_url, quote=True)}"'
-        f'{welcome_attribute}'
-        ' welcomeGreetingInterruptible="none"'
-        f' language="{html.escape(language_code, quote=True)}"'
-        f' ttsLanguage="{html.escape(language_code, quote=True)}"'
-        f' transcriptionLanguage="{html.escape(language_code, quote=True)}"'
-        f' ttsProvider="{html.escape(normalized_tts_provider, quote=True)}"'
-        ' transcriptionProvider="Google"'
-        ' speechModel="telephony"'
-        ' interruptible="speech"'
-        ' interruptSensitivity="high"'
-        f"{debug_attribute}"
-        f"{voice_attribute}>"
-        f"{parameter_xml}</ConversationRelay>"
-        "</Connect><Hangup/></Response>"
-    )
-
-
-def _extract_stream_custom_parameters(payload: dict[str, object] | None) -> dict[str, str]:
-    start = payload.get("start") if isinstance(payload, dict) else None
-    if not isinstance(start, dict):
-        return {}
-    custom_parameters = start.get("customParameters")
-    if not isinstance(custom_parameters, dict):
-        return {}
-    normalized: dict[str, str] = {}
-    for key, value in custom_parameters.items():
-        key_text = str(key or "").strip()
-        value_text = str(value or "").strip()
-        if key_text and value_text:
-            normalized[key_text] = value_text
-    return normalized
-
-
 def _is_auto_closing_reply(text: str | None) -> bool:
     candidate = (text or "").strip()
     if not candidate:
@@ -1115,51 +411,6 @@ async def _resolve_twilio_incoming_prompt_code(
         return default_template.code
 
     return _normalize_prompt_code_token(settings.twilio_default_prompt_code)
-
-
-def _build_gemini_live_config(
-    *,
-    model: str,
-    system_instruction: str | None,
-    voice_name: str | None,
-    manual_vad: bool,
-) -> types.LiveConnectConfig:
-    payload: dict[str, object] = {
-        "response_modalities": ["AUDIO"],
-        "input_audio_transcription": {},
-        "output_audio_transcription": {},
-    }
-    if voice_name:
-        payload["speech_config"] = {
-            "voice_config": {
-                "prebuilt_voice_config": {
-                    "voice_name": voice_name,
-                }
-            }
-        }
-    if system_instruction:
-        payload["system_instruction"] = system_instruction
-
-    payload["realtime_input_config"] = types.RealtimeInputConfig(
-        automatic_activity_detection=types.AutomaticActivityDetection(
-            disabled=manual_vad,
-        ),
-    )
-    if manual_vad:
-        payload["explicit_vad_signal"] = True
-
-    normalized_model = (model or "").strip().lower()
-    if "2.5" in normalized_model:
-        payload["thinking_config"] = types.ThinkingConfig(
-            thinking_budget=0,
-            include_thoughts=False,
-        )
-    elif "3.1" in normalized_model:
-        payload["thinking_config"] = types.ThinkingConfig(
-            include_thoughts=False,
-            thinking_level="minimal",
-        )
-    return types.LiveConnectConfig(**payload)
 
 
 async def _verify_webhook_or_raise(request: Request) -> None:
@@ -1299,6 +550,7 @@ async def prepare_incoming_voice_override(
     queued = await _set_pending_inbound_override_for_number(
         number=normalized_number,
         prompt_code=payload.prompt_code,
+        voice_route=payload.voice_route,
         voice_engine=payload.voice_engine,
         tts_provider=payload.tts_provider,
         voice_name=payload.voice_name,
@@ -1306,20 +558,23 @@ async def prepare_incoming_voice_override(
     if not queued:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="At least one of prompt_code, voice_engine, or voice_name is required.",
+            detail="At least one of prompt_code, voice_route, voice_engine, or voice_name is required.",
         )
 
     prompt_token = _normalize_prompt_code_token(payload.prompt_code)
+    resolved_route = _normalize_twilio_voice_route(payload.voice_route)
     resolved_engine = _normalize_voice_engine(payload.voice_engine)
     normalized_tts_provider = _normalize_twilio_tts_provider(payload.tts_provider)
     normalized_voice = _normalize_voice_name_token(payload.voice_name)
     logger.info(
         (
             "Prepared pending inbound override. "
-            "to=%s prompt_code=%s voice_engine=%s tts_provider=%s voice_name=%s ttl_seconds=%s"
+            "to=%s prompt_code=%s voice_route=%s voice_engine=%s "
+            "tts_provider=%s voice_name=%s ttl_seconds=%s"
         ),
         normalized_number,
         prompt_token,
+        resolved_route,
         resolved_engine,
         normalized_tts_provider,
         normalized_voice,
@@ -1330,6 +585,7 @@ async def prepare_incoming_voice_override(
         data={
             "to_number": normalized_number,
             "prompt_code": prompt_token,
+            "voice_route": resolved_route,
             "voice_engine": resolved_engine,
             "tts_provider": normalized_tts_provider,
             "voice_name": normalized_voice,
@@ -1345,6 +601,7 @@ async def twiml_app_voice_webhook(
     From: Optional[str] = Form(None),  # noqa: N803
     CallSid: Optional[str] = Form(None),  # noqa: N803
     prompt_code: Optional[str] = Form(None),
+    voice_route: Optional[str] = Form(None),
     voice_engine: Optional[str] = Form(None),
     tts_provider: Optional[str] = Form(None),
     voice_name: Optional[str] = Form(None),
@@ -1354,6 +611,7 @@ async def twiml_app_voice_webhook(
     queued_override = await _set_pending_inbound_override_for_number(
         number=To,
         prompt_code=prompt_code,
+        voice_route=voice_route,
         voice_engine=voice_engine,
         tts_provider=tts_provider,
         voice_name=voice_name,
@@ -1362,10 +620,12 @@ async def twiml_app_voice_webhook(
         logger.info(
             (
                 "Queued pending inbound override for outbound->inbound bridge. "
-                "to=%s prompt_code=%s voice_engine=%s tts_provider=%s voice_name=%s"
+                "to=%s prompt_code=%s voice_route=%s voice_engine=%s "
+                "tts_provider=%s voice_name=%s"
             ),
             _normalize_e164_number(To),
             _normalize_prompt_code_token(prompt_code),
+            _normalize_twilio_voice_route(voice_route),
             _normalize_voice_engine(voice_engine),
             _normalize_twilio_tts_provider(tts_provider),
             _normalize_voice_name_token(voice_name),
@@ -1374,12 +634,14 @@ async def twiml_app_voice_webhook(
     logger.info(
         (
             "Twilio TwiML app webhook called. "
-            "CallSid=%s From=%s To=%s prompt_code=%s voice_engine=%s tts_provider=%s voice_name=%s"
+            "CallSid=%s From=%s To=%s prompt_code=%s voice_route=%s "
+            "voice_engine=%s tts_provider=%s voice_name=%s"
         ),
         CallSid,
         From,
         To,
         prompt_code,
+        voice_route,
         voice_engine,
         tts_provider,
         voice_name,
@@ -1394,6 +656,10 @@ async def incoming_voice_webhook(
     identity: str = Query("webcall-tester", min_length=1, max_length=128),
     prompt_code: Optional[str] = Query(None),
     mode: Optional[str] = Query(None),
+    voice_route: Optional[str] = Query(
+        default=None,
+        description="Inbound AI voice route: gather, conversationrelay_generate, or media_stream_live.",
+    ),
     voice_engine: Optional[str] = Query(
         default=None,
         description="Inbound AI voice engine: twilio or gemini.",
@@ -1414,6 +680,7 @@ async def incoming_voice_webhook(
     service = TwilioWebCallService()
     pending_override = await _consume_pending_inbound_override_for_number(To)
     pending_prompt = pending_override.get("prompt_code") if pending_override else None
+    pending_route = pending_override.get("voice_route") if pending_override else None
     pending_engine = pending_override.get("voice_engine") if pending_override else None
     pending_tts_provider = pending_override.get("tts_provider") if pending_override else None
     pending_voice_name = pending_override.get("voice_name") if pending_override else None
@@ -1424,13 +691,18 @@ async def incoming_voice_webhook(
         to_number=To,
     )
     mode_value = ((mode or settings.twilio_incoming_default_mode or "agent").strip().lower())
+    effective_route = voice_route or pending_route
     effective_engine = voice_engine or pending_engine
-    engine_value = _normalize_voice_engine(effective_engine)
+    route_value = _resolve_twilio_inbound_voice_route(
+        voice_route=effective_route,
+        voice_engine=effective_engine,
+    )
     xml: str
-    if engine_value not in {"twilio", "gemini"}:
+    if route_value not in {"gather", "conversationrelay_generate", "media_stream_live"}:
         logger.warning(
-            "Twilio inbound voice engine invalid. value=%s call_sid=%s to=%s",
-            engine_value,
+            "Twilio inbound voice route invalid. route=%s engine=%s call_sid=%s to=%s",
+            effective_route,
+            effective_engine,
             CallSid,
             To,
         )
@@ -1441,7 +713,7 @@ async def incoming_voice_webhook(
         return Response(content=xml, media_type="application/xml")
 
     if mode_value == "agent":
-        if engine_value == "gemini":
+        if route_value == "conversationrelay_generate":
             runtime = await _resolve_prompt_runtime(
                 db=db,
                 prompt_code=resolved_prompt_code,
@@ -1517,6 +789,66 @@ async def incoming_voice_webhook(
                 voice_name=resolved_conversation_relay_voice,
                 opening_text=opening_text,
             )
+        elif route_value == "media_stream_live":
+            runtime = await _resolve_prompt_runtime(
+                db=db,
+                prompt_code=resolved_prompt_code,
+                model_capability="live",
+            )
+            try:
+                selected_model = _resolve_gemini_live_model(runtime.llm_model)
+            except ValueError as exc:
+                logger.warning(
+                    "Twilio inbound prompt model incompatible with media stream live. prompt=%s error=%s",
+                    resolved_prompt_code,
+                    exc,
+                )
+                xml = twilio_voice_agent_service.build_hangup_twiml(
+                    say_text=(
+                        "当前 Prompt 模型不能用于 Twilio Media Streams。"
+                        "请切换到 Gemini Live / Native Audio 模型后再测试。"
+                    ),
+                    language=settings.twilio_agent_language,
+                )
+                return Response(content=xml, media_type="application/xml")
+
+            selected_provider = resolve_live_provider(runtime.llm_provider, selected_model)
+            available, reason = provider_available(selected_provider)
+            if selected_provider != "gemini" or not available:
+                logger.warning(
+                    "Twilio inbound media stream provider unavailable. provider=%s prompt=%s reason=%s",
+                    selected_provider,
+                    resolved_prompt_code,
+                    reason,
+                )
+                xml = twilio_voice_agent_service.build_hangup_twiml(
+                    say_text="当前电话音频桥接不可用。请检查 Gemini Live 配置后重试。",
+                    language=settings.twilio_agent_language,
+                )
+                return Response(content=xml, media_type="application/xml")
+
+            selected_voice_override = _normalize_voice_name_token(voice_name or pending_voice_name)
+            requested_live_voice = selected_voice_override or runtime.voice_id
+            resolved_live_voice = _normalize_gemini_live_voice_name(
+                requested_live_voice,
+                voice_provider=runtime.voice_provider,
+                default_voice=settings.default_live_voice or "Aoede",
+            )
+            if (requested_live_voice or "").strip() and resolved_live_voice != requested_live_voice:
+                logger.info(
+                    "Normalized Twilio media stream voice for Gemini Live. requested=%s resolved=%s prompt=%s provider=%s",
+                    requested_live_voice,
+                    resolved_live_voice,
+                    runtime.template_code,
+                    runtime.voice_provider,
+                )
+            xml = _build_twilio_media_stream_twiml(
+                request=request,
+                prompt_code=runtime.template_code,
+                from_number=From,
+                to_number=To,
+                voice_name=resolved_live_voice,
+            )
         else:
             turn_url = str(request.url_for("twilio_voice_agent_turn"))
             action_url = twilio_voice_agent_service.build_turn_action_url(turn_url, resolved_prompt_code)
@@ -1538,25 +870,35 @@ async def incoming_voice_webhook(
     logger.info(
         (
             "Twilio inbound webhook called. "
-            "CallSid=%s From=%s To=%s mode=%s engine=%s identity=%s prompt_code=%s"
+            "CallSid=%s From=%s To=%s mode=%s route=%s engine=%s identity=%s prompt_code=%s"
         ),
         CallSid,
         From,
         To,
         mode_value,
-        engine_value,
+        route_value,
+        effective_engine,
         identity,
         resolved_prompt_code,
     )
-    if pending_override and not any([(prompt_code or "").strip(), (voice_engine or "").strip(), (voice_name or "").strip()]):
+    if pending_override and not any(
+        [
+            (prompt_code or "").strip(),
+            (voice_route or "").strip(),
+            (voice_engine or "").strip(),
+            (voice_name or "").strip(),
+        ]
+    ):
         logger.info(
             (
                 "Applied pending inbound override for inbound call. "
-                "CallSid=%s To=%s prompt_code=%s voice_engine=%s tts_provider=%s voice_name=%s"
+                "CallSid=%s To=%s prompt_code=%s voice_route=%s voice_engine=%s "
+                "tts_provider=%s voice_name=%s"
             ),
             CallSid,
             _normalize_e164_number(To),
             pending_prompt,
+            pending_route,
             pending_engine,
             pending_tts_provider,
             pending_voice_name,
@@ -1709,7 +1051,7 @@ async def twilio_voice_conversation_relay(websocket: WebSocket):
         if not call_id or not messages:
             return
         async with AsyncSessionLocal() as db:
-            service = TestSessionService(db)
+            service = _build_test_session_service(db)
             await service.append_test_session_messages(
                 call_id=call_id,
                 messages=messages,
@@ -1726,13 +1068,28 @@ async def twilio_voice_conversation_relay(websocket: WebSocket):
         async with finalize_lock:
             if bound_call_finalized:
                 return
-            async with AsyncSessionLocal() as db:
-                service = TestSessionService(db)
-                result = await service.finalize_test_session(
-                    call_id=call_id,
-                    template_code=runtime.template_code if runtime else current_prompt_code,
-                    run_extraction=run_extraction,
+            try:
+                async with AsyncSessionLocal() as db:
+                    service = _build_test_session_service(db)
+                    result = await service.finalize_test_session(
+                        call_id=call_id,
+                        template_code=runtime.template_code if runtime else current_prompt_code,
+                        run_extraction=run_extraction,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to finalize Twilio ConversationRelay bound call. call_sid=%s trigger=%s error=%s",
+                    current_call_sid,
+                    trigger,
+                    exc,
                 )
+                await _append_call_trace(
+                    current_call_sid,
+                    event_type="call_finalize_error",
+                    text=str(exc),
+                    level="warning",
+                )
+                return
             bound_call_finalized = True
             await _append_call_trace(
                 current_call_sid,
@@ -2131,19 +1488,31 @@ async def twilio_voice_media_stream(
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
+    requested_live_voice = (
+        voice_name_from_stream or runtime.voice_id or settings.default_live_voice or "Aoede"
+    ).strip() or "Aoede"
     if voice_name_from_stream:
         logger.info(
-            "Applying Twilio stream voice override only when Prompt voice_id is empty. prompt=%s override=%s",
+            "Applying Twilio media stream voice override. prompt=%s override=%s",
             runtime.template_code,
             voice_name_from_stream,
         )
-    selected_voice = (runtime.voice_id or voice_name_from_stream or settings.default_live_voice or "Aoede").strip() or "Aoede"
+    selected_voice = _normalize_gemini_live_voice_name(
+        requested_live_voice,
+        voice_provider=runtime.voice_provider,
+        default_voice=settings.default_live_voice or "Aoede",
+    )
+    if selected_voice != requested_live_voice:
+        logger.info(
+            "Resolved Gemini Live voice for Twilio media stream. requested=%s resolved=%s prompt=%s provider=%s",
+            requested_live_voice,
+            selected_voice,
+            runtime.template_code,
+            runtime.voice_provider,
+        )
     manual_vad_control = _use_manual_vad_control()
     opening_text = _build_twilio_opening_text(runtime.system_instruction)
-    twilio_session_instruction = _build_twilio_session_instruction(
-        runtime.system_instruction,
-        opening_text=opening_text,
-    )
+    twilio_session_instruction = _build_twilio_session_instruction(runtime.system_instruction, opening_text=None)
     live_config = _build_gemini_live_config(
         model=selected_model,
         system_instruction=twilio_session_instruction,
@@ -2255,7 +1624,7 @@ async def twilio_voice_media_stream(
         if not call_id or not messages:
             return
         async with AsyncSessionLocal() as db:
-            service = TestSessionService(db)
+            service = _build_test_session_service(db)
             await service.append_test_session_messages(
                 call_id=call_id,
                 messages=messages,
@@ -2272,13 +1641,28 @@ async def twilio_voice_media_stream(
         async with finalize_lock:
             if bound_call_finalized:
                 return
-            async with AsyncSessionLocal() as db:
-                service = TestSessionService(db)
-                result = await service.finalize_test_session(
-                    call_id=call_id,
-                    template_code=runtime.template_code,
-                    run_extraction=run_extraction,
+            try:
+                async with AsyncSessionLocal() as db:
+                    service = _build_test_session_service(db)
+                    result = await service.finalize_test_session(
+                        call_id=call_id,
+                        template_code=runtime.template_code,
+                        run_extraction=run_extraction,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to finalize Twilio media stream bound call. call_sid=%s trigger=%s error=%s",
+                    current_call_sid,
+                    trigger,
+                    exc,
                 )
+                await _append_call_trace(
+                    current_call_sid,
+                    event_type="call_finalize_error",
+                    text=str(exc),
+                    level="warning",
+                )
+                return
             bound_call_finalized = True
             await _append_call_trace(
                 current_call_sid,
@@ -2311,13 +1695,30 @@ async def twilio_voice_media_stream(
                     ),
                     level="success",
                 )
-                opening_suppress_until = None
+                opening_suppress_until = time.monotonic() + (_OPENING_STARTUP_SUPPRESS_MS / 1000.0)
                 await _append_call_trace(
                     current_call_sid,
-                    event_type="opening_turn_started",
-                    text=f"Twilio played opening greeting before media stream: {opening_text}",
+                    event_type="opening_turn_requested",
+                    text=f"Requested Gemini Live opening greeting: {opening_text}",
                     level="info",
                 )
+                try:
+                    await session.send_realtime_input(
+                        text=(
+                            "通話が接続されました。"
+                            "次の一文を日本語で自然に一度だけ話してください。"
+                            f"「{opening_text}」"
+                            "この一文以外はまだ話さず、その後は相手の返答を待ってください。"
+                        )
+                    )
+                    await session.send_realtime_input(activity_end=types.ActivityEnd())
+                except Exception as exc:
+                    await _append_call_trace(
+                        current_call_sid,
+                        event_type="opening_turn_request_failed",
+                        text=str(exc),
+                        level="warning",
+                    )
 
             async def twilio_to_live() -> None:
                 nonlocal stream_sid
@@ -2372,6 +1773,8 @@ async def twilio_voice_media_stream(
                             )
                         if pending_playback_mark and mark_name == pending_playback_mark:
                             pending_playback_mark = None
+                            assistant_playback_pending = False
+                            assistant_speaking = False
                             await _append_call_trace(
                                 current_call_sid,
                                 event_type="playback_complete",
@@ -3026,6 +2429,7 @@ async def twilio_voice_media_stream(
                             )
 
                     if content.output_transcription and content.output_transcription.text:
+                        opening_suppress_until = None
                         assistant_last_output_at = time.monotonic()
                         awaiting_model_response = False
                         awaiting_model_since = None
@@ -3048,6 +2452,7 @@ async def twilio_voice_media_stream(
                     if content.interrupted and stream_sid:
                         assistant_speaking = False
                         assistant_playback_pending = False
+                        opening_suppress_until = None
                         assistant_last_output_at = time.monotonic()
                         awaiting_model_response = False
                         awaiting_model_since = None
@@ -3075,8 +2480,7 @@ async def twilio_voice_media_stream(
                                 text=f"reason={reason}",
                                 level="info",
                             )
-                            assistant_playback_pending = False
-                            pending_playback_mark = None
+                            assistant_playback_pending = pending_playback_mark is not None
                             assistant_speaking = False
                             assistant_last_output_at = time.monotonic()
                             awaiting_model_response = False
@@ -3114,6 +2518,7 @@ async def twilio_voice_media_stream(
                             continue
 
                         assistant_speaking = True
+                        opening_suppress_until = None
                         assistant_last_output_at = time.monotonic()
                         awaiting_model_response = False
                         awaiting_model_since = None
@@ -3185,10 +2590,8 @@ async def twilio_voice_media_stream(
                             text=f"reason={reason}",
                             level="info",
                         )
-                        # Gemini Live already delays turn_complete when it assumes realtime playback,
-                        # so use turn_complete as the primary signal to reopen inbound listening.
-                        assistant_playback_pending = False
-                        pending_playback_mark = None
+                        # Keep inbound listening closed until Twilio confirms playback completion.
+                        assistant_playback_pending = pending_playback_mark is not None
                         assistant_speaking = False
                         assistant_last_output_at = time.monotonic()
                         awaiting_model_response = False
@@ -3269,7 +2672,7 @@ async def voice_status_callback(
                     call_repo = CallRepository(db)
                     existing_call = await call_repo.get_by_sip_call_id((CallSid or "").strip())
                     if existing_call:
-                        service = TestSessionService(db)
+                        service = _build_test_session_service(db)
                         await service.finalize_test_session(
                             call_id=existing_call.id,
                             template_code=(existing_call.extra_data or {}).get("template_code"),

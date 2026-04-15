@@ -6,7 +6,10 @@ import type { UseTwilioVoiceGatewayResult } from '../../../../hooks/testTabs/use
 import type { PromptTemplate } from '../../../../types/shared';
 import styles from '../TwilioTabContent.module.scss';
 import type { DialogueHistoryItem, VoiceRouteMode } from './types';
-import type { TwilioTtsProvider } from '../../../../features/test-lab/voice/adapters/twilio/useTwilioVoiceGateway';
+import type {
+  TwilioTransportMode,
+  TwilioTtsProvider,
+} from '../../../../features/test-lab/voice/adapters/twilio/useTwilioVoiceGateway';
 
 interface VoiceSidePanelProps {
   routeMode: VoiceRouteMode;
@@ -15,6 +18,7 @@ interface VoiceSidePanelProps {
   selectedPromptCode: string;
   selectedPrompt?: PromptTemplate;
   isPromptVoiceConfigured: boolean;
+  twilioTransportMode: TwilioTransportMode;
   twilioTtsProvider: TwilioTtsProvider;
 }
 
@@ -50,6 +54,7 @@ export function VoiceSidePanel({
   selectedPromptCode,
   selectedPrompt,
   isPromptVoiceConfigured,
+  twilioTransportMode,
   twilioTtsProvider,
 }: VoiceSidePanelProps) {
   const directDialogueHistory = useMemo<DialogueHistoryItem[]>(() => {
@@ -96,6 +101,8 @@ export function VoiceSidePanel({
     }
     return '';
   }, [directDialogueHistory]);
+
+  const isConversationRelayMode = twilioTransportMode === 'conversationrelay';
 
   if (routeMode === 'direct') {
     return (
@@ -181,8 +188,12 @@ export function VoiceSidePanel({
             </dd>
           </div>
           <div className={styles.metaRow}>
-            <dt>TTS Provider</dt>
-            <dd>{twilioTtsProvider}</dd>
+            <dt>电话链路模式</dt>
+            <dd>{isConversationRelayMode ? 'ConversationRelay' : 'Media Streams + Gemini Live'}</dd>
+          </div>
+          <div className={styles.metaRow}>
+            <dt>{isConversationRelayMode ? 'TTS Provider' : '语音引擎'}</dt>
+            <dd>{isConversationRelayMode ? twilioTtsProvider : 'Gemini Live'}</dd>
           </div>
           <div className={styles.metaRow}>
             <dt>系统能力</dt>
@@ -191,8 +202,20 @@ export function VoiceSidePanel({
                 电话网关（Twilio）{twilioGateway.capability.twilioWebcallImplemented ? ' OK' : ' Unavailable'}
               </Tag>
               &nbsp;
-              <Tag type={twilioGateway.capability.geminiGenerateImplemented ? 'green' : 'red'}>
-                Gemini 文本生成 {twilioGateway.capability.geminiGenerateImplemented ? ' OK' : ' Unavailable'}
+              <Tag
+                type={
+                  isConversationRelayMode
+                    ? twilioGateway.capability.geminiGenerateImplemented
+                      ? 'green'
+                      : 'red'
+                    : twilioGateway.capability.geminiLiveImplemented
+                      ? 'green'
+                      : 'red'
+                }
+              >
+                {isConversationRelayMode
+                  ? `Gemini 文本生成 ${twilioGateway.capability.geminiGenerateImplemented ? ' OK' : ' Unavailable'}`
+                  : `Gemini Live ${twilioGateway.capability.geminiLiveImplemented ? ' OK' : ' Unavailable'}`}
               </Tag>
             </dd>
           </div>

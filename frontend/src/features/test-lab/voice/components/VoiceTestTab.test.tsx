@@ -128,6 +128,7 @@ function buildTwilioGateway() {
     capability: {
       configuredPhoneNumber: '+815012345678',
       geminiGenerateImplemented: true,
+      geminiLiveImplemented: true,
       twilioWebcallImplemented: true,
     },
     voiceCatalog: {
