@@ -4,6 +4,7 @@ Provider resolution helpers for realtime live gateway.
 from __future__ import annotations
 
 from app.core.config import settings
+from app.services.google_genai_client import google_genai_available
 
 _PROVIDER_ALIASES = {
     "google": "gemini",
@@ -39,9 +40,7 @@ def resolve_live_provider(provider: str | None, model: str | None) -> str:
 def provider_available(provider: str) -> tuple[bool, str | None]:
     normalized = normalize_provider(provider)
     if normalized == "gemini":
-        if (settings.google_api_key or "").strip():
-            return True, None
-        return False, "GOOGLE_API_KEY is not configured."
+        return google_genai_available()
     if normalized == "openai":
         if (settings.openai_api_key or "").strip():
             return False, "OpenAI live gateway adapter is not implemented yet."
@@ -51,4 +50,3 @@ def provider_available(provider: str) -> tuple[bool, str | None]:
 
 def supported_live_providers() -> list[str]:
     return ["gemini", "openai"]
-

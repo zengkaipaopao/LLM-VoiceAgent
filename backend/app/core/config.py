@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     environment: str = "local"
     # LLM Configuration
     google_api_key: str = ""
+    google_genai_use_vertexai: bool = False
+    google_cloud_project: str = ""
+    google_cloud_location: str = "global"
+    google_application_credentials: str = ""
+    google_genai_allow_api_key_fallback: bool = True
     openai_api_key: str = ""
     default_llm_provider: str = "gemini"
     default_llm_model: str = DEFAULT_GENERATE_MODEL
@@ -35,11 +40,22 @@ class Settings(BaseSettings):
     twilio_incoming_prompt_map: str = ""
     twilio_incoming_default_mode: str = "agent"
     twilio_incoming_voice_engine: str = "twilio"
-    twilio_default_conversationrelay_voice: str = "jqcCZkN6Knx8BJ5TBdYR"
     # Gemini Live turn segmentation mode for Twilio media streams:
     # - auto: Gemini automatic activity detection (recommended)
     # - manual: backend VAD + explicit ActivityEnd control (debug fallback)
-    twilio_gemini_activity_mode: str = "manual"
+    twilio_gemini_activity_mode: str = "auto"
+    # Twilio Media Streams + Gemini automatic activity detection tuning.
+    # These defaults are tuned for PSTN audio where continuous silence/noise frames are common.
+    twilio_gemini_activity_handling: str = "no_interruption"
+    twilio_gemini_turn_coverage: str = "activity_only"
+    twilio_gemini_start_sensitivity: str = "high"
+    twilio_gemini_end_sensitivity: str = "high"
+    twilio_gemini_prefix_padding_ms: int = 120
+    twilio_gemini_silence_duration_ms: int = 450
+    # Runtime state backend for Twilio Media Streams / trace storage.
+    # Current supported value:
+    # - memory: in-process singleton stores
+    twilio_runtime_store_backend: str = "memory"
     twilio_agent_language: str = "ja-JP"
     twilio_strict_template_provider: bool = True
     
@@ -68,8 +84,28 @@ class Settings(BaseSettings):
         return self.environment != "local" or self.enforce_api_key_auth_in_local
 
     @property
+    def google_vertex_enabled(self) -> bool:
+        return bool(
+            self.google_genai_use_vertexai
+            and (self.google_cloud_project or "").strip()
+            and (self.google_cloud_location or "").strip()
+        )
+
+    @property
+    def google_genai_backend_enabled(self) -> bool:
+        return self.google_vertex_enabled or bool((self.google_api_key or "").strip())
+
+    @property
+    def google_genai_backend_mode(self) -> str:
+        if self.google_vertex_enabled:
+            return "vertexai"
+        if (self.google_api_key or "").strip():
+            return "developer_api"
+        return "disabled"
+
+    @property
     def live_gateway_enabled(self) -> bool:
-        return bool((self.google_api_key or "").strip())
+        return self.google_genai_backend_enabled
 
     @property
     def twilio_webcall_enabled(self) -> bool:

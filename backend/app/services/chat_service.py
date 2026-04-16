@@ -1728,14 +1728,14 @@ class ChatService:
         operation_flow_response = await self._handle_appointment_operation_flow(call, request.message)
         if operation_flow_response is not None:
             response = operation_flow_response
-        elif not settings.google_api_key:
+        elif not settings.google_genai_backend_enabled:
             if not settings.llm_show_quota_notice_as_reply:
-                raise ValueError("Google API Key not configured. Please check backend/.env")
+                raise ValueError("Gemini backend not configured. Please check backend/.env")
             response = self._build_quota_notice_reply(
-                "Google API Key not configured",
+                "Gemini backend not configured",
                 api_key_missing=True,
             )
-            quota_notice_reason = "Google API Key not configured"
+            quota_notice_reason = "Gemini backend not configured"
         else:
             try:
                 response = await llm_service.chat_completion(
@@ -1807,10 +1807,10 @@ class ChatService:
             if operation_flow_response is not None:
                 full_response = operation_flow_response
                 yield f"data: {json.dumps({'type': 'content', 'content': full_response})}\n\n"
-            elif not settings.google_api_key:
+            elif not settings.google_genai_backend_enabled:
                 if not settings.llm_show_quota_notice_as_reply:
-                    raise ValueError("Google API Key not configured. Please check backend/.env")
-                quota_notice_reason = "Google API Key not configured"
+                    raise ValueError("Gemini backend not configured. Please check backend/.env")
+                quota_notice_reason = "Gemini backend not configured"
                 full_response = self._build_quota_notice_reply(quota_notice_reason, api_key_missing=True)
                 yield f"data: {json.dumps({'type': 'content', 'content': full_response})}\n\n"
             else:

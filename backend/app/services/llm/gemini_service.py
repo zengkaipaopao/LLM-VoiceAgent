@@ -6,10 +6,10 @@ import logging
 import re
 from typing import Any, AsyncIterator, Dict, List, Optional
 
-from google import genai
 from google.genai import types
 
 from app.core.model_defaults import DEFAULT_GENERATE_MODEL
+from app.services.google_genai_client import create_google_genai_client
 
 from .base import BaseLLMService
 from .exceptions import LLMAPIError, LLMInvalidResponseError, LLMRateLimitError
@@ -22,7 +22,7 @@ class GeminiService(BaseLLMService):
 
     def __init__(self, api_key: str, model: str = DEFAULT_GENERATE_MODEL):
         super().__init__(api_key, model)
-        self.client = genai.Client(api_key=api_key)
+        self.client = create_google_genai_client()
 
     def _build_generation_config(
         self,

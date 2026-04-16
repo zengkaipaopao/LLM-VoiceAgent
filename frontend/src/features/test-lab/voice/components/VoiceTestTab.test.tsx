@@ -131,16 +131,7 @@ function buildTwilioGateway() {
       geminiLiveImplemented: true,
       twilioWebcallImplemented: true,
     },
-    voiceCatalog: {
-      provider: 'Google',
-      providers: ['Google', 'Amazon', 'ElevenLabs'],
-      voices: ['Aoede'],
-      source: 'cache',
-      defaultVoice: 'Aoede',
-      language: 'ja-JP',
-    },
     loadingCapability: false,
-    loadingVoices: false,
     targetNumber: '+815012345678',
     setTargetNumber: vi.fn(),
     targetNumberLocked: true,
@@ -156,7 +147,6 @@ function buildTwilioGateway() {
     setInfo: vi.fn(),
     setError: vi.fn(),
     refreshCapability: vi.fn(),
-    refreshVoiceCatalog: vi.fn(),
     fetchToken: vi.fn(),
     registerDevice: vi.fn(),
     startDial: vi.fn(),
@@ -192,7 +182,6 @@ describe('VoiceTestTab', () => {
       expect(liveWebsocket.disconnectSocket).toHaveBeenCalledTimes(1);
       expect(liveWebsocket.setError).toHaveBeenCalledWith(null);
       expect(twilioGateway.refreshCapability).toHaveBeenCalledTimes(1);
-      expect(twilioGateway.refreshVoiceCatalog).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -214,7 +203,6 @@ describe('VoiceTestTab', () => {
 
     await waitFor(() => {
       expect(twilioGateway.refreshCapability).toHaveBeenCalledTimes(1);
-      expect(twilioGateway.refreshVoiceCatalog).toHaveBeenCalledTimes(2);
       expect(liveWebsocket.disconnectSocket).toHaveBeenCalledTimes(2);
     });
   });

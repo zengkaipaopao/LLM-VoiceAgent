@@ -1,65 +1,33 @@
-import asyncio
 import audioop
 import re
-from collections import deque
+
+from app.services.twilio.runtime_backends import get_twilio_stream_runtime_store
 
 _AUDIO_RATE_PATTERN = re.compile(r"rate=(\d+)")
 
-_manual_audio_lock = asyncio.Lock()
-_manual_audio_queues: dict[str, deque[bytes]] = {}
-_active_stream_calls: set[str] = set()
-
 
 async def _mark_stream_active(call_sid: str | None) -> None:
-    sid = (call_sid or "").strip()
-    if not sid:
-        return
-    async with _manual_audio_lock:
-        _active_stream_calls.add(sid)
-        _manual_audio_queues.setdefault(sid, deque())
+    await get_twilio_stream_runtime_store().mark_active(call_sid)
 
 
 async def _mark_stream_inactive(call_sid: str | None) -> None:
-    sid = (call_sid or "").strip()
-    if not sid:
-        return
-    async with _manual_audio_lock:
-        _active_stream_calls.discard(sid)
-        _manual_audio_queues.pop(sid, None)
+    await get_twilio_stream_runtime_store().mark_inactive(call_sid)
 
 
 async def _is_stream_active(call_sid: str | None) -> bool:
-    sid = (call_sid or "").strip()
-    if not sid:
-        return False
-    async with _manual_audio_lock:
-        return sid in _active_stream_calls
+    return await get_twilio_stream_runtime_store().is_active(call_sid)
 
 
 async def _enqueue_manual_audio(call_sid: str, audio_bytes: bytes) -> int:
-    sid = call_sid.strip()
-    async with _manual_audio_lock:
-        queue = _manual_audio_queues.setdefault(sid, deque())
-        queue.append(audio_bytes)
-        return len(queue)
+    return await get_twilio_stream_runtime_store().enqueue_manual_audio(call_sid, audio_bytes)
 
 
 async def _drain_manual_audio(call_sid: str | None) -> list[bytes]:
-    sid = (call_sid or "").strip()
-    if not sid:
-        return []
-    async with _manual_audio_lock:
-        queue = _manual_audio_queues.get(sid)
-        if not queue:
-            return []
-        items = list(queue)
-        queue.clear()
-        return items
+    return await get_twilio_stream_runtime_store().drain_manual_audio(call_sid)
 
 
 async def _list_active_stream_calls() -> list[str]:
-    async with _manual_audio_lock:
-        return sorted(_active_stream_calls)
+    return await get_twilio_stream_runtime_store().list_active_calls()
 
 
 def _pcm16_audio_stats(audio_bytes: bytes, *, sample_rate: int = 16000) -> dict[str, int]:

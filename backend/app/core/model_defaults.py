@@ -5,6 +5,7 @@ from __future__ import annotations
 
 DEFAULT_GENERATE_MODEL = "gemini-2.5-flash"
 DEFAULT_LIVE_MODEL = "gemini-2.5-flash-native-audio-latest"
+VERTEX_LIVE_MODEL = "gemini-live-2.5-flash-native-audio"
 _PROVIDER_ALIASES = {
     "google": "gemini",
     "gemini": "gemini",
@@ -102,3 +103,25 @@ def require_live_model(model: str | None, *, source: str = "Selected model") -> 
             "Please choose a Gemini Live model in the prompt or override the voice test model explicitly."
         )
     return token
+
+
+def resolve_vertex_live_model(model: str | None, *, fallback_model: str | None = None) -> str:
+    token = resolve_live_model(model, fallback_model=fallback_model)
+    normalized = token.lower()
+
+    if normalized.startswith("gemini-live-"):
+        return token
+
+    if normalized in {
+        "gemini-2.5-flash-native-audio",
+        "gemini-2.5-flash-native-audio-latest",
+    }:
+        return VERTEX_LIVE_MODEL
+
+    if "gemini-3.1-flash-live-preview" in normalized:
+        return VERTEX_LIVE_MODEL
+
+    if is_live_model(token):
+        return VERTEX_LIVE_MODEL
+
+    return VERTEX_LIVE_MODEL

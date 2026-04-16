@@ -5,14 +5,11 @@ Provides:
 - Voice SDK access token generation (JWT, Twilio-compatible claims)
 - TwiML XML generation for outbound/inbound voice routing
 """
-import base64
-import hashlib
-import hmac
 import html
-import json
 import re
-import time
-from uuid import uuid4
+
+from twilio.jwt.access_token import AccessToken
+from twilio.jwt.access_token.grants import VoiceGrant
 
 from app.core.config import settings
 from app.exceptions import BusinessException
@@ -21,10 +18,6 @@ from app.exceptions import BusinessException
 E164_PATTERN = re.compile(r"^\+[1-9]\d{7,14}$")
 IDENTITY_PATTERN = re.compile(r"^[A-Za-z0-9_.:@-]{1,128}$")
 PROMPT_CODE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
-
-
-def _b64url_encode(raw: bytes) -> str:
-    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
 
 
 class TwilioWebCallService:
@@ -87,42 +80,21 @@ class TwilioWebCallService:
         if ttl_seconds < 60 or ttl_seconds > 86_400:
             raise BusinessException("ttl_seconds must be between 60 and 86400")
 
-        now = int(time.time())
-        exp = now + int(ttl_seconds)
-
-        header = {"alg": "HS256", "typ": "JWT", "cty": "twilio-fpa;v=1"}
-        grants = {
-            "identity": normalized_identity,
-            "voice": {
-                "incoming": {"allow": True},
-                "outgoing": {"application_sid": settings.twilio_twiml_app_sid},
-            },
-        }
-        payload = {
-            "jti": f"{settings.twilio_api_key_sid}-{uuid4()}",
-            "iss": settings.twilio_api_key_sid,
-            "sub": settings.twilio_account_sid,
-            "iat": now,
-            "nbf": now - 1,
-            "exp": exp,
-            "grants": grants,
-        }
-
-        encoded_header = _b64url_encode(
-            json.dumps(header, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+        voice_grant = VoiceGrant(
+            incoming_allow=True,
+            outgoing_application_sid=settings.twilio_twiml_app_sid,
         )
-        encoded_payload = _b64url_encode(
-            json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+        access_token = AccessToken(
+            settings.twilio_account_sid,
+            settings.twilio_api_key_sid,
+            settings.twilio_api_key_secret,
+            identity=normalized_identity,
+            ttl=int(ttl_seconds),
         )
-        signing_input = f"{encoded_header}.{encoded_payload}".encode("ascii")
-        signature = hmac.new(
-            settings.twilio_api_key_secret.encode("utf-8"),
-            signing_input,
-            digestmod=hashlib.sha256,
-        ).digest()
-        encoded_signature = _b64url_encode(signature)
-
-        token = f"{encoded_header}.{encoded_payload}.{encoded_signature}"
+        access_token.add_grant(voice_grant)
+        token = access_token.to_jwt()
+        if isinstance(token, bytes):
+            token = token.decode("utf-8")
         return token, normalized_identity, int(ttl_seconds)
 
     def build_outbound_twiml(self, to: str) -> str:

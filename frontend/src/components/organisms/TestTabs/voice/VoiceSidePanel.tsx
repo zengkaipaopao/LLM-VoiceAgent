@@ -6,10 +6,6 @@ import type { UseTwilioVoiceGatewayResult } from '../../../../hooks/testTabs/use
 import type { PromptTemplate } from '../../../../types/shared';
 import styles from '../TwilioTabContent.module.scss';
 import type { DialogueHistoryItem, VoiceRouteMode } from './types';
-import type {
-  TwilioTransportMode,
-  TwilioTtsProvider,
-} from '../../../../features/test-lab/voice/adapters/twilio/useTwilioVoiceGateway';
 
 interface VoiceSidePanelProps {
   routeMode: VoiceRouteMode;
@@ -17,9 +13,8 @@ interface VoiceSidePanelProps {
   twilioGateway: UseTwilioVoiceGatewayResult;
   selectedPromptCode: string;
   selectedPrompt?: PromptTemplate;
+  effectiveVoice: string;
   isPromptVoiceConfigured: boolean;
-  twilioTransportMode: TwilioTransportMode;
-  twilioTtsProvider: TwilioTtsProvider;
 }
 
 function resolveTraceSpeaker(type: string): 'AI' | '用户' | '事件' {
@@ -53,9 +48,8 @@ export function VoiceSidePanel({
   twilioGateway,
   selectedPromptCode,
   selectedPrompt,
+  effectiveVoice,
   isPromptVoiceConfigured,
-  twilioTransportMode,
-  twilioTtsProvider,
 }: VoiceSidePanelProps) {
   const directDialogueHistory = useMemo<DialogueHistoryItem[]>(() => {
     const items: DialogueHistoryItem[] = [];
@@ -101,8 +95,6 @@ export function VoiceSidePanel({
     }
     return '';
   }, [directDialogueHistory]);
-
-  const isConversationRelayMode = twilioTransportMode === 'conversationrelay';
 
   if (routeMode === 'direct') {
     return (
@@ -181,19 +173,15 @@ export function VoiceSidePanel({
           </div>
           <div className={styles.metaRow}>
             <dt>音色来源</dt>
-            <dd>
-              {isPromptVoiceConfigured
-                ? `Prompt: ${selectedPrompt?.code}`
-                : `Default: ${twilioGateway.voiceCatalog.defaultVoice || '-'}`}
-            </dd>
+            <dd>{isPromptVoiceConfigured ? `Prompt: ${selectedPrompt?.code}` : `Resolved: ${effectiveVoice || '-'}`}</dd>
           </div>
           <div className={styles.metaRow}>
             <dt>电话链路模式</dt>
-            <dd>{isConversationRelayMode ? 'ConversationRelay' : 'Media Streams + Gemini Live'}</dd>
+            <dd>Media Streams + Gemini Live</dd>
           </div>
           <div className={styles.metaRow}>
-            <dt>{isConversationRelayMode ? 'TTS Provider' : '语音引擎'}</dt>
-            <dd>{isConversationRelayMode ? twilioTtsProvider : 'Gemini Live'}</dd>
+            <dt>语音引擎</dt>
+            <dd>Gemini Live</dd>
           </div>
           <div className={styles.metaRow}>
             <dt>系统能力</dt>
@@ -202,20 +190,8 @@ export function VoiceSidePanel({
                 电话网关（Twilio）{twilioGateway.capability.twilioWebcallImplemented ? ' OK' : ' Unavailable'}
               </Tag>
               &nbsp;
-              <Tag
-                type={
-                  isConversationRelayMode
-                    ? twilioGateway.capability.geminiGenerateImplemented
-                      ? 'green'
-                      : 'red'
-                    : twilioGateway.capability.geminiLiveImplemented
-                      ? 'green'
-                      : 'red'
-                }
-              >
-                {isConversationRelayMode
-                  ? `Gemini 文本生成 ${twilioGateway.capability.geminiGenerateImplemented ? ' OK' : ' Unavailable'}`
-                  : `Gemini Live ${twilioGateway.capability.geminiLiveImplemented ? ' OK' : ' Unavailable'}`}
+              <Tag type={twilioGateway.capability.geminiLiveImplemented ? 'green' : 'red'}>
+                Gemini Live {twilioGateway.capability.geminiLiveImplemented ? ' OK' : ' Unavailable'}
               </Tag>
             </dd>
           </div>

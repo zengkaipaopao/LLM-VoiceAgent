@@ -5,7 +5,7 @@ import { http } from '../../../../../api/http';
 export type DialerStatus = 'idle' | 'fetching_token' | 'registering' | 'registered' | 'error';
 export type CallStatus = 'idle' | 'dialing' | 'in-call' | 'ended' | 'error';
 export type GatewayLogLevel = 'info' | 'success' | 'warning' | 'error';
-export type TwilioTransportMode = 'conversationrelay' | 'media_stream_live';
+export type TwilioTransportMode = 'media_stream_live';
 
 export interface DialerLogItem {
   id: string;
@@ -23,17 +23,6 @@ export interface TwilioTraceEvent {
   final?: boolean;
 }
 
-export type TwilioTtsProvider = 'Google' | 'Amazon' | 'ElevenLabs';
-
-export interface TwilioVoiceCatalog {
-  provider: TwilioTtsProvider;
-  providers: TwilioTtsProvider[];
-  voices: string[];
-  source: string;
-  defaultVoice: string;
-  language: string;
-}
-
 export interface TwilioCapabilitySnapshot {
   configuredPhoneNumber: string;
   geminiGenerateImplemented: boolean;
@@ -43,15 +32,11 @@ export interface TwilioCapabilitySnapshot {
 
 interface StartDialOptions {
   promptCode: string;
-  transportMode: TwilioTransportMode;
-  ttsProvider?: TwilioTtsProvider;
   voiceName?: string;
 }
 
 interface PrepareInboundCallOptions {
   promptCode: string;
-  transportMode: TwilioTransportMode;
-  ttsProvider?: TwilioTtsProvider;
   voiceName?: string;
 }
 
@@ -61,9 +46,7 @@ interface UseTwilioVoiceGatewayOptions {
 
 export interface UseTwilioVoiceGatewayResult {
   capability: TwilioCapabilitySnapshot;
-  voiceCatalog: TwilioVoiceCatalog;
   loadingCapability: boolean;
-  loadingVoices: boolean;
   targetNumber: string;
   setTargetNumber: (value: string) => void;
   targetNumberLocked: boolean;
@@ -79,10 +62,6 @@ export interface UseTwilioVoiceGatewayResult {
   setInfo: (value: string | null) => void;
   setError: (value: string | null) => void;
   refreshCapability: () => Promise<void>;
-  refreshVoiceCatalog: (options?: {
-    forceRefresh?: boolean;
-    provider?: TwilioTtsProvider;
-  }) => Promise<void>;
   fetchToken: () => Promise<string>;
   registerDevice: () => Promise<void>;
   startDial: (options: StartDialOptions) => Promise<void>;
@@ -112,16 +91,7 @@ export function useTwilioVoiceGateway({
     geminiLiveImplemented: false,
     twilioWebcallImplemented: false,
   });
-  const [voiceCatalog, setVoiceCatalog] = useState<TwilioVoiceCatalog>({
-    provider: 'Google',
-    providers: ['Google', 'Amazon', 'ElevenLabs'],
-    voices: [],
-    source: 'unknown',
-    defaultVoice: '',
-    language: 'ja-JP',
-  });
   const [loadingCapability, setLoadingCapability] = useState(false);
-  const [loadingVoices, setLoadingVoices] = useState(false);
 
   const [targetNumber, setTargetNumberState] = useState('');
   const [targetNumberLocked, setTargetNumberLocked] = useState(false);
@@ -142,7 +112,6 @@ export function useTwilioVoiceGateway({
   const traceSeqRef = useRef(0);
   const dialerStatusRef = useRef<DialerStatus>('idle');
   const capabilityRequestRef = useRef<AbortController | null>(null);
-  const voiceCatalogRequestRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     traceCallSidRef.current = traceCallSid;
@@ -251,69 +220,6 @@ export function useTwilioVoiceGateway({
       }
       if (capabilityRequestRef.current === controller) {
         capabilityRequestRef.current = null;
-      }
-    }
-  }, []);
-
-  const refreshVoiceCatalog = useCallback(async (options?: {
-    forceRefresh?: boolean;
-    provider?: TwilioTtsProvider;
-  }) => {
-    voiceCatalogRequestRef.current?.abort();
-    const controller = new AbortController();
-    voiceCatalogRequestRef.current = controller;
-    setLoadingVoices(true);
-    try {
-      const response = await http.get('/twilio/voice/conversationrelay/voices', {
-        params: {
-          force_refresh: Boolean(options?.forceRefresh),
-          tts_provider: options?.provider,
-        },
-        signal: controller.signal,
-      });
-      const payload = asRecord(asRecord(response.data).data);
-      const voices = Array.isArray(payload.voices)
-        ? payload.voices.filter((voice): voice is string => typeof voice === 'string' && voice.trim().length > 0)
-        : [];
-      const fallbackProviders: TwilioTtsProvider[] = ['Google', 'Amazon', 'ElevenLabs'];
-      const providers = Array.isArray(payload.providers)
-        ? payload.providers.filter(
-            (provider): provider is TwilioTtsProvider =>
-              provider === 'Google' || provider === 'Amazon' || provider === 'ElevenLabs'
-          )
-        : fallbackProviders;
-      const providerValue =
-        fallbackProviders.includes(String(payload.provider) as TwilioTtsProvider)
-        ? (String(payload.provider) as TwilioTtsProvider)
-        : providers[0] || 'Google';
-
-      setVoiceCatalog({
-        provider: providerValue,
-        providers,
-        voices,
-        source: String(payload.source ?? 'unknown'),
-        defaultVoice: String(payload.default_voice ?? '').trim(),
-        language: String(payload.language ?? 'ja-JP').trim() || 'ja-JP',
-      });
-    } catch (loadError) {
-      const canceled =
-        controller.signal.aborted ||
-        (typeof loadError === 'object' &&
-          loadError !== null &&
-          'name' in loadError &&
-          (String((loadError as { name?: unknown }).name) === 'CanceledError' ||
-            String((loadError as { name?: unknown }).name) === 'AbortError'));
-      if (canceled) {
-        return;
-      }
-      const message = loadError instanceof Error ? loadError.message : String(loadError);
-      setError(`加载电话网关音色失败: ${message}`);
-    } finally {
-      if (!controller.signal.aborted) {
-        setLoadingVoices(false);
-      }
-      if (voiceCatalogRequestRef.current === controller) {
-        voiceCatalogRequestRef.current = null;
       }
     }
   }, []);
@@ -561,7 +467,7 @@ export function useTwilioVoiceGateway({
   );
 
   const startDial = useCallback(
-    async ({ promptCode, transportMode, ttsProvider, voiceName }: StartDialOptions) => {
+    async ({ promptCode, voiceName }: StartDialOptions) => {
       try {
         setError(null);
         setInfo(null);
@@ -597,17 +503,8 @@ export function useTwilioVoiceGateway({
         const params: Record<string, string> = {
           To: target,
           prompt_code: promptCode,
+          voice_route: 'media_stream_live',
         };
-        if (transportMode === 'media_stream_live') {
-          params.voice_route = 'media_stream_live';
-        } else {
-          params.voice_route = 'conversationrelay_generate';
-          params.voice_engine = 'gemini';
-        }
-        const normalizedTtsProvider = (ttsProvider || '').trim();
-        if (transportMode === 'conversationrelay' && normalizedTtsProvider) {
-          params.tts_provider = normalizedTtsProvider;
-        }
         const normalizedVoiceName = (voiceName || '').trim();
         if (normalizedVoiceName) {
           params.voice_name = normalizedVoiceName;
@@ -623,11 +520,7 @@ export function useTwilioVoiceGateway({
           traceCallSidRef.current = callSid;
         }
 
-        setInfo(
-          transportMode === 'media_stream_live'
-            ? '已发起通话，当前链路为 Twilio Media Streams -> Gemini Live 音频双向桥接。'
-            : '已发起通话，当前链路为 Twilio ConversationRelay -> Gemini 文本流式生成。'
-        );
+        setInfo('已发起通话，当前链路为 Twilio Media Streams -> Gemini Live 音频双向桥接。');
       } catch (dialError) {
         const message = dialError instanceof Error ? dialError.message : String(dialError);
         setCallStatus('error');
@@ -639,7 +532,7 @@ export function useTwilioVoiceGateway({
   );
 
   const prepareInboundCall = useCallback(
-    async ({ promptCode, transportMode, ttsProvider, voiceName }: PrepareInboundCallOptions) => {
+    async ({ promptCode, voiceName }: PrepareInboundCallOptions) => {
       try {
         setError(null);
         setInfo(null);
@@ -656,15 +549,7 @@ export function useTwilioVoiceGateway({
         const response = await http.post('/twilio/voice/incoming/prepare', {
           to_number: inboundNumber,
           prompt_code: promptCode,
-          voice_route:
-            transportMode === 'media_stream_live'
-              ? 'media_stream_live'
-              : 'conversationrelay_generate',
-          voice_engine: transportMode === 'conversationrelay' ? 'gemini' : undefined,
-          tts_provider:
-            transportMode === 'conversationrelay'
-              ? (ttsProvider || '').trim() || undefined
-              : undefined,
+          voice_route: 'media_stream_live',
           voice_name: (voiceName || '').trim() || undefined,
         });
         const data = asRecord(asRecord(response.data).data);
@@ -672,23 +557,16 @@ export function useTwilioVoiceGateway({
         const resolvedNumber = String(data.to_number ?? inboundNumber).trim() || inboundNumber;
         const resolvedPrompt = String(data.prompt_code ?? promptCode).trim() || promptCode;
         const resolvedRoute = String(data.voice_route ?? '').trim();
-        const resolvedProvider = String(data.tts_provider ?? '').trim();
         const resolvedVoice = String(data.voice_name ?? '').trim();
 
         appendLog(
           'success',
           `已准备下一通入呼：${resolvedNumber}，Prompt=${resolvedPrompt}${
             resolvedRoute ? `，Route=${resolvedRoute}` : ''
-          }${resolvedProvider ? `，Provider=${resolvedProvider}` : ''}${resolvedVoice ? `，Voice=${resolvedVoice}` : ''}。`
+          }${resolvedVoice ? `，Voice=${resolvedVoice}` : ''}。`
         );
         setInfo(
-          transportMode === 'media_stream_live'
-            ? `已为 ${resolvedNumber} 准备下一通入呼，${expiresIn || 180} 秒内拨入该 Twilio 号码会使用 Prompt ${resolvedPrompt}，并走 Twilio Media Streams -> Gemini Live${resolvedVoice ? `，音色 ${resolvedVoice}` : ''}。`
-            : `已为 ${resolvedNumber} 准备下一通入呼，${expiresIn || 180} 秒内拨入该 Twilio 号码会使用 Prompt ${resolvedPrompt}${
-                resolvedProvider ? `、${resolvedProvider} 语音层` : ''
-              }${
-                resolvedVoice ? ` 与音色 ${resolvedVoice}` : ''
-              }。`
+          `已为 ${resolvedNumber} 准备下一通入呼，${expiresIn || 180} 秒内拨入该 Twilio 号码会使用 Prompt ${resolvedPrompt}，并走 Twilio Media Streams -> Gemini Live${resolvedVoice ? `，音色 ${resolvedVoice}` : ''}。`
         );
       } catch (prepareError) {
         const message = prepareError instanceof Error ? prepareError.message : String(prepareError);
@@ -740,8 +618,6 @@ export function useTwilioVoiceGateway({
     return () => {
       capabilityRequestRef.current?.abort();
       capabilityRequestRef.current = null;
-      voiceCatalogRequestRef.current?.abort();
-      voiceCatalogRequestRef.current = null;
       resetGatewaySession();
     };
   }, [resetGatewaySession]);
@@ -749,9 +625,7 @@ export function useTwilioVoiceGateway({
   return useMemo(
     () => ({
       capability,
-      voiceCatalog,
       loadingCapability,
-      loadingVoices,
       targetNumber,
       setTargetNumber,
       targetNumberLocked,
@@ -767,7 +641,6 @@ export function useTwilioVoiceGateway({
       setInfo,
       setError,
       refreshCapability,
-      refreshVoiceCatalog,
       fetchToken,
       registerDevice,
       startDial,
@@ -785,11 +658,9 @@ export function useTwilioVoiceGateway({
       hangupCall,
       info,
       loadingCapability,
-      loadingVoices,
       logs,
       prepareInboundCall,
       refreshCapability,
-      refreshVoiceCatalog,
       registerDevice,
       resetGatewaySession,
       setTargetNumber,
@@ -801,7 +672,6 @@ export function useTwilioVoiceGateway({
       traceEvents,
       traceSeq,
       unregisterDevice,
-      voiceCatalog,
     ]
   );
 }

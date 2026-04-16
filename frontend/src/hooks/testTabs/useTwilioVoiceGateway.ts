@@ -3,8 +3,6 @@ export type {
   DialerLogItem,
   DialerStatus,
   GatewayLogLevel,
-  TwilioTtsProvider,
-  TwilioVoiceCatalog,
   TwilioCapabilitySnapshot,
   TwilioTraceEvent,
   UseTwilioVoiceGatewayResult,

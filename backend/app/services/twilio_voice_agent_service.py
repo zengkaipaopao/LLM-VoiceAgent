@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.model_defaults import DEFAULT_GENERATE_MODEL, resolve_generate_model
+from app.services.google_genai_client import google_genai_available
 from app.services.live_gateway import infer_provider_from_model, normalize_provider
 from app.services.prompt_runtime_resolver import resolve_prompt_runtime
 from app.services.prompt_service import PromptService
@@ -335,7 +336,8 @@ class TwilioVoiceAgentService:
     def _is_provider_key_missing(provider: str) -> bool:
         normalized = normalize_provider(provider)
         if normalized == "gemini":
-            return not (settings.google_api_key or "").strip()
+            available, _ = google_genai_available()
+            return not available
         if normalized == "openai":
             return not (settings.openai_api_key or "").strip()
         return False

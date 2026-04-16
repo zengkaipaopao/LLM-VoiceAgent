@@ -235,6 +235,6 @@ async def _check_redis() -> dict:
 
 
 def _check_ai_service() -> dict:
-    if (settings.google_api_key or "").strip():
-        return {"status": "healthy", "message": "配置有效"}
-    return {"status": "error", "message": "GOOGLE_API_KEY未配置"}
+    if settings.google_genai_backend_enabled:
+        return {"status": "healthy", "message": f"配置有效 ({settings.google_genai_backend_mode})"}
+    return {"status": "error", "message": "Gemini后端未配置"}

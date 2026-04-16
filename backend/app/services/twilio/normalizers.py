@@ -13,9 +13,10 @@ _VOICE_ENGINE_ALIASES = {
 _TWILIO_VOICE_ROUTE_ALIASES = {
     "gather": "gather",
     "gather_agent": "gather",
-    "conversationrelay": "conversationrelay_generate",
-    "conversation_relay": "conversationrelay_generate",
-    "conversationrelay_generate": "conversationrelay_generate",
+    # Backward-compatibility aliases for removed ConversationRelay routes.
+    "conversationrelay": "media_stream_live",
+    "conversation_relay": "media_stream_live",
+    "conversationrelay_generate": "media_stream_live",
     "media_stream": "media_stream_live",
     "media_stream_live": "media_stream_live",
     "mediastream": "media_stream_live",
@@ -59,15 +60,6 @@ _KNOWN_GEMINI_LIVE_VOICE_NAMES = (
     "Sadaltager",
     "Sulafat",
 )
-_TWILIO_SUPPORTED_TTS_PROVIDERS = ("Google", "Amazon", "ElevenLabs")
-_TWILIO_TTS_PROVIDER_ALIASES = {
-    "google": "Google",
-    "gemini": "Google",
-    "amazon": "Amazon",
-    "amazonpolly": "Amazon",
-    "amazon_polly": "Amazon",
-    "elevenlabs": "ElevenLabs",
-}
 
 
 def _normalize_e164_number(value: str | None) -> str | None:
@@ -111,15 +103,8 @@ def _resolve_twilio_inbound_voice_route(
     if engine == "twilio":
         return "gather"
     if engine == "gemini":
-        return "conversationrelay_generate"
+        return "media_stream_live"
     return None
-
-
-def _normalize_twilio_tts_provider(value: str | None) -> str | None:
-    token = (value or "").strip().lower()
-    if not token:
-        return None
-    return _TWILIO_TTS_PROVIDER_ALIASES.get(token)
 
 
 def _normalize_voice_name_token(value: str | None) -> str | None:

@@ -6,7 +6,6 @@ from fastapi import Request, WebSocket, status
 from twilio.request_validator import RequestValidator
 
 from app.core.config import settings
-from app.services.twilio.normalizers import _normalize_twilio_tts_provider
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +35,7 @@ def _build_twilio_media_stream_twiml(
     opening_text: str | None = None,
 ) -> str:
     stream_url = _build_twilio_media_stream_url(request=request)
+    status_callback_url = str(request.url_for("twilio_voice_stream_status_callback"))
     parameters: list[tuple[str, str]] = []
     if (prompt_code or "").strip():
         parameters.append(("prompt_code", prompt_code.strip()))
@@ -57,7 +57,10 @@ def _build_twilio_media_stream_twiml(
     return (
         '<?xml version="1.0" encoding="UTF-8"?>'
         f"<Response>{opening_xml}<Connect>"
-        f'<Stream url="{html.escape(stream_url, quote=True)}">{parameter_xml}</Stream>'
+        f'<Stream url="{html.escape(stream_url, quote=True)}"'
+        f' statusCallback="{html.escape(status_callback_url, quote=True)}"'
+        ' statusCallbackMethod="POST">'
+        f"{parameter_xml}</Stream>"
         "</Connect></Response>"
     )
 
@@ -123,77 +126,6 @@ async def _verify_websocket_or_close(websocket: WebSocket) -> bool:
         return False
 
     return True
-
-
-def _build_twilio_conversation_relay_url(
-    *,
-    request: Request,
-) -> str:
-    return _to_websocket_url(str(request.url_for("twilio_voice_conversation_relay")))
-
-
-def _build_twilio_conversation_relay_twiml(
-    *,
-    request: Request,
-    prompt_code: str | None,
-    from_number: str | None,
-    to_number: str | None,
-    tts_provider: str | None,
-    voice_name: str | None,
-    opening_text: str | None = None,
-) -> str:
-    relay_url = _build_twilio_conversation_relay_url(request=request)
-    action_url = str(request.url_for("voice_status_callback"))
-    language_code = (settings.twilio_agent_language or "ja-JP").strip() or "ja-JP"
-    normalized_tts_provider = _normalize_twilio_tts_provider(tts_provider) or "ElevenLabs"
-    conversation_relay_voice = (voice_name or "").strip()
-    parameters: list[tuple[str, str]] = []
-    if (prompt_code or "").strip():
-        parameters.append(("prompt_code", prompt_code.strip()))
-    if (from_number or "").strip():
-        parameters.append(("from", from_number.strip()))
-    if (to_number or "").strip():
-        parameters.append(("to", to_number.strip()))
-    if normalized_tts_provider:
-        parameters.append(("tts_provider", normalized_tts_provider))
-    if (voice_name or "").strip():
-        parameters.append(("voice_name", voice_name.strip()))
-
-    parameter_xml = "".join(
-        f'<Parameter name="{html.escape(name, quote=True)}" value="{html.escape(value, quote=True)}" />'
-        for name, value in parameters
-    )
-    welcome_greeting = (opening_text or "").strip()
-    welcome_attribute = (
-        f' welcomeGreeting="{html.escape(welcome_greeting, quote=True)}"' if welcome_greeting else ""
-    )
-    voice_attribute = (
-        f' voice="{html.escape(conversation_relay_voice, quote=True)}"'
-        if conversation_relay_voice
-        else ""
-    )
-    debug_attribute = ""
-    if settings.debug or (settings.environment or "").strip().lower() == "local":
-        debug_attribute = ' debug="debugging speaker-events tokens-played"'
-    return (
-        '<?xml version="1.0" encoding="UTF-8"?>'
-        f'<Response><Connect action="{html.escape(action_url, quote=True)}">'
-        f'<ConversationRelay url="{html.escape(relay_url, quote=True)}"'
-        f'{welcome_attribute}'
-        ' welcomeGreetingInterruptible="none"'
-        f' language="{html.escape(language_code, quote=True)}"'
-        f' ttsLanguage="{html.escape(language_code, quote=True)}"'
-        f' transcriptionLanguage="{html.escape(language_code, quote=True)}"'
-        f' ttsProvider="{html.escape(normalized_tts_provider, quote=True)}"'
-        ' transcriptionProvider="Google"'
-        ' speechModel="telephony"'
-        ' interruptible="speech"'
-        ' interruptSensitivity="high"'
-        f"{debug_attribute}"
-        f"{voice_attribute}>"
-        f"{parameter_xml}</ConversationRelay>"
-        "</Connect><Hangup/></Response>"
-    )
 
 
 def _extract_stream_custom_parameters(payload: dict[str, object] | None) -> dict[str, str]:

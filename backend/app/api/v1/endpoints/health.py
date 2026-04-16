@@ -19,11 +19,13 @@ async def capability_matrix():
             "chat_prompt_testbed": {"status": "implemented"},
             "gemini_live_gateway": {
                 "status": "implemented" if settings.live_gateway_enabled else "disabled",
-                "requires": ["GOOGLE_API_KEY"],
+                "mode": settings.google_genai_backend_mode,
+                "requires": ["GOOGLE_API_KEY or Vertex AI ADC"],
             },
             "gemini_generate_gateway": {
-                "status": "implemented" if (settings.google_api_key or "").strip() else "disabled",
-                "requires": ["GOOGLE_API_KEY"],
+                "status": "implemented" if settings.google_genai_backend_enabled else "disabled",
+                "mode": settings.google_genai_backend_mode,
+                "requires": ["GOOGLE_API_KEY or Vertex AI ADC"],
             },
             "twilio_webcall": {
                 "status": "implemented" if settings.twilio_webcall_enabled else "disabled",
@@ -34,8 +36,9 @@ async def capability_matrix():
                 "status": "implemented",
                 "default_engine": settings.twilio_incoming_voice_engine,
                 "supported_engines": ["twilio", "gemini"],
-                "supported_routes": ["gather", "conversationrelay_generate", "media_stream_live"],
+                "supported_routes": ["gather", "media_stream_live"],
                 "gemini_activity_mode": settings.twilio_gemini_activity_mode,
+                "runtime_store_backend": settings.twilio_runtime_store_backend,
             },
             "provider_support": {
                 "gemini": "implemented",

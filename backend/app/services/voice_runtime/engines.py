@@ -4,6 +4,7 @@ Provider adapters for voice turn runtime.
 from __future__ import annotations
 
 from app.core.config import settings
+from app.services.google_genai_client import google_genai_available
 from app.services.llm.factory import LLMFactory
 
 from .base import (
@@ -18,9 +19,7 @@ class GeminiVoiceTurnEngine(BaseVoiceTurnEngine):
     provider = "gemini"
 
     def is_available(self) -> tuple[bool, str | None]:
-        if not (settings.google_api_key or "").strip():
-            return False, "GOOGLE_API_KEY is not configured."
-        return True, None
+        return google_genai_available()
 
     async def generate_reply(self, request: VoiceTurnRequest) -> str:
         available, reason = self.is_available()
@@ -58,4 +57,3 @@ class OpenAIVoiceTurnEngine(BaseVoiceTurnEngine):
         raise VoiceProviderNotImplementedError(
             "OpenAI voice turn runtime is reserved but not implemented in this build."
         )
-

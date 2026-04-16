@@ -27,10 +27,10 @@ async def list_models(
         api_key = ""
         if provider.lower() == "gemini":
             api_key = settings.google_api_key
-            if not api_key.strip():
+            if not settings.google_genai_backend_enabled:
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="Gemini API key is not configured.",
+                    detail="Gemini backend is not configured.",
                 )
 
             service = GeminiService(api_key)
