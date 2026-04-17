@@ -30,11 +30,15 @@ function resolveTraceSpeaker(type: string): 'AI' | '用户' | '事件' {
 
 function resolveTraceText(type: string, text: string, isFinal?: boolean): string {
   const baseText = text.trim();
+  const normalizedType = type.trim();
   if (!baseText) {
-    return type || '-';
+    return normalizedType || '-';
   }
   if ((type === 'input_transcript' || type === 'output_transcript') && isFinal === false) {
     return `${baseText} (partial)`;
+  }
+  if (normalizedType !== 'input_transcript' && normalizedType !== 'output_transcript') {
+    return `${normalizedType}: ${baseText}`;
   }
   return baseText;
 }
@@ -324,6 +328,57 @@ export function VoiceSidePanel({
           <div className={styles.transcriptCard}>
             <h5 className={styles.transcriptHeading}>AI 最近一句</h5>
             <pre className={styles.transcriptBody}>{latestTwilioAssistantTurn || '等待模型回复...'}</pre>
+          </div>
+          <div className={styles.transcriptCard}>
+            <h5 className={styles.transcriptHeading}>最近 5 秒入站音频对比</h5>
+            {twilioGateway.inboundDebugAudioPcm8kUrl || twilioGateway.inboundDebugAudioPcm16kUrl ? (
+              <>
+                <div className={styles.audioDebugGroup}>
+                  <div className={styles.audioDebugBlock}>
+                    <h6 className={styles.audioDebugHeading}>原始 PCM8k</h6>
+                    {twilioGateway.inboundDebugAudioPcm8kUrl ? (
+                      <audio
+                        className={styles.audioPlayer}
+                        controls
+                        preload="metadata"
+                        src={twilioGateway.inboundDebugAudioPcm8kUrl}
+                      />
+                    ) : (
+                      <p className={styles.emptyText}>当前通话未保存原始 PCM8k 样本。</p>
+                    )}
+                    <p className={styles.audioCaption}>
+                      Twilio `μ-law/8kHz` 解码后的原始电话音频，不经过本地 8k→16k 升采样。
+                    </p>
+                  </div>
+                  <div className={styles.audioDebugBlock}>
+                    <h6 className={styles.audioDebugHeading}>上送前 PCM16k</h6>
+                    {twilioGateway.inboundDebugAudioPcm16kUrl ? (
+                      <audio
+                        className={styles.audioPlayer}
+                        controls
+                        preload="metadata"
+                        src={twilioGateway.inboundDebugAudioPcm16kUrl}
+                      />
+                    ) : (
+                      <p className={styles.emptyText}>当前通话未保存 PCM16k 样本。</p>
+                    )}
+                    <p className={styles.audioCaption}>
+                      后端本地升采样后、真正送给 Gemini Live 的 16k PCM 音频。
+                    </p>
+                  </div>
+                </div>
+                <p className={styles.audioCaption}>
+                  {twilioGateway.inboundDebugAudioSummaryText ||
+                    '已保存最近 5 秒入站调试音频，可直接比较 8k 原始样本与 16k 上送样本。'}
+                </p>
+              </>
+            ) : twilioGateway.loadingInboundDebugAudio ? (
+              <p className={styles.emptyText}>正在加载最近 5 秒双路调试音频...</p>
+            ) : (
+              <p className={styles.emptyText}>
+                通话结束或链路异常后，会自动保存最近 5 秒原始 PCM8k 与上送前 PCM16k 音频并在这里回放。
+              </p>
+            )}
           </div>
         </div>
 

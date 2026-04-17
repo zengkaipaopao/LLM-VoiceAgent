@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { http } from '../../../../../api/http';
+import { API_BASE_URL, buildApiRequestHeaders, http } from '../../../../../api/http';
 import type { BackendTraceDiagnosticResponse } from '../../diagnostics';
 
 export type DialerStatus = 'idle' | 'fetching_token' | 'registering' | 'registered' | 'error';
@@ -83,6 +83,10 @@ export interface UseTwilioVoiceGatewayResult {
   traceSeq: number;
   traceEvents: TwilioTraceEvent[];
   activeTraceCalls: TwilioActiveTraceCall[];
+  inboundDebugAudioPcm8kUrl: string;
+  inboundDebugAudioPcm16kUrl: string;
+  inboundDebugAudioSummaryText: string;
+  loadingInboundDebugAudio: boolean;
   traceDiagnostic: BackendTraceDiagnosticResponse | null;
   loadingTraceDiagnostic: boolean;
   logs: DialerLogItem[];
@@ -133,6 +137,10 @@ export function useTwilioVoiceGateway({
   const [traceSeq, setTraceSeq] = useState(0);
   const [traceEvents, setTraceEvents] = useState<TwilioTraceEvent[]>([]);
   const [activeTraceCalls, setActiveTraceCalls] = useState<TwilioActiveTraceCall[]>([]);
+  const [inboundDebugAudioPcm8kUrl, setInboundDebugAudioPcm8kUrl] = useState('');
+  const [inboundDebugAudioPcm16kUrl, setInboundDebugAudioPcm16kUrl] = useState('');
+  const [inboundDebugAudioSummaryText, setInboundDebugAudioSummaryText] = useState('');
+  const [loadingInboundDebugAudio, setLoadingInboundDebugAudio] = useState(false);
   const [traceDiagnostic, setTraceDiagnostic] = useState<BackendTraceDiagnosticResponse | null>(null);
   const [loadingTraceDiagnostic, setLoadingTraceDiagnostic] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
@@ -145,6 +153,10 @@ export function useTwilioVoiceGateway({
   const traceSeqRef = useRef(0);
   const dialerStatusRef = useRef<DialerStatus>('idle');
   const capabilityRequestRef = useRef<AbortController | null>(null);
+  const inboundDebugAudioPcm8kUrlRef = useRef('');
+  const inboundDebugAudioPcm16kUrlRef = useRef('');
+  const inboundDebugAudioSeqRef = useRef(0);
+  const inboundDebugAudioRequestRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     traceCallSidRef.current = traceCallSid;
@@ -177,7 +189,26 @@ export function useTwilioVoiceGateway({
     }
   }, []);
 
+  const clearInboundDebugAudio = useCallback(() => {
+    inboundDebugAudioRequestRef.current?.abort();
+    inboundDebugAudioRequestRef.current = null;
+    inboundDebugAudioSeqRef.current = 0;
+    if (inboundDebugAudioPcm8kUrlRef.current) {
+      URL.revokeObjectURL(inboundDebugAudioPcm8kUrlRef.current);
+      inboundDebugAudioPcm8kUrlRef.current = '';
+    }
+    if (inboundDebugAudioPcm16kUrlRef.current) {
+      URL.revokeObjectURL(inboundDebugAudioPcm16kUrlRef.current);
+      inboundDebugAudioPcm16kUrlRef.current = '';
+    }
+    setInboundDebugAudioPcm8kUrl('');
+    setInboundDebugAudioPcm16kUrl('');
+    setInboundDebugAudioSummaryText('');
+    setLoadingInboundDebugAudio(false);
+  }, []);
+
   const clearTraceBinding = useCallback(() => {
+    clearInboundDebugAudio();
     setTraceCallSid('');
     setTraceSeq(0);
     setTraceEvents([]);
@@ -185,7 +216,7 @@ export function useTwilioVoiceGateway({
     setTraceDiagnostic(null);
     traceCallSidRef.current = '';
     traceSeqRef.current = 0;
-  }, []);
+  }, [clearInboundDebugAudio]);
 
   const bindTraceCallSid = useCallback(
     (nextCallSid: string) => {
@@ -460,6 +491,140 @@ export function useTwilioVoiceGateway({
       stopTracePolling();
     };
   }, [callStatus, pollTraceOnce, stopTracePolling]);
+
+  useEffect(() => {
+    const shouldRefreshFinalTrace =
+      (callStatus === 'ended' || callStatus === 'error') &&
+      (traceCallSidRef.current.trim().length > 0 || sdkCallSid.trim().length > 0);
+    if (!shouldRefreshFinalTrace) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void pollTraceOnce();
+    }, TRACE_POLL_INTERVAL_MS);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [callStatus, pollTraceOnce, sdkCallSid]);
+
+  useEffect(() => {
+    const activeCallSid = traceCallSid.trim();
+    const latestSavedAudioEvent = [...traceEvents]
+      .reverse()
+      .find((event) => event.type === 'inbound_debug_wav_saved' && event.seq > 0);
+
+    if (!activeCallSid) {
+      clearInboundDebugAudio();
+      return;
+    }
+
+    if (!latestSavedAudioEvent) {
+      return;
+    }
+
+    setInboundDebugAudioSummaryText(latestSavedAudioEvent.text ?? '');
+    if (
+      inboundDebugAudioSeqRef.current === latestSavedAudioEvent.seq &&
+      (inboundDebugAudioPcm8kUrlRef.current || inboundDebugAudioPcm16kUrlRef.current)
+    ) {
+      return;
+    }
+
+    inboundDebugAudioRequestRef.current?.abort();
+    const controller = new AbortController();
+    inboundDebugAudioRequestRef.current = controller;
+    setLoadingInboundDebugAudio(true);
+
+    const loadVariant = async (variant: 'pcm8k_raw' | 'pcm16k_resampled') => {
+      const audioUrl =
+        `${API_BASE_URL}/twilio/voice/trace/inbound-audio?call_sid=${encodeURIComponent(activeCallSid)}` +
+        `&variant=${encodeURIComponent(variant)}`;
+      const response = await fetch(audioUrl, {
+        method: 'GET',
+        headers: buildApiRequestHeaders(),
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        const error = new Error(`HTTP ${response.status}`);
+        (error as Error & { status?: number }).status = response.status;
+        throw error;
+      }
+      const blob = await response.blob();
+      return {
+        variant,
+        blob,
+      };
+    };
+
+    void Promise.allSettled([loadVariant('pcm8k_raw'), loadVariant('pcm16k_resampled')])
+      .then((results) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        let loadedCount = 0;
+        let shouldWarn = false;
+
+        for (const result of results) {
+          if (result.status !== 'fulfilled') {
+            const failure = result.reason as Error & { status?: number };
+            if (failure?.status !== 404) {
+              shouldWarn = true;
+            }
+            continue;
+          }
+
+          loadedCount += 1;
+          const nextUrl = URL.createObjectURL(result.value.blob);
+          if (result.value.variant === 'pcm8k_raw') {
+            if (inboundDebugAudioPcm8kUrlRef.current) {
+              URL.revokeObjectURL(inboundDebugAudioPcm8kUrlRef.current);
+            }
+            inboundDebugAudioPcm8kUrlRef.current = nextUrl;
+            setInboundDebugAudioPcm8kUrl(nextUrl);
+            continue;
+          }
+
+          if (inboundDebugAudioPcm16kUrlRef.current) {
+            URL.revokeObjectURL(inboundDebugAudioPcm16kUrlRef.current);
+          }
+          inboundDebugAudioPcm16kUrlRef.current = nextUrl;
+          setInboundDebugAudioPcm16kUrl(nextUrl);
+        }
+
+        if (loadedCount > 0) {
+          inboundDebugAudioSeqRef.current = latestSavedAudioEvent.seq;
+        } else {
+          inboundDebugAudioSeqRef.current = 0;
+          if (inboundDebugAudioPcm8kUrlRef.current) {
+            URL.revokeObjectURL(inboundDebugAudioPcm8kUrlRef.current);
+            inboundDebugAudioPcm8kUrlRef.current = '';
+          }
+          if (inboundDebugAudioPcm16kUrlRef.current) {
+            URL.revokeObjectURL(inboundDebugAudioPcm16kUrlRef.current);
+            inboundDebugAudioPcm16kUrlRef.current = '';
+          }
+          setInboundDebugAudioPcm8kUrl('');
+          setInboundDebugAudioPcm16kUrl('');
+        }
+
+        if (shouldWarn && loadedCount === 0) {
+          appendLog('warning', '入站调试音频加载失败，两个调试样本都未能成功获取。');
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setLoadingInboundDebugAudio(false);
+        }
+        if (inboundDebugAudioRequestRef.current === controller) {
+          inboundDebugAudioRequestRef.current = null;
+        }
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [appendLog, clearInboundDebugAudio, traceCallSid, traceEvents]);
 
   const fetchToken = useCallback(async (): Promise<string> => {
     const previousStatus = dialerStatusRef.current;
@@ -759,9 +924,10 @@ export function useTwilioVoiceGateway({
     return () => {
       capabilityRequestRef.current?.abort();
       capabilityRequestRef.current = null;
+      clearInboundDebugAudio();
       resetGatewaySession();
     };
-  }, [resetGatewaySession]);
+  }, [clearInboundDebugAudio, resetGatewaySession]);
 
   return useMemo(
     () => ({
@@ -778,6 +944,10 @@ export function useTwilioVoiceGateway({
       traceSeq,
       traceEvents,
       activeTraceCalls,
+      inboundDebugAudioPcm8kUrl,
+      inboundDebugAudioPcm16kUrl,
+      inboundDebugAudioSummaryText,
+      loadingInboundDebugAudio,
       traceDiagnostic,
       loadingTraceDiagnostic,
       logs,
@@ -815,6 +985,10 @@ export function useTwilioVoiceGateway({
       targetNumberLocked,
       token,
       activeTraceCalls,
+      inboundDebugAudioPcm16kUrl,
+      inboundDebugAudioPcm8kUrl,
+      inboundDebugAudioSummaryText,
+      loadingInboundDebugAudio,
       traceCallSid,
       traceDiagnostic,
       traceEvents,

@@ -17,7 +17,7 @@ from fastapi import (
     WebSocketDisconnect,
     status,
 )
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
 from google.genai import types
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,6 +39,7 @@ from app.services.prompt_runtime_resolver import PromptRuntimeConfig, resolve_pr
 from app.services.prompt_service import PromptService
 from app.services.test_session_service import TestSessionService
 from app.services.twilio.audio_codec import TwilioMediaAudioCodec
+from app.services.twilio.debug_audio_capture import RollingPcmCapture
 from app.services.twilio.live_config import (
     _build_gemini_live_config,
     _use_manual_vad_control,
@@ -98,6 +99,10 @@ _MEDIA_STATS_INTERVAL_SECONDS = 2.0
 _TWILIO_CLOSING_REQUIRED_ALL = ("ご利用ありがとうございます",)
 _TWILIO_CLOSING_REQUIRED_ANY = ("承りました", "承知いたしました", "承知しました")
 _ECHO_COMPARE_NORMALIZER = re.compile(r"[\s\u3000。、，,．.!！?？・:：\"'「」『』（）()\-ー]")
+_PCM8K_RAW_DEBUG_VARIANT = "pcm8k_raw"
+_PCM16K_RESAMPLED_DEBUG_VARIANT = "pcm16k_resampled"
+_PCM8K_RAW_DEBUG_ARTIFACT = "inbound-pcm8k-raw"
+_PCM16K_RESAMPLED_DEBUG_ARTIFACT = "inbound-pcm16k-resampled"
 __all__ = (
     "_build_gemini_live_config",
     "_build_twilio_media_stream_twiml",
@@ -113,6 +118,24 @@ __all__ = (
     "_use_manual_vad_control",
     "_validate_twilio_activity_mode",
 )
+
+
+def _build_twilio_inbound_debug_capture(variant: str) -> RollingPcmCapture:
+    normalized_variant = (variant or "").strip().lower()
+    duration_seconds = max(1, settings.twilio_media_stream_debug_inbound_wav_seconds)
+    if normalized_variant == _PCM8K_RAW_DEBUG_VARIANT:
+        return RollingPcmCapture(
+            sample_rate=8000,
+            duration_seconds=duration_seconds,
+            artifact_key=_PCM8K_RAW_DEBUG_ARTIFACT,
+        )
+    if normalized_variant == _PCM16K_RESAMPLED_DEBUG_VARIANT:
+        return RollingPcmCapture(
+            sample_rate=16000,
+            duration_seconds=duration_seconds,
+            artifact_key=_PCM16K_RESAMPLED_DEBUG_ARTIFACT,
+        )
+    raise ValueError(f"Unsupported inbound debug audio variant: {variant}")
 
 
 class TwilioManualAudioInjectRequest(BaseModel):
@@ -784,10 +807,18 @@ async def twilio_voice_media_stream(
         input_batch_ms=settings.twilio_media_stream_inbound_batch_ms,
         twilio_frame_bytes=_TWILIO_FRAME_BYTES,
     )
+    inbound_debug_captures = {
+        _PCM8K_RAW_DEBUG_VARIANT: _build_twilio_inbound_debug_capture(_PCM8K_RAW_DEBUG_VARIANT),
+        _PCM16K_RESAMPLED_DEBUG_VARIANT: _build_twilio_inbound_debug_capture(
+            _PCM16K_RESAMPLED_DEBUG_VARIANT
+        ),
+    }
     send_lock = asyncio.Lock()
     finalize_lock = asyncio.Lock()
+    inbound_debug_capture_lock = asyncio.Lock()
     bound_call_id = None
     bound_call_finalized = False
+    inbound_debug_capture_saved_variants: set[str] = set()
 
     async def _send_twilio_event(payload: dict[str, object]) -> None:
         async with send_lock:
@@ -899,6 +930,85 @@ async def twilio_voice_media_stream(
                 current_call_sid,
                 event_type="call_finalized",
                 text=f"trigger={trigger} appointment_id={result.appointment_id or '-'}",
+                level="success",
+            )
+
+    async def _persist_inbound_debug_wav(*, trigger: str) -> None:
+        nonlocal inbound_debug_capture_saved_variants
+        if not settings.twilio_media_stream_debug_inbound_wav_enabled:
+            return
+        if not current_call_sid:
+            return
+
+        async with inbound_debug_capture_lock:
+            remaining_variants = [
+                variant
+                for variant, capture in inbound_debug_captures.items()
+                if variant not in inbound_debug_capture_saved_variants and capture.has_audio()
+            ]
+            if not remaining_variants:
+                if (
+                    not inbound_debug_capture_saved_variants
+                    and not any(capture.has_audio() for capture in inbound_debug_captures.values())
+                ):
+                    inbound_debug_capture_saved_variants = set(inbound_debug_captures.keys())
+                    await _append_call_trace(
+                        current_call_sid,
+                        event_type="inbound_debug_wav_skipped",
+                        text=f"trigger={trigger} reason=no_inbound_audio",
+                        level="info",
+                    )
+                return
+
+            saved_audio_items = []
+            try:
+                for variant in remaining_variants:
+                    capture = inbound_debug_captures[variant]
+                    saved_audio = await asyncio.to_thread(
+                        capture.save_wav,
+                        output_dir=settings.twilio_media_stream_debug_inbound_wav_dir,
+                        call_sid=current_call_sid,
+                    )
+                    if saved_audio:
+                        inbound_debug_capture_saved_variants.add(variant)
+                        saved_audio_items.append((variant, saved_audio))
+            except Exception as exc:
+                logger.warning(
+                    "Failed to persist Twilio inbound debug audio. call_sid=%s trigger=%s error=%s",
+                    current_call_sid,
+                    trigger,
+                    exc,
+                )
+                await _append_call_trace(
+                    current_call_sid,
+                    event_type="inbound_debug_wav_error",
+                    text=f"trigger={trigger} error={exc}",
+                    level="warning",
+                )
+                return
+
+            if not saved_audio_items:
+                await _append_call_trace(
+                    current_call_sid,
+                    event_type="inbound_debug_wav_skipped",
+                    text=f"trigger={trigger} reason=empty_capture",
+                    level="info",
+                )
+                return
+
+            await _append_call_trace(
+                current_call_sid,
+                event_type="inbound_debug_wav_saved",
+                text=" ; ".join(
+                    [
+                        (
+                            f"trigger={trigger} variant={variant} duration_ms={saved_audio.duration_ms} "
+                            f"sample_rate={saved_audio.sample_rate} bytes={saved_audio.bytes} "
+                            f"path={saved_audio.path}"
+                        )
+                        for variant, saved_audio in saved_audio_items
+                    ]
+                ),
                 level="success",
             )
 
@@ -1082,6 +1192,8 @@ async def twilio_voice_media_stream(
 
                         now_ts = time.monotonic()
                         state.media_frames += 1
+                        inbound_debug_captures[_PCM8K_RAW_DEBUG_VARIANT].append(decoded_audio.pcm8k)
+                        inbound_debug_captures[_PCM16K_RESAMPLED_DEBUG_VARIANT].append(decoded_audio.pcm16k)
                         for batch in codec.queue_inbound_audio(decoded_audio.pcm16k):
                             await _send_realtime_audio(batch)
                         if (now_ts - state.last_media_stats_at) >= _MEDIA_STATS_INTERVAL_SECONDS:
@@ -1105,6 +1217,7 @@ async def twilio_voice_media_stream(
                         except Exception:
                             pass
                         await _append_call_trace(current_call_sid, event_type="stream_stop", level="info")
+                        await _persist_inbound_debug_wav(trigger="stream_stop")
                         await _finalize_bound_call(trigger="stream_stop", run_extraction=True)
                         await _mark_stream_inactive(current_call_sid)
                         stream_done.set()
@@ -1204,6 +1317,28 @@ async def twilio_voice_media_stream(
                             if not stream_sid:
                                 continue
 
+                            if not frames:
+                                await _append_call_trace(
+                                    current_call_sid,
+                                    event_type="assistant_audio_empty",
+                                    text=(
+                                        f"mime_type={inline.mime_type or 'audio/pcm'} "
+                                        f"source_bytes={len(pcm_bytes)}"
+                                    ),
+                                    level="warning",
+                                )
+                                continue
+
+                            await _append_call_trace(
+                                current_call_sid,
+                                event_type="assistant_audio_forwarded",
+                                text=(
+                                    f"mime_type={inline.mime_type or 'audio/pcm'} "
+                                    f"source_bytes={len(pcm_bytes)} frames={len(frames)} "
+                                    f"payload_bytes={sum(len(frame) for frame in frames)}"
+                                ),
+                                level="info",
+                            )
                             state.mark_model_audio_sent()
                             for frame in frames:
                                 await _send_twilio_event(
@@ -1258,6 +1393,7 @@ async def twilio_voice_media_stream(
     except WebSocketDisconnect:
         stream_done.set()
         await _append_call_trace(current_call_sid, event_type="stream_disconnect", level="warning")
+        await _persist_inbound_debug_wav(trigger="websocket_disconnect")
         try:
             await _finalize_bound_call(trigger="websocket_disconnect", run_extraction=True)
         except Exception:
@@ -1272,6 +1408,7 @@ async def twilio_voice_media_stream(
             text=str(exc),
             level="error",
         )
+        await _persist_inbound_debug_wav(trigger="stream_error")
         try:
             await _finalize_bound_call(trigger="stream_error", run_extraction=True)
         except Exception:
@@ -1280,6 +1417,7 @@ async def twilio_voice_media_stream(
         logger.exception("Twilio media stream bridge failed: %s", exc)
     finally:
         stream_done.set()
+        await _persist_inbound_debug_wav(trigger="stream_finally")
         await _mark_stream_inactive(current_call_sid)
         try:
             await websocket.close()
@@ -1439,6 +1577,32 @@ async def get_voice_trace_diagnostics(
             "last_seq": last_seq,
             "stream_active": stream_active,
         },
+    )
+
+
+@router.get("/voice/trace/inbound-audio", name="twilio_voice_trace_inbound_audio")
+async def get_voice_trace_inbound_audio(
+    _auth: None = Depends(require_api_key),
+    call_sid: str = Query(..., min_length=1, description="Twilio call SID"),
+    variant: str = Query(
+        _PCM16K_RESAMPLED_DEBUG_VARIANT,
+        description="Debug audio variant: pcm8k_raw or pcm16k_resampled",
+    ),
+):
+    try:
+        capture = _build_twilio_inbound_debug_capture(variant)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    wav_path = capture.build_output_path(
+        output_dir=settings.twilio_media_stream_debug_inbound_wav_dir,
+        call_sid=call_sid,
+    )
+    if not wav_path.exists() or not wav_path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Inbound debug audio not found.")
+    return FileResponse(
+        path=str(wav_path),
+        media_type="audio/wav",
+        filename=wav_path.name,
     )
 
 

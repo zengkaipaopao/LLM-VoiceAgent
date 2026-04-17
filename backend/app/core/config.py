@@ -1,6 +1,10 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.model_defaults import DEFAULT_GENERATE_MODEL, DEFAULT_LIVE_MODEL
+
+_BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
@@ -54,6 +58,11 @@ class Settings(BaseSettings):
     # Batch multiple 20ms Twilio inbound frames before pushing them upstream to
     # Gemini Live to reduce websocket chatter and bridge jitter.
     twilio_media_stream_inbound_batch_ms: int = 100
+    twilio_media_stream_debug_inbound_wav_enabled: bool = True
+    twilio_media_stream_debug_inbound_wav_seconds: int = 5
+    twilio_media_stream_debug_inbound_wav_dir: str = str(
+        _BACKEND_ROOT / "recordings" / "twilio_debug_inbound"
+    )
     # Runtime state backend for Twilio Media Streams / trace storage.
     # Current supported value:
     # - memory: in-process singleton stores

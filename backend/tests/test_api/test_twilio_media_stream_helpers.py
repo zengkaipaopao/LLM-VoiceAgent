@@ -20,7 +20,7 @@ from app.api.v1.endpoints.twilio import (
     _use_manual_vad_control,
     _validate_twilio_activity_mode,
 )
-from app.services.twilio.audio_codec import TwilioMediaAudioCodec
+from app.services.twilio.audio_codec import TwilioMediaAudioCodec, ulaw_bytes_to_samples
 from app.services.twilio.media_stream_bootstrap import receive_twilio_media_stream_start
 from app.services.twilio.media_stream_state import TwilioMediaStreamState
 from app.services.twilio.normalizers import _normalize_gemini_live_voice_name
@@ -443,6 +443,14 @@ def test_twilio_media_audio_codec_batches_twilio_frames_before_sending_upstream(
     assert len(batches) == 1
     assert len(batches[0]) == 3200
     assert codec.pending_inbound_bytes > 0
+
+
+def test_ulaw_decoder_matches_g711_reference_anchor_values():
+    assert ulaw_bytes_to_samples(bytes([0x00])) == [-32124]
+    assert ulaw_bytes_to_samples(bytes([0x01])) == [-31100]
+    assert ulaw_bytes_to_samples(bytes([0x7F])) == [0]
+    assert ulaw_bytes_to_samples(bytes([0x80])) == [32124]
+    assert ulaw_bytes_to_samples(bytes([0xFF])) == [0]
 
 
 def test_twilio_media_audio_codec_encodes_model_audio_back_to_twilio_frames():

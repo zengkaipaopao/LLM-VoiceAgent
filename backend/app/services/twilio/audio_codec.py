@@ -20,7 +20,7 @@ _ULAW_CLIP = 32635
 _ULAW_SEG_UEND = (0xFF, 0x1FF, 0x3FF, 0x7FF, 0xFFF, 0x1FFF, 0x3FFF, 0x7FFF)
 _ULAW_DECODE_TABLE = tuple(
     (
-        (_ULAW_BIAS - ((((~code) & 0x0F) << 3) + _ULAW_BIAS) << (((~code) & 0x70) >> 4))
+        (_ULAW_BIAS - (((((~code) & 0x0F) << 3) + _ULAW_BIAS) << (((~code) & 0x70) >> 4)))
         if ((~code) & 0x80)
         else (((((~code) & 0x0F) << 3) + _ULAW_BIAS) << (((~code) & 0x70) >> 4)) - _ULAW_BIAS
     )
@@ -158,6 +158,7 @@ class LinearPcmResampler:
 
 @dataclass(frozen=True)
 class DecodedTwilioInboundAudio:
+    pcm8k: bytes
     pcm16k: bytes
     rms: int
 
@@ -204,6 +205,7 @@ class TwilioMediaAudioCodec:
         stats = compute_pcm16_stats(pcm8_samples, sample_rate=_TWILIO_INPUT_SAMPLE_RATE)
         pcm16k_samples = self._inbound_resampler.resample(pcm8_samples)
         return DecodedTwilioInboundAudio(
+            pcm8k=_samples_to_pcm16_bytes(pcm8_samples),
             pcm16k=_samples_to_pcm16_bytes(pcm16k_samples),
             rms=stats["rms"],
         )

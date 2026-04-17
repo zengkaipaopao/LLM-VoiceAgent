@@ -255,6 +255,37 @@
   overflow: auto;
 }
 
+.audioPlayer {
+  width: 100%;
+}
+
+.audioDebugGroup {
+  display: grid;
+  gap: spacing.$spacing-04;
+}
+
+.audioDebugBlock {
+  display: grid;
+  gap: spacing.$spacing-03;
+  padding: spacing.$spacing-03;
+  border: 1px solid var(--cds-border-subtle);
+  background: var(--cds-layer);
+}
+
+.audioDebugHeading {
+  margin: 0;
+  font-size: var(--cds-heading-compact-01-font-size);
+  line-height: var(--cds-heading-compact-01-line-height);
+}
+
+.audioCaption {
+  margin: 0;
+  color: var(--cds-text-secondary);
+  font-size: var(--cds-body-compact-01-font-size);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .dialogueHistoryList {
   margin: 0;
   padding: 0;

@@ -165,6 +165,21 @@ def build_twilio_trace_diagnostic(
                 evidence_events=[event],
             )
 
+        if event_type == "assistant_audio_empty":
+            return _build_diagnostic(
+                call_sid=call_sid,
+                status="warning",
+                category="assistant_audio_empty",
+                owner="backend_audio_pipeline",
+                title="模型产出了音频片段，但没有成功形成可播帧",
+                summary="Gemini Live 已返回音频数据，但后端在当前片段上没有实际生成发往 Twilio 的 μ-law 帧，因此电话另一端可能听不到声音。",
+                actions=[
+                    "检查当前模型返回的 inline audio 大小、mime_type 和采样率。",
+                    "继续观察 assistant_audio_forwarded、playback_mark_sent、playback_complete 是否出现。",
+                ],
+                evidence_events=[event],
+            )
+
         if event_type == "media_stream_status" and "stream-error" in lowered:
             return _build_diagnostic(
                 call_sid=call_sid,
@@ -232,8 +247,15 @@ def build_twilio_trace_diagnostic(
     latest_event = ordered_events[-1]
     latest_event_ts = int(latest_event.get("ts", 0) or 0)
     has_stream_start = any(_normalized_text(item.get("type")) == "stream_start" for item in ordered_events)
+    has_assistant_audio_started = any(
+        _normalized_text(item.get("type")) == "assistant_audio_started" for item in ordered_events
+    )
     has_assistant_audio = any(
-        _normalized_text(item.get("type")) in {"assistant_audio_started", "playback_mark_sent", "output_transcript"}
+        _normalized_text(item.get("type")) in {
+            "assistant_audio_forwarded",
+            "playback_mark_sent",
+            "playback_complete",
+        }
         for item in ordered_events
     )
     has_user_activity = any(
@@ -254,6 +276,21 @@ def build_twilio_trace_diagnostic(
                 "优先排查 Prompt、模型、音色配置，以及 Gemini Live 会话是否真正建立成功。",
             ],
             evidence_events=reversed_events[:3],
+        )
+
+    if stream_active and has_assistant_audio_started and not has_assistant_audio:
+        return _build_diagnostic(
+            call_sid=call_sid,
+            status="warning",
+            category="assistant_audio_not_playing",
+            owner="backend_audio_pipeline",
+            title="模型已经开始产出音频，但电话侧还没有看到实际播放迹象",
+            summary="Trace 中已有 assistant_audio_started，但没有看到真正发往 Twilio 的音频帧或播放确认事件。",
+            actions=[
+                "优先检查 assistant_audio_empty、assistant_audio_encode_error 是否出现。",
+                "确认 Twilio Media Streams 回程音频格式仍是 μ-law 8k，并观察 playback_mark_sent / playback_complete 是否缺失。",
+            ],
+            evidence_events=reversed_events[:4],
         )
 
     if stream_active and has_user_activity and not has_assistant_audio:

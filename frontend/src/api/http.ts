@@ -38,6 +38,14 @@ export class ApiError extends Error {
   }
 }
 
+export function buildApiRequestHeaders(init?: HeadersInit): Headers {
+  const headers = new Headers(init);
+  if (APP_API_KEY && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${APP_API_KEY}`);
+  }
+  return headers;
+}
+
 const parseEnvelopeOrThrow = (response: AxiosResponse): AxiosResponse => {
   const parsed = ApiEnvelopeSchema.safeParse(response.data);
   if (!parsed.success) {
