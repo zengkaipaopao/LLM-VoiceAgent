@@ -270,6 +270,17 @@
       }
     },
     "unified": {
+      "shell": {
+        "title": "统一 Prompt 模拟工作台",
+        "description": "在一个受控工作台中完成端到端 Prompt 模拟，从建会话到结束提取都在同一条链路中验证。"
+      },
+      "summary": {
+        "scenario": "场景",
+        "scenarioValue": "基于 Prompt 的来电模拟",
+        "prompt": "Prompt",
+        "session": "会话",
+        "tokens": "总 Tokens"
+      },
       "sections": {
         "chatTitle": "对话工作区",
         "chatDescription": "在一条测试链路中验证 Prompt 应答风格、动作触发与提取质量。",
@@ -287,7 +298,7 @@
       "form": {
         "promptLabel": "选择 Prompt 模型",
         "callerLabel": "模拟来电姓名",
-        "callerPlaceholder": "Test Caller"
+        "callerPlaceholder": "测试来电者"
       },
       "actions": {
         "newSession": "新建会话",
@@ -298,6 +309,7 @@
         "viewAppointments": "查看预约记录"
       },
       "meta": {
+        "currentSessionModel": "当前会话模型: {{provider}}/{{model}}",
         "currentModel": "当前模型: {{provider}}/{{model}} · 温度 {{temperature}}",
         "callIdLabel": "通话 ID",
         "phoneLabel": "模拟号码",
@@ -310,7 +322,8 @@
       },
       "notifications": {
         "errorTitle": "请求失败",
-        "successTitle": "操作成功"
+        "successTitle": "操作成功",
+        "warningTitle": "配置提示"
       },
       "chat": {
         "closedPlaceholder": "当前会话已结束，请点击“新建会话”继续测试。",
@@ -335,6 +348,7 @@
       "errors": {
         "loadPrompts": "加载 Prompt 列表失败，请检查后端连接。",
         "noPromptSelected": "请先选择 Prompt",
+        "promptModelRequiresVoiceTab": "当前选中的 Prompt 使用的是仅限语音的 live 模型。请切换到语音测试页，或把 Prompt 模型改成文本生成模型。",
         "createSessionFailed": "创建会话失败",
         "requestFailedWithStatus": "请求失败: {{status}}",
         "streamFailed": "流式响应失败",
@@ -346,7 +360,8 @@
       },
       "info": {
         "sessionCreated": "测试会话已创建：{{phone}}",
-        "sessionFinalized": "会话已结束并完成提取"
+        "sessionFinalized": "会话已结束并完成提取",
+        "autoSessionFinalized": "检测到结束语，会话已自动结束并完成提取。"
       },
       "messages": {
         "finalized": "会话已结束。状态: {{status}}。{{appointmentMessage}}",
@@ -354,8 +369,51 @@
         "noAppointment": "未生成预约记录"
       }
     },
+    "modelWarnings": {
+      "currentPrompt": "当前 Prompt",
+      "currentPromptWithCode": "当前 Prompt（{{promptCode}}）",
+      "textPromptUsesVoiceModel": "{{promptLabel}} 配置的是语音模型 {{modelId}}。文字测试无法使用该模型，请切换到语音测试，或把 Prompt 模型改成可用于文本生成的模型。",
+      "voicePromptUsesTextModel": "{{promptLabel}} 配置的是文字模型 {{modelId}}。语音测试需要 Gemini Live / Native Audio 模型；请修改 Prompt 模型，或在 Gemini Live 模型输入框里手动覆盖。",
+      "voiceOverrideUsesTextModel": "当前语音会话模型 {{modelId}} 不是 Gemini Live / Native Audio 模型。连接前请改成语音模型，或重新选择一个使用语音模型的 Prompt。"
+    },
     "appointment": {
-      "description": "预约模拟测试功能开发中..."
+      "description": "预约模拟测试功能开发中...",
+      "batch": {
+        "title": "批量预约模拟",
+        "description": "一次性生成多条预约事件。",
+        "countLabel": "生成数量",
+        "generate": "生成预约数据",
+        "clear": "清除模拟数据"
+      },
+      "status": {
+        "loading": "处理中...",
+        "errorTitle": "操作失败",
+        "successTitle": "操作成功"
+      },
+      "response": "响应详情",
+      "copyFeedback": "已复制"
+    },
+    "voiceLab": {
+      "shell": {
+        "title": "语音连通性测试台",
+        "description": "统一验证 Gemini 语音会话是否可建立、可收音、可转写、可回复。"
+      },
+      "summary": {
+        "goal": "测试目标",
+        "goalValue": "语音连通性",
+        "route": "接入方式",
+        "routeDirect": "浏览器直连 Gemini",
+        "routeTwilio": "电话网关（Media Streams）",
+        "connection": "连接状态",
+        "audio": "音频采集",
+        "prompt": "Prompt",
+        "voice": "Gemini 音色"
+      },
+      "notifications": {
+        "errorTitle": "请求失败",
+        "successTitle": "执行成功",
+        "warningTitle": "配置提示"
+      }
     },
     "websocket": {
       "title": "Gemini Live 实时对话测试台",
@@ -460,7 +518,8 @@
         "success": "操作成功",
         "error": "操作失败"
       },
-      "response": "响应详情"
+      "response": "响应详情",
+      "copyFeedback": "已复制"
     },
     "reviewer": {
       "title": "AI 审查员模式 (Reviewer Mode)",

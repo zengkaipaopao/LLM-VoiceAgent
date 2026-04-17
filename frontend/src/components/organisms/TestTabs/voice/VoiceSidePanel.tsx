@@ -1,11 +1,13 @@
 import { useMemo } from 'react';
 import { Stack, Tag, Tile } from '@carbon/react';
 
+import type { VoiceDiagnostic } from '../../../../features/test-lab/voice/diagnostics';
 import type { UseLiveWebSocketConsoleResult } from '../../../../hooks/useLiveWebSocketConsole';
 import type { UseTwilioVoiceGatewayResult } from '../../../../hooks/testTabs/useTwilioVoiceGateway';
 import type { PromptTemplate } from '../../../../types/shared';
 import styles from '../TwilioTabContent.module.scss';
 import type { DialogueHistoryItem, VoiceRouteMode } from './types';
+import { VoiceDiagnosticsTile } from './VoiceDiagnosticsTile';
 
 interface VoiceSidePanelProps {
   routeMode: VoiceRouteMode;
@@ -15,6 +17,8 @@ interface VoiceSidePanelProps {
   selectedPrompt?: PromptTemplate;
   effectiveVoice: string;
   isPromptVoiceConfigured: boolean;
+  directDiagnostic: VoiceDiagnostic | null;
+  twilioDiagnostic: VoiceDiagnostic | null;
 }
 
 function resolveTraceSpeaker(type: string): 'AI' | '用户' | '事件' {
@@ -42,6 +46,23 @@ function resolveTraceTime(timestampMs: number): string {
   return new Date(timestampMs).toLocaleTimeString('zh-CN', { hour12: false });
 }
 
+function findLatestTraceTurn(
+  events: UseTwilioVoiceGatewayResult['traceEvents'],
+  type: 'input_transcript' | 'output_transcript'
+): string {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event.type !== type) {
+      continue;
+    }
+    const text = resolveTraceText(event.type || '', event.text || '', event.final).trim();
+    if (text) {
+      return text;
+    }
+  }
+  return '';
+}
+
 export function VoiceSidePanel({
   routeMode,
   liveWebsocket,
@@ -50,6 +71,8 @@ export function VoiceSidePanel({
   selectedPrompt,
   effectiveVoice,
   isPromptVoiceConfigured,
+  directDiagnostic,
+  twilioDiagnostic,
 }: VoiceSidePanelProps) {
   const directDialogueHistory = useMemo<DialogueHistoryItem[]>(() => {
     const items: DialogueHistoryItem[] = [];
@@ -96,9 +119,51 @@ export function VoiceSidePanel({
     return '';
   }, [directDialogueHistory]);
 
+  const latestTwilioUserTurn = useMemo(
+    () => findLatestTraceTurn(twilioGateway.traceEvents, 'input_transcript'),
+    [twilioGateway.traceEvents]
+  );
+
+  const latestTwilioAssistantTurn = useMemo(
+    () => findLatestTraceTurn(twilioGateway.traceEvents, 'output_transcript'),
+    [twilioGateway.traceEvents]
+  );
+
+  const twilioTraceStats = useMemo(() => {
+    let finalUserTurns = 0;
+    let finalAssistantTurns = 0;
+    let partialTurns = 0;
+    for (const event of twilioGateway.traceEvents) {
+      if (event.type === 'input_transcript' && event.final !== false) {
+        finalUserTurns += 1;
+      } else if (event.type === 'output_transcript' && event.final !== false) {
+        finalAssistantTurns += 1;
+      } else if (
+        (event.type === 'input_transcript' || event.type === 'output_transcript') &&
+        event.final === false
+      ) {
+        partialTurns += 1;
+      }
+    }
+    return {
+      finalUserTurns,
+      finalAssistantTurns,
+      partialTurns,
+      totalEvents: twilioGateway.traceEvents.length,
+    };
+  }, [twilioGateway.traceEvents]);
+
+  const latestTwilioTraceEvent = useMemo(() => {
+    if (twilioGateway.traceEvents.length === 0) {
+      return null;
+    }
+    return twilioGateway.traceEvents[twilioGateway.traceEvents.length - 1];
+  }, [twilioGateway.traceEvents]);
+
   if (routeMode === 'direct') {
     return (
       <Stack gap={5}>
+        <VoiceDiagnosticsTile diagnostic={directDiagnostic} />
         <Tile className={styles.sideTile}>
           <h4 className="cds--heading-02">实时对话转写</h4>
           <dl className={styles.metaList}>
@@ -160,9 +225,17 @@ export function VoiceSidePanel({
 
   return (
     <Stack gap={5}>
+      <VoiceDiagnosticsTile
+        diagnostic={twilioDiagnostic}
+        loading={twilioGateway.loadingTraceDiagnostic}
+      />
       <Tile className={styles.sideTile}>
         <h4 className="cds--heading-02">实时对话转写</h4>
         <dl className={styles.metaList}>
+          <div className={styles.metaRow}>
+            <dt>浏览器外呼 Leg SID</dt>
+            <dd>{twilioGateway.sdkCallSid || '-'}</dd>
+          </div>
           <div className={styles.metaRow}>
             <dt>Bound Call SID</dt>
             <dd>{twilioGateway.traceCallSid || '-'}</dd>
@@ -195,7 +268,64 @@ export function VoiceSidePanel({
               </Tag>
             </dd>
           </div>
+          <div className={styles.metaRow}>
+            <dt>媒体桥状态</dt>
+            <dd>
+              <Tag type={twilioGateway.traceDiagnostic?.stream_active ? 'green' : 'cool-gray'}>
+                {twilioGateway.traceDiagnostic?.stream_active ? 'stream_active' : 'stream_idle'}
+              </Tag>
+            </dd>
+          </div>
+          <div className={styles.metaRow}>
+            <dt>活跃媒体流</dt>
+            <dd>{twilioGateway.activeTraceCalls.length}</dd>
+          </div>
+          <div className={styles.metaRow}>
+            <dt>最后一条后端事件</dt>
+            <dd>
+              {latestTwilioTraceEvent
+                ? `${latestTwilioTraceEvent.type || '-'} @ ${resolveTraceTime(latestTwilioTraceEvent.ts)}`
+                : '-'}
+            </dd>
+          </div>
+          <div className={styles.metaRow}>
+            <dt>转写统计</dt>
+            <dd>
+              用户完成 {twilioTraceStats.finalUserTurns} / AI 完成 {twilioTraceStats.finalAssistantTurns} / partial{' '}
+              {twilioTraceStats.partialTurns} / 事件 {twilioTraceStats.totalEvents}
+            </dd>
+          </div>
+          <div className={styles.metaRow}>
+            <dt>活跃流候选</dt>
+            <dd>
+              {twilioGateway.activeTraceCalls.length === 0 ? (
+                '暂无活跃 Media Stream。'
+              ) : (
+                <ul className={styles.diagnosticList}>
+                  {twilioGateway.activeTraceCalls.map((item) => (
+                    <li key={item.callSid} className={styles.diagnosticListItem}>
+                      {item.callSid}
+                      {item.lastEventType ? ` · ${item.lastEventType}` : ''}
+                      {item.lastEventTs > 0 ? ` · ${resolveTraceTime(item.lastEventTs)}` : ''}
+                      {item.eventCount > 0 ? ` · events=${item.eventCount}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </dd>
+          </div>
         </dl>
+
+        <div className={styles.transcriptGrid}>
+          <div className={styles.transcriptCard}>
+            <h5 className={styles.transcriptHeading}>用户最近一句</h5>
+            <pre className={styles.transcriptBody}>{latestTwilioUserTurn || '等待用户讲话...'}</pre>
+          </div>
+          <div className={styles.transcriptCard}>
+            <h5 className={styles.transcriptHeading}>AI 最近一句</h5>
+            <pre className={styles.transcriptBody}>{latestTwilioAssistantTurn || '等待模型回复...'}</pre>
+          </div>
+        </div>
 
         {twilioGateway.traceEvents.length === 0 ? (
           <p className={styles.emptyText}>接通后会在这里显示用户/AI 转写与事件。</p>

@@ -270,6 +270,17 @@
       }
     },
     "unified": {
+      "shell": {
+        "title": "Unified Prompt Simulation Workspace",
+        "description": "Run end-to-end prompt simulations in one controlled surface, from session creation to extraction finalization."
+      },
+      "summary": {
+        "scenario": "Scenario",
+        "scenarioValue": "Prompt-driven call rehearsal",
+        "prompt": "Prompt",
+        "session": "Session",
+        "tokens": "Total Tokens"
+      },
       "sections": {
         "chatTitle": "Conversation Workspace",
         "chatDescription": "Send messages to test prompt behavior, action triggering, and extraction quality in one flow.",
@@ -298,6 +309,7 @@
         "viewAppointments": "View Appointments"
       },
       "meta": {
+        "currentSessionModel": "Current session model: {{provider}}/{{model}}",
         "currentModel": "Model: {{provider}}/{{model}} · Temp {{temperature}}",
         "callIdLabel": "Call ID",
         "phoneLabel": "Simulated Phone",
@@ -310,7 +322,8 @@
       },
       "notifications": {
         "errorTitle": "Request failed",
-        "successTitle": "Success"
+        "successTitle": "Success",
+        "warningTitle": "Configuration warning"
       },
       "chat": {
         "closedPlaceholder": "This session is closed. Click \"New Session\" to continue testing.",
@@ -335,6 +348,7 @@
       "errors": {
         "loadPrompts": "Failed to load prompt list. Please check backend connection.",
         "noPromptSelected": "Please select a prompt first",
+        "promptModelRequiresVoiceTab": "The selected prompt is configured with a live-only model. Please use the voice test tab or change the prompt model.",
         "createSessionFailed": "Failed to create session",
         "requestFailedWithStatus": "Request failed: {{status}}",
         "streamFailed": "Streaming response failed",
@@ -346,7 +360,8 @@
       },
       "info": {
         "sessionCreated": "Test session created: {{phone}}",
-        "sessionFinalized": "Session finalized and extraction completed"
+        "sessionFinalized": "Session finalized and extraction completed",
+        "autoSessionFinalized": "Detected completion phrase. Session auto-finalized and extraction completed."
       },
       "messages": {
         "finalized": "Session ended. Status: {{status}}. {{appointmentMessage}}",
@@ -354,8 +369,51 @@
         "noAppointment": "No appointment was created"
       }
     },
+    "modelWarnings": {
+      "currentPrompt": "Current prompt",
+      "currentPromptWithCode": "Current prompt ({{promptCode}})",
+      "textPromptUsesVoiceModel": "{{promptLabel}} is configured with voice model {{modelId}}. Text testing cannot use this model. Switch to voice testing or change the prompt model to a text generation model.",
+      "voicePromptUsesTextModel": "{{promptLabel}} is configured with text model {{modelId}}. Voice testing requires a Gemini Live / Native Audio model. Update the prompt model or override it in the Gemini Live model field.",
+      "voiceOverrideUsesTextModel": "The current voice session model {{modelId}} is not a Gemini Live / Native Audio model. Switch to a voice model before connecting, or select a prompt that already uses one."
+    },
     "appointment": {
-      "description": "Appointment simulation feature under development..."
+      "description": "Appointment simulation feature under development...",
+      "batch": {
+        "title": "Batch Simulation",
+        "description": "Generate multiple appointment events at once.",
+        "countLabel": "Count",
+        "generate": "Generate Appointments",
+        "clear": "Clear Simulated Data"
+      },
+      "status": {
+        "loading": "Loading...",
+        "errorTitle": "Error",
+        "successTitle": "Success"
+      },
+      "response": "Response Data",
+      "copyFeedback": "Copied"
+    },
+    "voiceLab": {
+      "shell": {
+        "title": "Voice Connectivity Console",
+        "description": "Validate whether Gemini voice sessions can connect, capture audio, transcribe, and reply."
+      },
+      "summary": {
+        "goal": "Test Goal",
+        "goalValue": "Voice connectivity",
+        "route": "Route",
+        "routeDirect": "Browser direct to Gemini",
+        "routeTwilio": "Phone gateway (Media Streams)",
+        "connection": "Connection",
+        "audio": "Audio Capture",
+        "prompt": "Prompt",
+        "voice": "Gemini Voice"
+      },
+      "notifications": {
+        "errorTitle": "Request failed",
+        "successTitle": "Success",
+        "warningTitle": "Configuration warning"
+      }
     },
     "websocket": {
       "title": "Gemini Live Realtime Console",
@@ -460,7 +518,8 @@
         "success": "Success",
         "error": "Error"
       },
-      "response": "Response Details"
+      "response": "Response Details",
+      "copyFeedback": "Copied"
     },
     "reviewer": {
       "title": "AI Reviewer Mode",

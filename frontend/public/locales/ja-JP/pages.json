@@ -270,6 +270,17 @@
       }
     },
     "unified": {
+      "shell": {
+        "title": "統合 Prompt シミュレーションワークスペース",
+        "description": "セッション作成から抽出完了まで、1つの制御された画面で Prompt シミュレーションを end-to-end で検証します。"
+      },
+      "summary": {
+        "scenario": "シナリオ",
+        "scenarioValue": "Prompt ベースの通話リハーサル",
+        "prompt": "Prompt",
+        "session": "セッション",
+        "tokens": "総 Tokens"
+      },
       "sections": {
         "chatTitle": "会話ワークスペース",
         "chatDescription": "1つのテストフローで Prompt 応答、アクション発火、抽出品質をまとめて検証します。",
@@ -287,7 +298,7 @@
       "form": {
         "promptLabel": "Prompt モデルを選択",
         "callerLabel": "疑似発信者名",
-        "callerPlaceholder": "Test Caller"
+        "callerPlaceholder": "テスト発信者"
       },
       "actions": {
         "newSession": "新規セッション",
@@ -298,6 +309,7 @@
         "viewAppointments": "予約記録を見る"
       },
       "meta": {
+        "currentSessionModel": "現在のセッションモデル: {{provider}}/{{model}}",
         "currentModel": "現在モデル: {{provider}}/{{model}} · 温度 {{temperature}}",
         "callIdLabel": "通話 ID",
         "phoneLabel": "疑似電話番号",
@@ -310,7 +322,8 @@
       },
       "notifications": {
         "errorTitle": "リクエスト失敗",
-        "successTitle": "成功"
+        "successTitle": "成功",
+        "warningTitle": "設定上の注意"
       },
       "chat": {
         "closedPlaceholder": "このセッションは終了しています。「新規セッション」を押して続行してください。",
@@ -335,6 +348,7 @@
       "errors": {
         "loadPrompts": "Prompt 一覧の読み込みに失敗しました。バックエンド接続を確認してください。",
         "noPromptSelected": "先に Prompt を選択してください",
+        "promptModelRequiresVoiceTab": "選択中の Prompt は live 専用モデルで構成されています。音声テストタブを使うか、Prompt モデルをテキスト生成モデルに変更してください。",
         "createSessionFailed": "セッション作成に失敗しました",
         "requestFailedWithStatus": "リクエスト失敗: {{status}}",
         "streamFailed": "ストリーミング応答に失敗しました",
@@ -346,7 +360,8 @@
       },
       "info": {
         "sessionCreated": "テストセッションを作成しました: {{phone}}",
-        "sessionFinalized": "セッションを終了し、抽出を完了しました"
+        "sessionFinalized": "セッションを終了し、抽出を完了しました",
+        "autoSessionFinalized": "終了フレーズを検知したため、セッションを自動終了して抽出を完了しました。"
       },
       "messages": {
         "finalized": "セッションを終了しました。状態: {{status}}。{{appointmentMessage}}",
@@ -354,8 +369,51 @@
         "noAppointment": "予約レコードは作成されませんでした"
       }
     },
+    "modelWarnings": {
+      "currentPrompt": "現在の Prompt",
+      "currentPromptWithCode": "現在の Prompt（{{promptCode}}）",
+      "textPromptUsesVoiceModel": "{{promptLabel}} は音声モデル {{modelId}} で構成されています。テキストテストではこのモデルを使えません。音声テストに切り替えるか、Prompt モデルをテキスト生成モデルに変更してください。",
+      "voicePromptUsesTextModel": "{{promptLabel}} はテキストモデル {{modelId}} で構成されています。音声テストには Gemini Live / Native Audio モデルが必要です。Prompt モデルを変更するか、Gemini Live モデル入力欄で上書きしてください。",
+      "voiceOverrideUsesTextModel": "現在の音声セッションモデル {{modelId}} は Gemini Live / Native Audio モデルではありません。接続前に音声モデルへ変更するか、音声モデルを使用する Prompt を選択してください。"
+    },
     "appointment": {
-      "description": "予約シミュレーション機能は開発中..."
+      "description": "予約シミュレーション機能は開発中...",
+      "batch": {
+        "title": "一括予約シミュレーション",
+        "description": "複数の予約イベントを一度に生成します。",
+        "countLabel": "件数",
+        "generate": "予約データを生成",
+        "clear": "シミュレーションデータをクリア"
+      },
+      "status": {
+        "loading": "読み込み中...",
+        "errorTitle": "エラー",
+        "successTitle": "成功"
+      },
+      "response": "レスポンスデータ",
+      "copyFeedback": "コピーしました"
+    },
+    "voiceLab": {
+      "shell": {
+        "title": "音声接続テストコンソール",
+        "description": "Gemini 音声セッションが接続、集音、文字起こし、応答まで行えるかを検証します。"
+      },
+      "summary": {
+        "goal": "テスト目的",
+        "goalValue": "音声接続性",
+        "route": "接続方式",
+        "routeDirect": "ブラウザから Gemini へ直接接続",
+        "routeTwilio": "電話ゲートウェイ（Media Streams）",
+        "connection": "接続状態",
+        "audio": "音声入力",
+        "prompt": "Prompt",
+        "voice": "Gemini 音色"
+      },
+      "notifications": {
+        "errorTitle": "リクエスト失敗",
+        "successTitle": "成功",
+        "warningTitle": "設定上の注意"
+      }
     },
     "websocket": {
       "title": "Gemini Live リアルタイムコンソール",
@@ -460,7 +518,8 @@
         "success": "操作成功",
         "error": "操作失敗"
       },
-      "response": "レスポンス詳細"
+      "response": "レスポンス詳細",
+      "copyFeedback": "コピーしました"
     },
     "reviewer": {
       "title": "AI審査員モード (Reviewer Mode)",

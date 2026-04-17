@@ -1,6 +1,6 @@
-import audioop
 import re
 
+from app.services.twilio.audio_codec import compute_pcm16_stats, pcm16_bytes_to_samples
 from app.services.twilio.runtime_backends import get_twilio_stream_runtime_store
 
 _AUDIO_RATE_PATTERN = re.compile(r"rate=(\d+)")
@@ -31,26 +31,7 @@ async def _list_active_stream_calls() -> list[str]:
 
 
 def _pcm16_audio_stats(audio_bytes: bytes, *, sample_rate: int = 16000) -> dict[str, int]:
-    aligned = audio_bytes if len(audio_bytes) % 2 == 0 else audio_bytes[:-1]
-    if not aligned:
-        return {"bytes": 0, "samples": 0, "duration_ms": 0, "rms": 0, "peak": 0}
-    samples = len(aligned) // 2
-    duration_ms = int((samples * 1000) / max(sample_rate, 1))
-    try:
-        rms = int(audioop.rms(aligned, 2))
-    except Exception:
-        rms = 0
-    try:
-        peak = int(audioop.max(aligned, 2))
-    except Exception:
-        peak = 0
-    return {
-        "bytes": len(aligned),
-        "samples": samples,
-        "duration_ms": duration_ms,
-        "rms": rms,
-        "peak": peak,
-    }
+    return compute_pcm16_stats(pcm16_bytes_to_samples(audio_bytes), sample_rate=sample_rate)
 
 
 def _chunk_bytes(buffer: bytes, chunk_size: int) -> list[bytes]:

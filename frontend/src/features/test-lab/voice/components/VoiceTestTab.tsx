@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Stack, Tile } from '@carbon/react';
+import { useTranslation } from 'react-i18next';
 
 import { TestTabNotifications, TestWorkbenchShell, type TestWorkbenchSummaryItem } from '../../../../components/molecules/TestTabs';
 import {
@@ -16,6 +17,11 @@ import { useGeminiVoiceCatalog } from '../../../../hooks/useGeminiVoiceCatalog';
 import { resolveVoiceRouteTransition } from '../routeMode';
 import { matchGeminiLiveVoice, resolveGeminiLiveVoice } from '../voiceSelection';
 import { useVoiceTestConsole } from '../hooks/useVoiceTestConsole';
+import {
+  classifyDirectVoiceDiagnostic,
+  classifyGatewayFallbackDiagnostic,
+  mapBackendTraceDiagnostic,
+} from '../diagnostics';
 
 const DEFAULT_IDENTITY = 'webcall-tester';
 
@@ -34,6 +40,7 @@ function toCallTone(status: UseTwilioVoiceGatewayResult['callStatus']): 'green' 
 }
 
 export function VoiceTestTab() {
+  const { t } = useTranslation(['pages']);
   const liveWebsocket = useVoiceTestConsole();
   const twilioGateway = useTwilioVoiceGateway({ identity: DEFAULT_IDENTITY });
   const { voiceCatalog: geminiVoiceCatalog, loadingVoices: loadingGeminiVoices } =
@@ -166,39 +173,42 @@ export function VoiceTestTab() {
   const summaryItems: TestWorkbenchSummaryItem[] = [
     {
       id: 'goal',
-      label: '测试目标',
-      value: '语音连通性',
+      label: t('pages:test.voiceLab.summary.goal', 'Test Goal'),
+      value: t('pages:test.voiceLab.summary.goalValue', 'Voice connectivity'),
       tone: 'teal',
     },
     {
       id: 'route',
-      label: '接入方式',
-      value: routeMode === 'direct' ? '浏览器直连 Gemini' : '电话网关（Media Streams）',
+      label: t('pages:test.voiceLab.summary.route', 'Route'),
+      value:
+        routeMode === 'direct'
+          ? t('pages:test.voiceLab.summary.routeDirect', 'Browser direct to Gemini')
+          : t('pages:test.voiceLab.summary.routeTwilio', 'Phone gateway (Media Streams)'),
       tone: 'teal',
     },
     {
       id: 'connection',
-      label: '连接状态',
+      label: t('pages:test.voiceLab.summary.connection', 'Connection'),
       value: routeMode === 'direct' ? liveWebsocket.socketStatus : twilioGateway.callStatus,
       tone: routeMode === 'direct' ? directSocketTone : toCallTone(twilioGateway.callStatus),
       mono: true,
     },
     {
       id: 'audio',
-      label: '音频采集',
+      label: t('pages:test.voiceLab.summary.audio', 'Audio Capture'),
       value: routeMode === 'direct' ? liveWebsocket.micStatus : twilioGateway.dialerStatus,
       tone: routeMode === 'direct' ? directMicTone : toDialerTone(twilioGateway.dialerStatus),
       mono: true,
     },
     {
       id: 'prompt',
-      label: 'Prompt',
+      label: t('pages:test.voiceLab.summary.prompt', 'Prompt'),
       value: selectedPromptCode || '-',
       mono: true,
     },
     {
       id: 'voice',
-      label: 'Gemini 音色',
+      label: t('pages:test.voiceLab.summary.voice', 'Gemini Voice'),
       value: effectiveVoice || '-',
       mono: true,
       tone: routeMode === 'twilio' && isPromptVoiceConfigured ? 'teal' : 'cool-gray',
@@ -208,30 +218,69 @@ export function VoiceTestTab() {
   const activeError = routeMode === 'direct' ? liveWebsocket.error : twilioGateway.error;
   const activeInfo = routeMode === 'direct' ? liveWebsocket.info : twilioGateway.info;
   const compatibilityWarning = useMemo(() => {
-    const promptWarning = describeVoiceTabPromptModelWarning(selectedPrompt?.llmModel, selectedPromptCode);
+    const translateModelWarning = (key: string, options: { defaultValue: string; [key: string]: unknown }) =>
+      t(key, options);
+    const promptWarning = describeVoiceTabPromptModelWarning(
+      selectedPrompt?.llmModel,
+      selectedPromptCode,
+      translateModelWarning
+    );
     if (promptWarning) {
       return promptWarning;
     }
     if (routeMode === 'direct') {
-      return describeVoiceTabOverrideWarning(liveWebsocket.model);
+      return describeVoiceTabOverrideWarning(liveWebsocket.model, translateModelWarning);
     }
     return null;
-  }, [liveWebsocket.model, routeMode, selectedPrompt?.llmModel, selectedPromptCode]);
+  }, [liveWebsocket.model, routeMode, selectedPrompt?.llmModel, selectedPromptCode, t]);
   const directLogs = useMemo(() => [...liveWebsocket.logs].slice(-180).reverse(), [liveWebsocket.logs]);
+  const directDiagnostic = useMemo(
+    () =>
+      classifyDirectVoiceDiagnostic({
+        socketStatus: liveWebsocket.socketStatus,
+        micStatus: liveWebsocket.micStatus,
+        error: liveWebsocket.error,
+        logs: liveWebsocket.logs,
+        model: liveWebsocket.model,
+      }),
+    [liveWebsocket.error, liveWebsocket.logs, liveWebsocket.micStatus, liveWebsocket.model, liveWebsocket.socketStatus]
+  );
+  const twilioDiagnostic = useMemo(
+    () =>
+      mapBackendTraceDiagnostic(twilioGateway.traceDiagnostic) ||
+      classifyGatewayFallbackDiagnostic({
+        error: twilioGateway.error,
+        dialerStatus: twilioGateway.dialerStatus,
+        callStatus: twilioGateway.callStatus,
+        logs: twilioGateway.logs,
+        traceEvents: twilioGateway.traceEvents,
+      }),
+    [
+      twilioGateway.callStatus,
+      twilioGateway.dialerStatus,
+      twilioGateway.error,
+      twilioGateway.logs,
+      twilioGateway.traceDiagnostic,
+      twilioGateway.traceEvents,
+    ]
+  );
 
   return (
     <TestWorkbenchShell
-      title="语音连通性测试台"
-      description="统一验证 Gemini 语音会话是否可建立、可收音、可转写、可回复。"
+      title={t('pages:test.voiceLab.shell.title', 'Voice Connectivity Console')}
+      description={t(
+        'pages:test.voiceLab.shell.description',
+        'Validate whether Gemini voice sessions can connect, capture audio, transcribe, and reply.'
+      )}
       summaryItems={summaryItems}
       notice={
         <TestTabNotifications
           error={activeError}
           info={activeInfo}
           warning={compatibilityWarning}
-          errorTitle="请求失败"
-          successTitle="执行成功"
-          warningTitle="配置提示"
+          errorTitle={t('pages:test.voiceLab.notifications.errorTitle', 'Request failed')}
+          successTitle={t('pages:test.voiceLab.notifications.successTitle', 'Success')}
+          warningTitle={t('pages:test.voiceLab.notifications.warningTitle', 'Configuration warning')}
           onClearError={() => {
             if (routeMode === 'direct') {
               liveWebsocket.setError(null);
@@ -291,6 +340,8 @@ export function VoiceTestTab() {
           selectedPrompt={selectedPrompt}
           effectiveVoice={effectiveVoice}
           isPromptVoiceConfigured={isPromptVoiceConfigured}
+          directDiagnostic={directDiagnostic}
+          twilioDiagnostic={twilioDiagnostic}
         />
       }
     />

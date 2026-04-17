@@ -15,7 +15,8 @@ export function TextTestTab() {
   const sessionTone = lab.sessionClosed ? 'blue' : lab.session ? 'green' : 'cool-gray';
   const compatibilityWarning = describeTextTabModelWarning(
     lab.selectedPrompt?.llmModel,
-    lab.selectedPromptCode
+    lab.selectedPromptCode,
+    (key, options) => t(key, options)
   );
 
   const summaryItems: TestWorkbenchSummaryItem[] = [

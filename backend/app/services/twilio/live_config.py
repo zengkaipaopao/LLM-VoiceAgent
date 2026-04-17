@@ -8,6 +8,16 @@ def _use_manual_vad_control() -> bool:
     return mode in {"manual", "manual_vad", "explicit"}
 
 
+def _validate_twilio_activity_mode() -> None:
+    mode = (settings.twilio_gemini_activity_mode or "auto").strip().lower()
+    if mode in {"", "auto"}:
+        return
+    raise ValueError(
+        "Twilio Media Streams production path only supports Gemini automatic activity detection. "
+        "Set TWILIO_GEMINI_ACTIVITY_MODE=auto."
+    )
+
+
 def _resolve_activity_handling() -> types.ActivityHandling | None:
     token = (settings.twilio_gemini_activity_handling or "").strip().lower()
     mapping = {

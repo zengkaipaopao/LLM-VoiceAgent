@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { http } from '../../../../../api/http';
+import type { BackendTraceDiagnosticResponse } from '../../diagnostics';
 
 export type DialerStatus = 'idle' | 'fetching_token' | 'registering' | 'registered' | 'error';
 export type CallStatus = 'idle' | 'dialing' | 'in-call' | 'ended' | 'error';
@@ -23,11 +24,35 @@ export interface TwilioTraceEvent {
   final?: boolean;
 }
 
+export interface TwilioActiveTraceCall {
+  callSid: string;
+  lastSeq: number;
+  eventCount: number;
+  lastEventType: string;
+  lastEventTs: number;
+  lastEventText?: string;
+}
+
 export interface TwilioCapabilitySnapshot {
   configuredPhoneNumber: string;
   geminiGenerateImplemented: boolean;
   geminiLiveImplemented: boolean;
   twilioWebcallImplemented: boolean;
+}
+
+function formatTwilioSdkError(prefix: string, rawError: unknown): string {
+  const candidate = rawError && typeof rawError === 'object' ? (rawError as Record<string, unknown>) : {};
+  const code = String(candidate.code ?? '').trim();
+  const name = String(candidate.name ?? '').trim();
+  const message = String(candidate.message ?? 'Unknown error').trim();
+  const parts = [prefix];
+  if (name) {
+    parts.push(name);
+  }
+  if (code) {
+    parts.push(`(${code})`);
+  }
+  return `${parts.join(' ')}: ${message}`;
 }
 
 interface StartDialOptions {
@@ -53,9 +78,13 @@ export interface UseTwilioVoiceGatewayResult {
   dialerStatus: DialerStatus;
   callStatus: CallStatus;
   token: string;
+  sdkCallSid: string;
   traceCallSid: string;
   traceSeq: number;
   traceEvents: TwilioTraceEvent[];
+  activeTraceCalls: TwilioActiveTraceCall[];
+  traceDiagnostic: BackendTraceDiagnosticResponse | null;
+  loadingTraceDiagnostic: boolean;
   logs: DialerLogItem[];
   info: string | null;
   error: string | null;
@@ -99,9 +128,13 @@ export function useTwilioVoiceGateway({
   const [callStatus, setCallStatus] = useState<CallStatus>('idle');
   const [token, setToken] = useState('');
   const [logs, setLogs] = useState<DialerLogItem[]>([]);
+  const [sdkCallSid, setSdkCallSid] = useState('');
   const [traceCallSid, setTraceCallSid] = useState('');
   const [traceSeq, setTraceSeq] = useState(0);
   const [traceEvents, setTraceEvents] = useState<TwilioTraceEvent[]>([]);
+  const [activeTraceCalls, setActiveTraceCalls] = useState<TwilioActiveTraceCall[]>([]);
+  const [traceDiagnostic, setTraceDiagnostic] = useState<BackendTraceDiagnosticResponse | null>(null);
+  const [loadingTraceDiagnostic, setLoadingTraceDiagnostic] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -144,6 +177,79 @@ export function useTwilioVoiceGateway({
     }
   }, []);
 
+  const clearTraceBinding = useCallback(() => {
+    setTraceCallSid('');
+    setTraceSeq(0);
+    setTraceEvents([]);
+    setActiveTraceCalls([]);
+    setTraceDiagnostic(null);
+    traceCallSidRef.current = '';
+    traceSeqRef.current = 0;
+  }, []);
+
+  const bindTraceCallSid = useCallback(
+    (nextCallSid: string) => {
+      const normalizedCallSid = nextCallSid.trim();
+      if (!normalizedCallSid) {
+        clearTraceBinding();
+        return;
+      }
+      if (traceCallSidRef.current.trim() === normalizedCallSid) {
+        return;
+      }
+      traceCallSidRef.current = normalizedCallSid;
+      traceSeqRef.current = 0;
+      setTraceCallSid(normalizedCallSid);
+      setTraceSeq(0);
+      setTraceEvents([]);
+      setTraceDiagnostic(null);
+    },
+    [clearTraceBinding]
+  );
+
+  const loadActiveTraceCalls = useCallback(async (): Promise<{
+    latestCallSid: string;
+    activeCalls: TwilioActiveTraceCall[];
+  }> => {
+    const activeResponse = await http.get('/twilio/voice/trace/active');
+    const activePayload = asRecord(asRecord(activeResponse.data).data);
+    const detailItems = Array.isArray(activePayload.active_call_details)
+      ? activePayload.active_call_details.map((item) => asRecord(item))
+      : [];
+    const parsedDetails: TwilioActiveTraceCall[] = detailItems
+      .map((item) => ({
+        callSid: String(item.call_sid ?? '').trim(),
+        lastSeq: Number(item.last_seq ?? 0),
+        eventCount: Number(item.event_count ?? 0),
+        lastEventType: String(item.last_event_type ?? '').trim(),
+        lastEventTs: Number(item.last_event_ts ?? 0),
+        lastEventText: String(item.last_event_text ?? '').trim() || undefined,
+      }))
+      .filter((item) => item.callSid.length > 0);
+
+    const fallbackCalls =
+      parsedDetails.length > 0
+        ? parsedDetails
+        : (Array.isArray(activePayload.active_calls) ? activePayload.active_calls : [])
+            .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+            .map((callSid) => ({
+              callSid: callSid.trim(),
+              lastSeq: 0,
+              eventCount: 0,
+              lastEventType: '',
+              lastEventTs: 0,
+            }));
+
+    setActiveTraceCalls(fallbackCalls);
+
+    const latestCallSid =
+      String(activePayload.latest_call_sid ?? '').trim() || fallbackCalls[0]?.callSid || '';
+    return {
+      latestCallSid,
+      activeCalls: fallbackCalls,
+    };
+  }, []);
+
   const resetGatewaySession = useCallback(
     (options?: { clearMessages?: boolean }) => {
       stopTracePolling();
@@ -162,17 +268,15 @@ export function useTwilioVoiceGateway({
       }
       setDialerStatus('idle');
       setCallStatus('idle');
-      setTraceCallSid('');
-      setTraceSeq(0);
-      setTraceEvents([]);
-      traceCallSidRef.current = '';
-      traceSeqRef.current = 0;
+      setSdkCallSid('');
+      clearTraceBinding();
+      setLoadingTraceDiagnostic(false);
       if (options?.clearMessages) {
         setError(null);
         setInfo(null);
       }
     },
-    [stopTracePolling]
+    [clearTraceBinding, stopTracePolling]
   );
 
   const refreshCapability = useCallback(async () => {
@@ -227,31 +331,32 @@ export function useTwilioVoiceGateway({
   const pollTraceOnce = useCallback(async () => {
     let activeCallSid = traceCallSidRef.current.trim();
     try {
-      const resolveLatestActiveCallSid = async (): Promise<string> => {
-        const activeResponse = await http.get('/twilio/voice/trace/active');
-        const activePayload = asRecord(asRecord(activeResponse.data).data);
-        const activeCalls = Array.isArray(activePayload.active_calls)
-          ? activePayload.active_calls.filter(
-              (item): item is string => typeof item === 'string' && item.trim().length > 0
-            )
-          : [];
-        if (activeCalls.length > 0) {
-          return activeCalls[activeCalls.length - 1].trim();
+      let activeTraceState:
+        | {
+            latestCallSid: string;
+            activeCalls: TwilioActiveTraceCall[];
+          }
+        | undefined;
+      const resolveActiveTraceState = async () => {
+        if (!activeTraceState) {
+          activeTraceState = await loadActiveTraceCalls();
         }
-        const latestResponse = await http.get('/twilio/voice/trace/latest');
-        const latestPayload = asRecord(asRecord(latestResponse.data).data);
-        return String(latestPayload.call_sid ?? '').trim();
+        return activeTraceState;
       };
 
       if (!activeCallSid) {
-        activeCallSid = await resolveLatestActiveCallSid();
-
+        const activeState = await resolveActiveTraceState();
+        activeCallSid = activeState.latestCallSid;
         if (!activeCallSid) return;
-        traceCallSidRef.current = activeCallSid;
-        traceSeqRef.current = 0;
-        setTraceCallSid(activeCallSid);
-        setTraceSeq(0);
-        setTraceEvents([]);
+        bindTraceCallSid(activeCallSid);
+      } else {
+        const activeState = await resolveActiveTraceState();
+        const isBoundCallStillActive = activeState.activeCalls.some((item) => item.callSid === activeCallSid);
+        if (!isBoundCallStillActive && activeState.latestCallSid && activeState.latestCallSid !== activeCallSid) {
+          activeCallSid = activeState.latestCallSid;
+          bindTraceCallSid(activeCallSid);
+          return;
+        }
       }
 
       const response = await http.get('/twilio/voice/trace', {
@@ -278,13 +383,9 @@ export function useTwilioVoiceGateway({
 
       const lastSeq = Number(payload.last_seq ?? traceSeqRef.current);
       if (incomingEvents.length === 0 && traceSeqRef.current === 0) {
-        const fallbackCallSid = await resolveLatestActiveCallSid();
-        if (fallbackCallSid && fallbackCallSid !== activeCallSid) {
-          traceCallSidRef.current = fallbackCallSid;
-          traceSeqRef.current = 0;
-          setTraceCallSid(fallbackCallSid);
-          setTraceSeq(0);
-          setTraceEvents([]);
+        const activeState = await resolveActiveTraceState();
+        if (activeState.latestCallSid && activeState.latestCallSid !== activeCallSid) {
+          bindTraceCallSid(activeState.latestCallSid);
           return;
         }
       }
@@ -295,11 +396,55 @@ export function useTwilioVoiceGateway({
         traceSeqRef.current = lastSeq;
         setTraceSeq(lastSeq);
       }
+
+      setLoadingTraceDiagnostic(true);
+      try {
+        const diagnosticResponse = await http.get('/twilio/voice/trace/diagnostics', {
+          params: {
+            call_sid: activeCallSid,
+          },
+        });
+        const diagnosticPayload = asRecord(asRecord(diagnosticResponse.data).data);
+        setTraceDiagnostic({
+          call_sid: String(diagnosticPayload.call_sid ?? activeCallSid).trim() || activeCallSid,
+          status: ['ok', 'warning', 'error', 'unknown'].includes(String(diagnosticPayload.status))
+            ? (String(diagnosticPayload.status) as BackendTraceDiagnosticResponse['status'])
+            : 'unknown',
+          category: String(diagnosticPayload.category ?? 'unknown'),
+          owner: String(diagnosticPayload.owner ?? 'unknown'),
+          title: String(diagnosticPayload.title ?? '未提供诊断标题'),
+          summary: String(diagnosticPayload.summary ?? ''),
+          actions: Array.isArray(diagnosticPayload.actions)
+            ? diagnosticPayload.actions
+                .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+                .slice(0, 4)
+            : [],
+          evidence: Array.isArray(diagnosticPayload.evidence)
+            ? diagnosticPayload.evidence
+                .map((item) => asRecord(item))
+                .map((item) => ({
+                  seq: Number(item.seq ?? 0),
+                  ts: Number(item.ts ?? 0),
+                  type: String(item.type ?? ''),
+                  level: ['info', 'success', 'warning', 'error'].includes(String(item.level))
+                    ? (String(item.level) as GatewayLogLevel)
+                    : 'info',
+                  text: String(item.text ?? ''),
+                }))
+                .filter((item) => item.seq > 0 || item.text.trim().length > 0)
+            : [],
+          last_seq: Number(diagnosticPayload.last_seq ?? lastSeq),
+          stream_active: Boolean(diagnosticPayload.stream_active),
+        });
+      } finally {
+        setLoadingTraceDiagnostic(false);
+      }
     } catch (pollError) {
       const message = pollError instanceof Error ? pollError.message : String(pollError);
       appendLog('warning', `转写轮询失败: ${message}`);
+      setLoadingTraceDiagnostic(false);
     }
-  }, [appendLog]);
+  }, [appendLog, bindTraceCallSid, loadActiveTraceCalls]);
 
   useEffect(() => {
     const shouldPoll = callStatus === 'dialing' || callStatus === 'in-call';
@@ -411,10 +556,10 @@ export function useTwilioVoiceGateway({
         appendLog('info', 'Twilio 设备已注销。');
       });
       device.on('error', (deviceError: any) => {
-        const message = String(deviceError?.message || 'Unknown device error');
+        const message = formatTwilioSdkError('Twilio Device 错误', deviceError);
         setDialerStatus('error');
-        setError(`Twilio Device 错误: ${message}`);
-        appendLog('error', `Twilio Device 错误: ${message}`);
+        setError(message);
+        appendLog('error', message);
       });
       device.on('incoming', (incomingCall: any) => {
         appendLog('warning', '收到入站 client 通话事件，当前测试台仅用于浏览器外呼回归，已自动拒绝。');
@@ -427,10 +572,10 @@ export function useTwilioVoiceGateway({
 
       await device.register();
     } catch (registerError) {
-      const message = registerError instanceof Error ? registerError.message : String(registerError);
+      const message = formatTwilioSdkError('注册设备失败', registerError);
       setDialerStatus('error');
-      setError(`注册设备失败: ${message}`);
-      appendLog('error', `注册设备失败: ${message}`);
+      setError(message);
+      appendLog('error', message);
     }
   }, [appendLog, fetchToken, token]);
 
@@ -457,10 +602,10 @@ export function useTwilioVoiceGateway({
         appendLog('warning', '通话被拒绝。');
       });
       call.on('error', (callError: any) => {
-        const message = String(callError?.message || 'Unknown call error');
+        const message = formatTwilioSdkError('通话错误', callError);
         setCallStatus('error');
-        setError(`通话错误: ${message}`);
-        appendLog('error', `通话错误: ${message}`);
+        setError(message);
+        appendLog('error', message);
       });
     },
     [appendLog]
@@ -491,11 +636,8 @@ export function useTwilioVoiceGateway({
           return;
         }
 
-        setTraceEvents([]);
-        setTraceSeq(0);
-        setTraceCallSid('');
-        traceSeqRef.current = 0;
-        traceCallSidRef.current = '';
+        setSdkCallSid('');
+        clearTraceBinding();
 
         setCallStatus('dialing');
         appendLog('info', `正在拨号 ${target} ...`);
@@ -516,19 +658,18 @@ export function useTwilioVoiceGateway({
 
         const callSid = String(call?.parameters?.CallSid ?? '').trim();
         if (callSid) {
-          setTraceCallSid(callSid);
-          traceCallSidRef.current = callSid;
+          setSdkCallSid(callSid);
         }
 
         setInfo('已发起通话，当前链路为 Twilio Media Streams -> Gemini Live 音频双向桥接。');
       } catch (dialError) {
-        const message = dialError instanceof Error ? dialError.message : String(dialError);
+        const message = formatTwilioSdkError('拨号失败', dialError);
         setCallStatus('error');
-        setError(`拨号失败: ${message}`);
-        appendLog('error', `拨号失败: ${message}`);
+        setError(message);
+        appendLog('error', message);
       }
     },
-    [appendLog, bindCallEvents, registerDevice, targetNumber]
+    [appendLog, bindCallEvents, clearTraceBinding, registerDevice, targetNumber]
   );
 
   const prepareInboundCall = useCallback(
@@ -632,9 +773,13 @@ export function useTwilioVoiceGateway({
       dialerStatus,
       callStatus,
       token,
+      sdkCallSid,
       traceCallSid,
       traceSeq,
       traceEvents,
+      activeTraceCalls,
+      traceDiagnostic,
+      loadingTraceDiagnostic,
       logs,
       info,
       error,
@@ -665,12 +810,16 @@ export function useTwilioVoiceGateway({
       resetGatewaySession,
       setTargetNumber,
       startDial,
+      sdkCallSid,
       targetNumber,
       targetNumberLocked,
       token,
+      activeTraceCalls,
       traceCallSid,
+      traceDiagnostic,
       traceEvents,
       traceSeq,
+      loadingTraceDiagnostic,
       unregisterDevice,
     ]
   );

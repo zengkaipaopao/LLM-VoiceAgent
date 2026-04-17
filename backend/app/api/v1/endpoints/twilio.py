@@ -1,5 +1,4 @@
 import asyncio
-import audioop
 import base64
 import json
 import logging
@@ -39,7 +38,12 @@ from app.services.live_gateway import (
 from app.services.prompt_runtime_resolver import PromptRuntimeConfig, resolve_prompt_runtime
 from app.services.prompt_service import PromptService
 from app.services.test_session_service import TestSessionService
-from app.services.twilio.live_config import _build_gemini_live_config, _use_manual_vad_control
+from app.services.twilio.audio_codec import TwilioMediaAudioCodec
+from app.services.twilio.live_config import (
+    _build_gemini_live_config,
+    _use_manual_vad_control,
+    _validate_twilio_activity_mode,
+)
 from app.services.twilio.media_stream_bootstrap import receive_twilio_media_stream_start
 from app.services.twilio.media_stream_state import TwilioMediaStreamState
 from app.services.twilio.normalizers import (
@@ -57,16 +61,14 @@ from app.services.twilio.pending_overrides import (
     _set_pending_inbound_override_for_number,
 )
 from app.services.twilio.stream_runtime_store import (
-    _chunk_bytes,
-    _drain_manual_audio,
     _enqueue_manual_audio,
-    _extract_audio_rate,
     _is_stream_active,
     _list_active_stream_calls,
     _mark_stream_active,
     _mark_stream_inactive,
     _pcm16_audio_stats,
 )
+from app.services.twilio.trace_diagnostics import build_twilio_trace_diagnostic
 from app.services.twilio.trace_store import (
     _append_call_trace,
     _read_call_trace,
@@ -92,17 +94,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 _TWILIO_FRAME_BYTES = 160  # 20ms at 8kHz G.711 mu-law
 _TWILIO_FALLBACK_OPENING = "いつもお世話になっております。光洲産業の自動受付AIです。本日はどのようなご用件でしょうか。"
-_VAD_RMS_THRESHOLD = 55
-_VAD_SILENCE_END_MS = 1100
-_VAD_NOISE_MULTIPLIER = 1.9
-_VAD_MAX_TURN_MS = 6000
-_VAD_ADAPTIVE_THRESHOLD_MAX = 420
-_VAD_ADAPTIVE_SMOOTHING = 0.2
-_VAD_START_CONSEC_FRAMES = 3
-_ASSISTANT_OUTPUT_LOCK_TIMEOUT_MS = 7000
-_VAD_PRE_ROLL_FRAMES = 15  # 15 * 20ms = 300ms
-_MANUAL_INJECT_MEDIA_SUPPRESS_MS = 8000
-_OPENING_STARTUP_SUPPRESS_MS = 2200
+_MEDIA_STATS_INTERVAL_SECONDS = 2.0
 _TWILIO_CLOSING_REQUIRED_ALL = ("ご利用ありがとうございます",)
 _TWILIO_CLOSING_REQUIRED_ANY = ("承りました", "承知いたしました", "承知しました")
 _ECHO_COMPARE_NORMALIZER = re.compile(r"[\s\u3000。、，,．.!！?？・:：\"'「」『』（）()\-ー]")
@@ -119,6 +111,7 @@ __all__ = (
     "_resolve_twilio_inbound_voice_route",
     "_set_pending_inbound_override_for_number",
     "_use_manual_vad_control",
+    "_validate_twilio_activity_mode",
 )
 
 
@@ -759,22 +752,37 @@ async def twilio_voice_media_stream(
             runtime.template_code,
             runtime.voice_provider,
         )
-    manual_vad_control = _use_manual_vad_control()
+    try:
+        _validate_twilio_activity_mode()
+    except ValueError as exc:
+        await _append_call_trace(
+            current_call_sid,
+            event_type="configuration_error",
+            text=str(exc),
+            level="error",
+        )
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason=str(exc)[:120])
+        return
+
     opening_text = _build_twilio_opening_text(runtime.system_instruction)
     twilio_session_instruction = _build_twilio_session_instruction(runtime.system_instruction, opening_text=None)
     live_config = _build_gemini_live_config(
         model=selected_model,
         system_instruction=twilio_session_instruction,
         voice_name=selected_voice,
-        manual_vad=manual_vad_control,
+        manual_vad=False,
+    )
+    live_config.realtime_input_config.activity_handling = (
+        types.ActivityHandling.START_OF_ACTIVITY_INTERRUPTS
     )
     client = create_google_genai_client()
 
     twilio_started = asyncio.Event()
     stream_done = asyncio.Event()
-    state = TwilioMediaStreamState(
-        pre_roll_frame_limit=_VAD_PRE_ROLL_FRAMES,
-        adaptive_threshold_floor=_VAD_RMS_THRESHOLD,
+    state = TwilioMediaStreamState()
+    codec = TwilioMediaAudioCodec(
+        input_batch_ms=settings.twilio_media_stream_inbound_batch_ms,
+        twilio_frame_bytes=_TWILIO_FRAME_BYTES,
     )
     send_lock = asyncio.Lock()
     finalize_lock = asyncio.Lock()
@@ -903,7 +911,7 @@ async def twilio_voice_media_stream(
                 selected_voice,
                 runtime.template_code,
                 runtime_notice,
-                "manual" if manual_vad_control else "auto",
+                "auto",
             )
             if current_call_sid:
                 await _mark_stream_active(current_call_sid)
@@ -921,13 +929,9 @@ async def twilio_voice_media_stream(
                     event_type="stream_start",
                     text=(
                         f"prompt={runtime.template_code or '-'} voice={selected_voice} "
-                        f"activity_mode={'manual' if manual_vad_control else 'auto'}"
+                        "activity_mode=auto"
                     ),
                     level="success",
-                )
-                state.begin_opening_suppression(
-                    now=time.monotonic(),
-                    duration_ms=_OPENING_STARTUP_SUPPRESS_MS,
                 )
                 await _append_call_trace(
                     current_call_sid,
@@ -966,6 +970,36 @@ async def twilio_voice_media_stream(
                         level="warning",
                     )
 
+            async def _send_realtime_audio(audio_bytes: bytes) -> None:
+                if not audio_bytes:
+                    return
+                await session.send_realtime_input(
+                    audio=types.Blob(data=audio_bytes, mime_type="audio/pcm;rate=16000")
+                )
+
+            async def _flush_realtime_audio_buffer() -> None:
+                pending_audio = codec.flush_inbound_audio()
+                if pending_audio:
+                    await _send_realtime_audio(pending_audio)
+
+            async def _close_after_playback_if_needed() -> bool:
+                if not state.close_after_turn_complete:
+                    return False
+                state.close_after_turn_complete = False
+                await _append_call_trace(
+                    current_call_sid,
+                    event_type="auto_finalize_triggered",
+                    text=state.last_completed_assistant_text,
+                    level="success",
+                )
+                await _finalize_bound_call(trigger="closing_phrase", run_extraction=True)
+                stream_done.set()
+                try:
+                    await websocket.close()
+                except Exception:
+                    pass
+                return True
+
             async def twilio_to_live() -> None:
                 nonlocal stream_sid
                 nonlocal current_call_sid
@@ -1000,6 +1034,8 @@ async def twilio_voice_media_stream(
                                 text=mark_name or "assistant_audio",
                                 level="success",
                             )
+                            if await _close_after_playback_if_needed():
+                                return
                         continue
 
                     if event_type == "start":
@@ -1030,24 +1066,11 @@ async def twilio_voice_media_stream(
                         if not isinstance(encoded, str) or not encoded.strip():
                             continue
                         try:
-                            encoded_clean = encoded.strip()
-                            padding = (-len(encoded_clean)) % 4
-                            if padding:
-                                encoded_clean += "=" * padding
-                            ulaw_bytes = base64.b64decode(encoded_clean.encode("ascii"), validate=False)
-                            pcm8 = audioop.ulaw2lin(ulaw_bytes, 2)
-                            pcm16k, state.in_resample_state = audioop.ratecv(
-                                pcm8,
-                                2,
-                                1,
-                                8000,
-                                16000,
-                                state.in_resample_state,
-                            )
+                            decoded_audio = codec.decode_twilio_payload(encoded)
                         except Exception:
                             state.decode_fail_count += 1
                             now_ts = time.monotonic()
-                            if (now_ts - state.last_decode_error_at) >= 2.0:
+                            if (now_ts - state.last_decode_error_at) >= _MEDIA_STATS_INTERVAL_SECONDS:
                                 state.last_decode_error_at = now_ts
                                 await _append_call_trace(
                                     current_call_sid,
@@ -1057,502 +1080,34 @@ async def twilio_voice_media_stream(
                                 )
                             continue
 
-                        rms = 0
-                        try:
-                            rms = audioop.rms(pcm8, 2)
-                        except Exception:
-                            rms = 0
-                        state.rms_window.append(rms)
-                        if len(state.rms_window) >= 12:
-                            sorted_window = sorted(state.rms_window)
-                            # Use lower percentile as noise floor to avoid speech bursts inflating threshold.
-                            noise_floor = sorted_window[(len(sorted_window) * 3) // 10]
-                            target_threshold = int(noise_floor * _VAD_NOISE_MULTIPLIER)
-                            target_threshold = max(_VAD_RMS_THRESHOLD, min(_VAD_ADAPTIVE_THRESHOLD_MAX, target_threshold))
-                            state.adaptive_threshold = int(
-                                state.adaptive_threshold * (1.0 - _VAD_ADAPTIVE_SMOOTHING)
-                                + target_threshold * _VAD_ADAPTIVE_SMOOTHING
-                            )
-                            state.adaptive_threshold = max(
-                                _VAD_RMS_THRESHOLD,
-                                min(_VAD_ADAPTIVE_THRESHOLD_MAX, state.adaptive_threshold),
-                            )
-                        else:
-                            state.adaptive_threshold = _VAD_RMS_THRESHOLD
-
                         now_ts = time.monotonic()
                         state.media_frames += 1
-
-                        if state.assistant_playback_pending:
-                            state.clear_voice_detection_window()
-                            if (now_ts - state.last_media_stats_at) >= 2.0:
-                                state.last_media_stats_at = now_ts
-                                await _append_call_trace(
-                                    current_call_sid,
-                                    event_type="media_stats",
-                                    text=(
-                                        f"frames={state.media_frames} rms={rms} threshold={state.adaptive_threshold} "
-                                        "mode=playback_pending"
-                                    ),
-                                    level="info",
-                                )
-                            continue
-
-                        if state.manual_lock_active(now_ts):
-                            state.clear_voice_detection_window()
-                            if (now_ts - state.last_media_stats_at) >= 2.0:
-                                state.last_media_stats_at = now_ts
-                                await _append_call_trace(
-                                    current_call_sid,
-                                    event_type="media_stats",
-                                    text=(
-                                        f"frames={state.media_frames} rms={rms} threshold={state.adaptive_threshold} "
-                                        "mode=manual_inject_lock"
-                                    ),
-                                    level="info",
-                                )
-                            continue
-
-                        if not manual_vad_control:
-                            if state.opening_suppressed(now_ts):
-                                if (now_ts - state.last_media_stats_at) >= 2.0:
-                                    state.last_media_stats_at = now_ts
-                                    await _append_call_trace(
-                                        current_call_sid,
-                                        event_type="media_stats",
-                                        text=(
-                                            f"frames={state.media_frames} rms={rms} threshold={state.adaptive_threshold} "
-                                            "mode=suppressed_opening_auto"
-                                        ),
-                                        level="info",
-                                    )
-                                continue
-
-                            if state.assistant_speaking:
-                                if (
-                                    state.assistant_last_output_at is not None
-                                    and ((now_ts - state.assistant_last_output_at) * 1000) >= _ASSISTANT_OUTPUT_LOCK_TIMEOUT_MS
-                                ):
-                                    state.assistant_speaking = False
-                                    await _append_call_trace(
-                                        current_call_sid,
-                                        event_type="assistant_output_lock_timeout",
-                                        text=f"released_ms={_ASSISTANT_OUTPUT_LOCK_TIMEOUT_MS}",
-                                        level="warning",
-                                    )
-                                else:
-                                    if (now_ts - state.last_media_stats_at) >= 2.0:
-                                        state.last_media_stats_at = now_ts
-                                        await _append_call_trace(
-                                            current_call_sid,
-                                            event_type="media_stats",
-                                            text=(
-                                                f"frames={state.media_frames} rms={rms} threshold={state.adaptive_threshold} "
-                                                "mode=assistant_output_lock_auto"
-                                            ),
-                                            level="info",
-                                        )
-                                    continue
-
-                            ready_for_manual = (
-                                not state.assistant_speaking
-                                and not state.awaiting_model_response
-                                and not state.opening_suppressed(now_ts)
-                            )
-                            if ready_for_manual:
-                                injected_segments = await _drain_manual_audio(current_call_sid)
-                                if injected_segments:
-                                    combined_manual_audio = b"".join(injected_segments)
-                                    stats = _pcm16_audio_stats(combined_manual_audio, sample_rate=16000)
-                                    await _append_call_trace(
-                                        current_call_sid,
-                                        event_type="manual_audio_injecting",
-                                        text=(
-                                            f"segments={len(injected_segments)} bytes={stats['bytes']} "
-                                            f"duration_ms={stats['duration_ms']} rms={stats['rms']} peak={stats['peak']} "
-                                            "mode=auto_vad"
-                                        ),
-                                        level="info",
-                                    )
-                                    for segment in injected_segments:
-                                        for packet in _chunk_bytes(segment, 640):
-                                            await session.send_realtime_input(
-                                                audio=types.Blob(data=packet, mime_type="audio/pcm;rate=16000")
-                                            )
-                                    state.start_waiting_for_model(now=now_ts, manual_turn=True)
-                                    lock_seconds = min(
-                                        12.0,
-                                        max(2.5, (stats["duration_ms"] / 1000.0) + 1.5),
-                                    )
-                                    state.begin_manual_lock(now=now_ts, seconds=lock_seconds)
-                                    continue
-
-                            await session.send_realtime_input(
-                                audio=types.Blob(data=pcm16k, mime_type="audio/pcm;rate=16000")
-                            )
-                            if (now_ts - state.last_media_stats_at) >= 2.0:
-                                state.last_media_stats_at = now_ts
-                                await _append_call_trace(
-                                    current_call_sid,
-                                    event_type="media_stats",
-                                    text=f"frames={state.media_frames} rms={rms} threshold={state.adaptive_threshold} mode=auto_stream",
-                                    level="info",
-                                )
-                            continue
-
-                        ready_for_manual = (
-                            not state.awaiting_model_response
-                            and not state.assistant_speaking
-                            and not state.opening_suppressed(now_ts)
-                        )
-                        if ready_for_manual:
-                            injected_segments = await _drain_manual_audio(current_call_sid)
-                            if injected_segments:
-                                combined_manual_audio = b"".join(injected_segments)
-                                stats = _pcm16_audio_stats(combined_manual_audio, sample_rate=16000)
-                                await _append_call_trace(
-                                    current_call_sid,
-                                    event_type="manual_audio_injecting",
-                                    text=(
-                                        f"segments={len(injected_segments)} bytes={stats['bytes']} "
-                                        f"duration_ms={stats['duration_ms']} rms={stats['rms']} peak={stats['peak']}"
-                                    ),
-                                    level="info",
-                                )
-                                if not state.manual_activity_started:
-                                    await session.send_realtime_input(activity_start=types.ActivityStart())
-                                    state.manual_activity_started = True
-                                for segment in injected_segments:
-                                    for packet in _chunk_bytes(segment, 640):
-                                        await session.send_realtime_input(
-                                            audio=types.Blob(data=packet, mime_type="audio/pcm;rate=16000")
-                                        )
-                                await session.send_realtime_input(activity_end=types.ActivityEnd())
-                                state.manual_activity_started = False
-                                state.start_waiting_for_model(now=now_ts, manual_turn=True)
-                                state.begin_manual_lock(
-                                    now=now_ts,
-                                    seconds=_MANUAL_INJECT_MEDIA_SUPPRESS_MS / 1000.0,
-                                )
-                                state.reset_turn_detection()
-                                continue
-
-                        if state.opening_suppressed(now_ts):
-                            if state.speaking_active:
-                                state.speaking_active = False
-                                state.turn_started_at = None
-                                state.silence_started_at = None
-                            if (now_ts - state.last_media_stats_at) >= 2.0:
-                                state.last_media_stats_at = now_ts
-                                await _append_call_trace(
-                                    current_call_sid,
-                                    event_type="media_stats",
-                                    text=f"frames={state.media_frames} rms={rms} threshold={state.adaptive_threshold} mode=suppressed_opening",
-                                    level="info",
-                                )
-                            continue
-
-                        # After a turn is committed, keep a short lock window so ambient noise
-                        # does not immediately open a new turn and cancel the pending response.
-                        if state.awaiting_model_response:
-                            state.clear_voice_detection_window()
-                            if (now_ts - state.last_media_stats_at) >= 2.0:
-                                state.last_media_stats_at = now_ts
-                                await _append_call_trace(
-                                    current_call_sid,
-                                    event_type="media_stats",
-                                    text=f"frames={state.media_frames} rms={rms} threshold={state.adaptive_threshold} mode=awaiting_response",
-                                    level="info",
-                                )
-                            continue
-
-                        # Keep a short pre-roll so first syllables are not clipped when speech starts.
-                        state.pre_roll_frames.append(pcm16k)
-
-                        if (now_ts - state.last_media_stats_at) >= 2.0:
+                        for batch in codec.queue_inbound_audio(decoded_audio.pcm16k):
+                            await _send_realtime_audio(batch)
+                        if (now_ts - state.last_media_stats_at) >= _MEDIA_STATS_INTERVAL_SECONDS:
                             state.last_media_stats_at = now_ts
+                            buffer_ms = int(codec.pending_inbound_bytes / 32)
                             await _append_call_trace(
                                 current_call_sid,
                                 event_type="media_stats",
-                                text=f"frames={state.media_frames} rms={rms} threshold={state.adaptive_threshold}",
+                                text=(
+                                    f"frames={state.media_frames} rms={decoded_audio.rms} "
+                                    f"buffer_ms={buffer_ms} mode=auto_stream"
+                                ),
                                 level="info",
                             )
-
-                        if rms >= state.adaptive_threshold:
-                            state.voice_frame_streak += 1
-                            state.last_voice_at = now_ts
-                            state.silence_started_at = None
-
-                            if state.speaking_active:
-                                # Keep streaming voiced frames while the turn is active.
-                                await session.send_realtime_input(
-                                    audio=types.Blob(data=pcm16k, mime_type="audio/pcm;rate=16000")
-                                )
-                                if state.turn_started_at and ((now_ts - state.turn_started_at) * 1000) >= _VAD_MAX_TURN_MS:
-                                    # Hard cap for long/noisy turns that never reach silence.
-                                    state.reset_turn_detection()
-                                    logger.info("Twilio VAD forced end by max turn window.")
-                                    await session.send_realtime_input(activity_end=types.ActivityEnd())
-                                    state.manual_activity_started = False
-                                    state.start_waiting_for_model(now=now_ts, manual_turn=False)
-                                    await _append_call_trace(
-                                        current_call_sid,
-                                        event_type="vad_forced_end",
-                                        text=f"max_turn_ms={_VAD_MAX_TURN_MS}",
-                                        level="warning",
-                                    )
-                                continue
-
-                            if state.voice_frame_streak >= _VAD_START_CONSEC_FRAMES:
-                                state.speaking_active = True
-                                state.turn_started_at = now_ts
-                                logger.info(
-                                    "Twilio VAD start detected. rms=%s threshold=%s",
-                                    rms,
-                                    state.adaptive_threshold,
-                                )
-                                await _append_call_trace(
-                                    current_call_sid,
-                                    event_type="vad_start",
-                                    text=(
-                                        f"rms={rms} threshold={state.adaptive_threshold} "
-                                        f"streak={state.voice_frame_streak}"
-                                    ),
-                                    level="info",
-                                )
-                                if not state.manual_activity_started:
-                                    await session.send_realtime_input(activity_start=types.ActivityStart())
-                                    state.manual_activity_started = True
-                                # Flush pre-roll plus current frame to Gemini once turn starts.
-                                for buffered in state.pre_roll_frames:
-                                    await session.send_realtime_input(
-                                        audio=types.Blob(data=buffered, mime_type="audio/pcm;rate=16000")
-                                    )
-                                state.pre_roll_frames.clear()
-                            continue
-
-                        if state.speaking_active:
-                            await session.send_realtime_input(
-                                audio=types.Blob(data=pcm16k, mime_type="audio/pcm;rate=16000")
-                            )
-                            if state.silence_started_at is None:
-                                state.silence_started_at = now_ts
-                            silence_ms = (now_ts - state.silence_started_at) * 1000
-                            if silence_ms >= _VAD_SILENCE_END_MS:
-                                state.speaking_active = False
-                                state.turn_started_at = None
-                                state.silence_started_at = None
-                                state.pre_roll_frames.clear()
-                                logger.info(
-                                    "Twilio VAD end detected by silence frame. threshold=%s silence_ms=%.1f",
-                                    state.adaptive_threshold,
-                                    silence_ms,
-                                )
-                                await session.send_realtime_input(activity_end=types.ActivityEnd())
-                                state.manual_activity_started = False
-                                state.start_waiting_for_model(now=now_ts, manual_turn=False)
-                                await _append_call_trace(
-                                    current_call_sid,
-                                    event_type="vad_end",
-                                    text=f"silence_ms={int(silence_ms)} threshold={state.adaptive_threshold}",
-                                    level="info",
-                                )
-                                state.voice_frame_streak = 0
-                            continue
-                        else:
-                            state.voice_frame_streak = 0
-
-                        if state.last_voice_at is not None and (now_ts - state.last_voice_at) > 5:
-                            state.last_voice_at = None
+                        continue
 
                     if event_type == "stop":
                         try:
-                            if manual_vad_control and state.speaking_active:
-                                state.speaking_active = False
-                                state.turn_started_at = None
-                                logger.info("Twilio stream stop: closing active turn.")
-                                await session.send_realtime_input(activity_end=types.ActivityEnd())
-                                state.manual_activity_started = False
-                                state.clear_waiting_for_model()
-                            if not manual_vad_control:
-                                await session.send_realtime_input(audio_stream_end=True)
+                            await _flush_realtime_audio_buffer()
+                            await session.send_realtime_input(audio_stream_end=True)
                         except Exception:
                             pass
                         await _append_call_trace(current_call_sid, event_type="stream_stop", level="info")
                         await _finalize_bound_call(trigger="stream_stop", run_extraction=True)
                         await _mark_stream_inactive(current_call_sid)
                         stream_done.set()
-                        return
-
-            async def turn_watchdog() -> None:
-                while not stream_done.is_set():
-                    await asyncio.sleep(0.2)
-                    now_ts = time.monotonic()
-                    if not manual_vad_control:
-                        if state.assistant_speaking:
-                            continue
-                        if state.awaiting_model_response and state.awaiting_model_since:
-                            waited_ms = (now_ts - state.awaiting_model_since) * 1000
-                            if waited_ms >= 15000:
-                                state.clear_waiting_for_model()
-                                await _append_call_trace(
-                                    current_call_sid,
-                                    event_type="auto_model_wait_timeout",
-                                    text="No model output after 15000ms in auto activity mode.",
-                                    level="warning",
-                                )
-                        ready_for_manual = (
-                            not state.assistant_speaking
-                            and not state.awaiting_model_response
-                            and not state.opening_suppressed(now_ts)
-                        )
-                        if ready_for_manual:
-                            injected_segments = await _drain_manual_audio(current_call_sid)
-                            if injected_segments:
-                                combined_manual_audio = b"".join(injected_segments)
-                                stats = _pcm16_audio_stats(combined_manual_audio, sample_rate=16000)
-                                await _append_call_trace(
-                                    current_call_sid,
-                                    event_type="manual_audio_injecting",
-                                    text=(
-                                        f"segments={len(injected_segments)} bytes={stats['bytes']} "
-                                        f"duration_ms={stats['duration_ms']} rms={stats['rms']} peak={stats['peak']} "
-                                        "via=watchdog mode=auto_vad"
-                                    ),
-                                    level="info",
-                                )
-                                try:
-                                    for segment in injected_segments:
-                                        for packet in _chunk_bytes(segment, 640):
-                                            await session.send_realtime_input(
-                                                audio=types.Blob(data=packet, mime_type="audio/pcm;rate=16000")
-                                            )
-                                    state.start_waiting_for_model(now=now_ts, manual_turn=True)
-                                    lock_seconds = min(
-                                        12.0,
-                                        max(2.5, (stats["duration_ms"] / 1000.0) + 1.5),
-                                    )
-                                    state.begin_manual_lock(now=now_ts, seconds=lock_seconds)
-                                except Exception:
-                                    return
-                        continue
-
-                    ready_for_manual = (
-                        not state.assistant_speaking
-                        and not state.awaiting_model_response
-                        and not state.opening_suppressed(now_ts)
-                    )
-                    if ready_for_manual:
-                        injected_segments = await _drain_manual_audio(current_call_sid)
-                        if injected_segments:
-                            combined_manual_audio = b"".join(injected_segments)
-                            stats = _pcm16_audio_stats(combined_manual_audio, sample_rate=16000)
-                            await _append_call_trace(
-                                current_call_sid,
-                                event_type="manual_audio_injecting",
-                                text=(
-                                    f"segments={len(injected_segments)} bytes={stats['bytes']} "
-                                    f"duration_ms={stats['duration_ms']} rms={stats['rms']} peak={stats['peak']} "
-                                    "via=watchdog"
-                                ),
-                                level="info",
-                            )
-                            try:
-                                if not state.manual_activity_started:
-                                    await session.send_realtime_input(activity_start=types.ActivityStart())
-                                    state.manual_activity_started = True
-                                for segment in injected_segments:
-                                    for packet in _chunk_bytes(segment, 640):
-                                        await session.send_realtime_input(
-                                            audio=types.Blob(data=packet, mime_type="audio/pcm;rate=16000")
-                                        )
-                                await session.send_realtime_input(activity_end=types.ActivityEnd())
-                                state.manual_activity_started = False
-                            except Exception:
-                                return
-                            state.start_waiting_for_model(now=now_ts, manual_turn=True)
-                            state.begin_manual_lock(
-                                now=now_ts,
-                                seconds=_MANUAL_INJECT_MEDIA_SUPPRESS_MS / 1000.0,
-                            )
-                            state.reset_turn_detection()
-                            continue
-
-                    if state.assistant_speaking:
-                        continue
-                    if not state.speaking_active:
-                        if state.awaiting_model_response and state.awaiting_model_since:
-                            waited_ms = (now_ts - state.awaiting_model_since) * 1000
-                            if state.awaiting_manual_turn:
-                                if waited_ms >= 15000:
-                                    state.clear_waiting_for_model()
-                                    await _append_call_trace(
-                                        current_call_sid,
-                                        event_type="manual_turn_timeout",
-                                        text="No model output after 15000ms for manual injected audio.",
-                                        level="warning",
-                                    )
-                                continue
-                            if waited_ms >= 2000 and state.awaiting_model_retry_count < 2:
-                                state.awaiting_model_retry_count += 1
-                                state.awaiting_model_since = now_ts
-                                try:
-                                    await session.send_realtime_input(activity_end=types.ActivityEnd())
-                                    state.manual_activity_started = False
-                                    await _append_call_trace(
-                                        current_call_sid,
-                                        event_type="vad_commit_retry",
-                                        text=f"retry={state.awaiting_model_retry_count} waited_ms={int(waited_ms)}",
-                                        level="warning",
-                                    )
-                                except Exception:
-                                    return
-                            elif waited_ms >= 6000:
-                                state.clear_waiting_for_model()
-                                await _append_call_trace(
-                                    current_call_sid,
-                                    event_type="vad_commit_timeout",
-                                    text="No model output after retries.",
-                                    level="warning",
-                                )
-                        continue
-
-                    now_ts = time.monotonic()
-                    last_activity = state.last_voice_at
-                    if last_activity is None:
-                        continue
-
-                    # Fallback for transports that do not continuously send silence frames.
-                    idle_ms = (now_ts - last_activity) * 1000
-                    if idle_ms < _VAD_SILENCE_END_MS:
-                        if state.turn_started_at and ((now_ts - state.turn_started_at) * 1000) >= (_VAD_MAX_TURN_MS + 1200):
-                            state.speaking_active = False
-                            state.turn_started_at = None
-                            state.silence_started_at = None
-                            logger.info("Twilio VAD end detected by watchdog max window.")
-                            try:
-                                await session.send_realtime_input(activity_end=types.ActivityEnd())
-                                state.manual_activity_started = False
-                                state.start_waiting_for_model(now=now_ts, manual_turn=False)
-                                await _append_call_trace(
-                                    current_call_sid,
-                                    event_type="vad_watchdog_end",
-                                    text=f"max_turn_ms={_VAD_MAX_TURN_MS}",
-                                    level="warning",
-                                )
-                            except Exception:
-                                return
-                        continue
-
-                    state.speaking_active = False
-                    state.turn_started_at = None
-                    state.silence_started_at = None
-                    logger.info("Twilio VAD end detected by inactivity watchdog.")
-                    try:
-                        await session.send_realtime_input(activity_end=types.ActivityEnd())
-                        state.manual_activity_started = False
-                        state.start_waiting_for_model(now=now_ts, manual_turn=False)
-                    except Exception:
                         return
 
             async def live_to_twilio() -> None:
@@ -1577,9 +1132,7 @@ async def twilio_voice_media_stream(
                             )
 
                     if content.output_transcription and content.output_transcription.text:
-                        state.clear_opening_suppression()
                         state.assistant_last_output_at = time.monotonic()
-                        state.clear_waiting_for_model()
                         await _append_call_trace(
                             current_call_sid,
                             event_type="output_transcript",
@@ -1606,106 +1159,65 @@ async def twilio_voice_media_stream(
                             level="warning",
                         )
 
-                    if not (content.model_turn and content.model_turn.parts):
-                        if content.turn_complete:
-                            reason = (
-                                str(content.turn_complete_reason.value)
-                                if content.turn_complete_reason
-                                else "unknown"
-                            )
-                            await _append_call_trace(
-                                current_call_sid,
-                                event_type="turn_complete",
-                                text=f"reason={reason}",
-                                level="info",
-                            )
+                    if content.model_turn and content.model_turn.parts:
+                        for part in content.model_turn.parts:
+                            if part.text:
+                                await _append_call_trace(
+                                    current_call_sid,
+                                    event_type="assistant_meta_text",
+                                    text=part.text,
+                                    level="info",
+                                )
+                                continue
+
+                            inline = part.inline_data
+                            if not inline or not inline.data:
+                                continue
+
+                            state.note_assistant_activity(now=time.monotonic(), speaking=True)
                             if not state.model_turn_sent_audio:
                                 await _append_call_trace(
                                     current_call_sid,
-                                    event_type="assistant_turn_without_audio",
-                                    text="Gemini Live completed a turn without emitting audio parts.",
-                                    level="warning",
-                                )
-                            state.finalize_turn_playback_state(now=time.monotonic())
-                            if state.close_after_turn_complete:
-                                await _append_call_trace(
-                                    current_call_sid,
-                                    event_type="auto_finalize_triggered",
-                                    text=state.last_completed_assistant_text,
+                                    event_type="assistant_audio_started",
+                                    text=inline.mime_type or "audio/pcm",
                                     level="success",
                                 )
-                                await _finalize_bound_call(trigger="closing_phrase", run_extraction=True)
-                                stream_done.set()
-                                try:
-                                    await websocket.close()
-                                except Exception:
-                                    pass
-                                return
-                        continue
-
-                    for part in content.model_turn.parts:
-                        if part.text:
-                            await _append_call_trace(
-                                current_call_sid,
-                                event_type="assistant_meta_text",
-                                text=part.text,
-                                level="info",
-                            )
-                            continue
-
-                        inline = part.inline_data
-                        if not inline or not inline.data:
-                            continue
-
-                        state.clear_opening_suppression()
-                        state.note_assistant_activity(now=time.monotonic(), speaking=True)
-                        state.clear_waiting_for_model()
-                        if not state.model_turn_sent_audio:
-                            await _append_call_trace(
-                                current_call_sid,
-                                event_type="assistant_audio_started",
-                                text=inline.mime_type or "audio/pcm",
-                                level="success",
-                            )
-                        try:
-                            pcm_bytes = (
-                                base64.b64decode(inline.data.encode("ascii"), validate=False)
-                                if isinstance(inline.data, str)
-                                else bytes(inline.data)
-                            )
-                            source_rate = _extract_audio_rate(inline.mime_type, default=24000)
-                            if source_rate != 8000:
-                                pcm8, state.out_resample_state = audioop.ratecv(
-                                    pcm_bytes,
-                                    2,
-                                    1,
-                                    source_rate,
-                                    8000,
-                                    state.out_resample_state,
+                            try:
+                                pcm_bytes = (
+                                    base64.b64decode(inline.data.encode("ascii"), validate=False)
+                                    if isinstance(inline.data, str)
+                                    else bytes(inline.data)
                                 )
-                            else:
-                                pcm8 = pcm_bytes
-                            ulaw = audioop.lin2ulaw(pcm8, 2)
-                        except Exception:
-                            continue
+                                frames = codec.encode_model_audio(
+                                    pcm_bytes,
+                                    mime_type=inline.mime_type,
+                                )
+                            except Exception as exc:
+                                await _append_call_trace(
+                                    current_call_sid,
+                                    event_type="assistant_audio_encode_error",
+                                    text=str(exc),
+                                    level="warning",
+                                )
+                                continue
 
-                        if not stream_sid:
-                            continue
+                            if not stream_sid:
+                                continue
 
-                        state.mark_model_audio_sent()
-                        for frame in _chunk_bytes(ulaw, _TWILIO_FRAME_BYTES):
-                            await _send_twilio_event(
-                                {
-                                    "event": "media",
-                                    "streamSid": stream_sid,
-                                    "media": {
-                                        "payload": base64.b64encode(frame).decode("ascii"),
-                                    },
-                                }
-                            )
+                            state.mark_model_audio_sent()
+                            for frame in frames:
+                                await _send_twilio_event(
+                                    {
+                                        "event": "media",
+                                        "streamSid": stream_sid,
+                                        "media": {
+                                            "payload": base64.b64encode(frame).decode("ascii"),
+                                        },
+                                    }
+                                )
 
                     if content.turn_complete:
-                        if stream_sid and state.model_turn_sent_audio:
+                        if stream_sid and state.model_turn_sent_audio and not state.pending_playback_mark:
                             playback_mark = state.next_playback_mark()
                             await _send_twilio_event(
                                 {
@@ -1730,7 +1242,7 @@ async def twilio_voice_media_stream(
                             event_type="turn_complete",
                             text=f"reason={reason}",
                             level="info",
-                        )
+                            )
                         if not state.model_turn_sent_audio:
                             await _append_call_trace(
                                 current_call_sid,
@@ -1738,24 +1250,11 @@ async def twilio_voice_media_stream(
                                 text="Gemini Live completed a turn without emitting audio parts.",
                                 level="warning",
                             )
-                        # Keep inbound listening closed until Twilio confirms playback completion.
                         state.finalize_turn_playback_state(now=time.monotonic())
-                        if state.close_after_turn_complete:
-                            await _append_call_trace(
-                                current_call_sid,
-                                event_type="auto_finalize_triggered",
-                                text=state.last_completed_assistant_text,
-                                level="success",
-                            )
-                            await _finalize_bound_call(trigger="closing_phrase", run_extraction=True)
-                            stream_done.set()
-                            try:
-                                await websocket.close()
-                            except Exception:
-                                pass
+                        if await _close_after_playback_if_needed():
                             return
 
-            await asyncio.gather(twilio_to_live(), live_to_twilio(), turn_watchdog())
+            await asyncio.gather(twilio_to_live(), live_to_twilio())
     except WebSocketDisconnect:
         stream_done.set()
         await _append_call_trace(current_call_sid, event_type="stream_disconnect", level="warning")
@@ -1921,6 +1420,28 @@ async def get_latest_voice_trace_call_sid(
     )
 
 
+@router.get("/voice/trace/diagnostics", response_model=ResponseBase[dict])
+async def get_voice_trace_diagnostics(
+    _auth: None = Depends(require_api_key),
+    call_sid: str = Query(..., min_length=1, description="Twilio call SID"),
+):
+    events, last_seq = await _read_call_trace(call_sid, 0)
+    stream_active = await _is_stream_active(call_sid)
+    diagnostic = build_twilio_trace_diagnostic(
+        call_sid=call_sid,
+        events=events,
+        stream_active=stream_active,
+    )
+    return ResponseBase(
+        success=True,
+        data={
+            **diagnostic,
+            "last_seq": last_seq,
+            "stream_active": stream_active,
+        },
+    )
+
+
 @router.post("/voice/trace/inject-audio", response_model=ResponseBase[dict])
 async def inject_voice_trace_audio(
     payload: TwilioManualAudioInjectRequest,
@@ -1985,10 +1506,36 @@ async def get_active_voice_trace_calls(
     _auth: None = Depends(require_api_key),
 ):
     active_calls = await _list_active_stream_calls()
+    active_call_details: list[dict[str, object]] = []
+    for call_sid in active_calls:
+        events, last_seq = await _read_call_trace(call_sid, 0)
+        last_event = events[-1] if events else {}
+        active_call_details.append(
+            {
+                "call_sid": call_sid,
+                "last_seq": last_seq,
+                "event_count": len(events),
+                "last_event_type": str(last_event.get("type") or "").strip(),
+                "last_event_ts": int(last_event.get("ts") or 0),
+                "last_event_text": str(last_event.get("text") or "").strip(),
+            }
+        )
+
+    active_call_details.sort(
+        key=lambda item: (
+            int(item.get("last_event_ts") or 0),
+            int(item.get("last_seq") or 0),
+            str(item.get("call_sid") or ""),
+        ),
+        reverse=True,
+    )
+    ordered_active_calls = [str(item["call_sid"]) for item in active_call_details]
     return ResponseBase(
         success=True,
         data={
-            "active_calls": active_calls,
-            "count": len(active_calls),
+            "active_calls": ordered_active_calls,
+            "active_call_details": active_call_details,
+            "latest_call_sid": ordered_active_calls[0] if ordered_active_calls else None,
+            "count": len(ordered_active_calls),
         },
     )

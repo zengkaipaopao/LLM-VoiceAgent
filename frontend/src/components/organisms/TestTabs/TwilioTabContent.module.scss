@@ -127,6 +127,51 @@
   gap: spacing.$spacing-04;
 }
 
+.diagnosticHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: spacing.$spacing-03;
+}
+
+.diagnosticBlock {
+  display: grid;
+  gap: spacing.$spacing-03;
+}
+
+.diagnosticTitle {
+  margin: 0;
+  font-size: var(--cds-heading-compact-01-font-size);
+  line-height: var(--cds-heading-compact-01-line-height);
+}
+
+.diagnosticList,
+.diagnosticEvidenceList {
+  margin: 0;
+  padding-left: spacing.$spacing-05;
+  display: grid;
+  gap: spacing.$spacing-03;
+}
+
+.diagnosticListItem,
+.diagnosticEvidenceItem {
+  font-size: var(--cds-body-compact-01-font-size);
+  line-height: 1.45;
+}
+
+.diagnosticEvidenceItem {
+  display: grid;
+  grid-template-columns: 4rem 5.5rem 1fr;
+  gap: spacing.$spacing-03;
+  padding-bottom: spacing.$spacing-02;
+  border-bottom: 1px dashed var(--cds-border-subtle);
+}
+
+.diagnosticEvidenceLabel {
+  color: var(--cds-text-secondary);
+  font-size: var(--cds-label-01-font-size);
+}
+
 .metaList {
   margin: 0;
   display: grid;

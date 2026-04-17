@@ -40,18 +40,20 @@ class Settings(BaseSettings):
     twilio_incoming_prompt_map: str = ""
     twilio_incoming_default_mode: str = "agent"
     twilio_incoming_voice_engine: str = "twilio"
-    # Gemini Live turn segmentation mode for Twilio media streams:
-    # - auto: Gemini automatic activity detection (recommended)
-    # - manual: backend VAD + explicit ActivityEnd control (debug fallback)
+    # Twilio Media Streams production path only supports Gemini automatic
+    # activity detection. Any non-auto value should fail fast.
     twilio_gemini_activity_mode: str = "auto"
-    # Twilio Media Streams + Gemini automatic activity detection tuning.
-    # These defaults are tuned for PSTN audio where continuous silence/noise frames are common.
-    twilio_gemini_activity_handling: str = "no_interruption"
+    # Tune Gemini Live automatic activity detection for PSTN audio and let the
+    # model barge in naturally when the caller interrupts.
+    twilio_gemini_activity_handling: str = "interrupt"
     twilio_gemini_turn_coverage: str = "activity_only"
     twilio_gemini_start_sensitivity: str = "high"
     twilio_gemini_end_sensitivity: str = "high"
     twilio_gemini_prefix_padding_ms: int = 120
     twilio_gemini_silence_duration_ms: int = 450
+    # Batch multiple 20ms Twilio inbound frames before pushing them upstream to
+    # Gemini Live to reduce websocket chatter and bridge jitter.
+    twilio_media_stream_inbound_batch_ms: int = 100
     # Runtime state backend for Twilio Media Streams / trace storage.
     # Current supported value:
     # - memory: in-process singleton stores

@@ -37,7 +37,8 @@ async def capability_matrix():
                 "default_engine": settings.twilio_incoming_voice_engine,
                 "supported_engines": ["twilio", "gemini"],
                 "supported_routes": ["gather", "media_stream_live"],
-                "gemini_activity_mode": settings.twilio_gemini_activity_mode,
+                "gemini_activity_mode": "auto_only",
+                "gemini_activity_handling": "start_of_activity_interrupts",
                 "runtime_store_backend": settings.twilio_runtime_store_backend,
             },
             "provider_support": {

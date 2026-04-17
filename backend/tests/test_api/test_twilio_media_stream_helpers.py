@@ -1,3 +1,4 @@
+import base64
 import json
 from types import SimpleNamespace
 
@@ -17,7 +18,9 @@ from app.api.v1.endpoints.twilio import (
     _resolve_twilio_inbound_voice_route,
     _set_pending_inbound_override_for_number,
     _use_manual_vad_control,
+    _validate_twilio_activity_mode,
 )
+from app.services.twilio.audio_codec import TwilioMediaAudioCodec
 from app.services.twilio.media_stream_bootstrap import receive_twilio_media_stream_start
 from app.services.twilio.media_stream_state import TwilioMediaStreamState
 from app.services.twilio.normalizers import _normalize_gemini_live_voice_name
@@ -310,17 +313,11 @@ async def test_receive_twilio_media_stream_start_closes_on_stop_event():
 
 
 def test_media_stream_state_tracks_playback_and_waiting_flags():
-    state = TwilioMediaStreamState(
-        pre_roll_frame_limit=4,
-        adaptive_threshold_floor=55,
-    )
+    state = TwilioMediaStreamState()
 
-    state.start_waiting_for_model(now=12.5, manual_turn=True)
     state.mark_model_audio_sent()
     mark_name = state.next_playback_mark()
 
-    assert state.awaiting_model_response is True
-    assert state.awaiting_manual_turn is True
     assert state.model_turn_sent_audio is True
     assert state.assistant_playback_pending is True
     assert mark_name == "assistant-turn-1"
@@ -330,28 +327,20 @@ def test_media_stream_state_tracks_playback_and_waiting_flags():
     assert state.assistant_playback_pending is False
 
     state.finalize_turn_playback_state(now=13.0)
-    assert state.awaiting_model_response is False
     assert state.model_turn_sent_audio is False
 
 
 def test_media_stream_state_interrupt_clears_runtime_locks():
-    state = TwilioMediaStreamState(
-        pre_roll_frame_limit=4,
-        adaptive_threshold_floor=55,
-    )
+    state = TwilioMediaStreamState()
     state.assistant_speaking = True
     state.pending_playback_mark = "assistant-turn-3"
     state.assistant_playback_pending = True
-    state.begin_opening_suppression(now=20.0, duration_ms=2000)
-    state.start_waiting_for_model(now=20.0, manual_turn=False)
 
     state.interrupt(now=21.0)
 
     assert state.assistant_speaking is False
     assert state.pending_playback_mark is None
     assert state.assistant_playback_pending is False
-    assert state.awaiting_model_response is False
-    assert state.opening_suppress_until is None
     assert state.assistant_last_output_at == 21.0
 
 
@@ -429,14 +418,44 @@ def test_twilio_defaults_to_auto_vad_control(monkeypatch):
         SimpleNamespace(twilio_gemini_activity_mode="auto"),
     )
     assert _use_manual_vad_control() is False
+    _validate_twilio_activity_mode()
 
 
-def test_twilio_manual_vad_mode_remains_available(monkeypatch):
+def test_twilio_manual_vad_mode_is_rejected_for_media_stream_bridge(monkeypatch):
     monkeypatch.setattr(
         "app.services.twilio.live_config.settings",
         SimpleNamespace(twilio_gemini_activity_mode="manual"),
     )
     assert _use_manual_vad_control() is True
+    with pytest.raises(ValueError, match="only supports Gemini automatic activity detection"):
+        _validate_twilio_activity_mode()
+
+
+def test_twilio_media_audio_codec_batches_twilio_frames_before_sending_upstream():
+    codec = TwilioMediaAudioCodec(input_batch_ms=100, twilio_frame_bytes=160)
+    twilio_payload = base64.b64encode(b"\xff" * 160).decode("ascii")
+
+    batches: list[bytes] = []
+    for _ in range(6):
+        decoded = codec.decode_twilio_payload(twilio_payload)
+        batches.extend(codec.queue_inbound_audio(decoded.pcm16k))
+
+    assert len(batches) == 1
+    assert len(batches[0]) == 3200
+    assert codec.pending_inbound_bytes > 0
+
+
+def test_twilio_media_audio_codec_encodes_model_audio_back_to_twilio_frames():
+    codec = TwilioMediaAudioCodec(input_batch_ms=100, twilio_frame_bytes=160)
+    pcm24k_silence = b"\x00\x00" * 2400
+
+    frames = codec.encode_model_audio(
+        pcm24k_silence,
+        mime_type="audio/pcm;rate=24000",
+    )
+
+    assert frames
+    assert all(len(frame) <= 160 for frame in frames)
 
 
 def test_resolve_gemini_live_model_maps_legacy_preview_to_vertex_native_audio(monkeypatch):
