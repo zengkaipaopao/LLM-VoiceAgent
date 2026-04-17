@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import audioop
 import base64
 import math
 import re
@@ -169,6 +170,13 @@ class TwilioMediaAudioCodec:
     twilio_frame_bytes: int = 160
     _inbound_resampler: LinearPcmResampler = field(init=False, repr=False)
     _outbound_resampler: LinearPcmResampler = field(init=False, repr=False)
+    _audioop_inbound_state: object | None = field(default=None, init=False, repr=False)
+    _audioop_outbound_state: object | None = field(default=None, init=False, repr=False)
+    _audioop_outbound_source_rate: int = field(
+        default=_DEFAULT_MODEL_OUTPUT_SAMPLE_RATE,
+        init=False,
+        repr=False,
+    )
     _pending_inbound_pcm16k: bytearray = field(default_factory=bytearray, init=False, repr=False)
     _input_batch_bytes: int = field(init=False, repr=False)
 
@@ -201,12 +209,20 @@ class TwilioMediaAudioCodec:
         if padding:
             encoded += "=" * padding
         ulaw_bytes = base64.b64decode(encoded.encode("ascii"), validate=False)
-        pcm8_samples = ulaw_bytes_to_samples(ulaw_bytes)
+        pcm8k_bytes = audioop.ulaw2lin(ulaw_bytes, 2)
+        pcm8_samples = pcm16_bytes_to_samples(pcm8k_bytes)
         stats = compute_pcm16_stats(pcm8_samples, sample_rate=_TWILIO_INPUT_SAMPLE_RATE)
-        pcm16k_samples = self._inbound_resampler.resample(pcm8_samples)
+        pcm16k_bytes, self._audioop_inbound_state = audioop.ratecv(
+            pcm8k_bytes,
+            2,
+            1,
+            _TWILIO_INPUT_SAMPLE_RATE,
+            _GEMINI_INPUT_SAMPLE_RATE,
+            self._audioop_inbound_state,
+        )
         return DecodedTwilioInboundAudio(
-            pcm8k=_samples_to_pcm16_bytes(pcm8_samples),
-            pcm16k=_samples_to_pcm16_bytes(pcm16k_samples),
+            pcm8k=pcm8k_bytes,
+            pcm16k=pcm16k_bytes,
             rms=stats["rms"],
         )
 
@@ -232,12 +248,29 @@ class TwilioMediaAudioCodec:
             return []
 
         source_rate = _extract_audio_rate(mime_type, default=_DEFAULT_MODEL_OUTPUT_SAMPLE_RATE)
-        source_samples = pcm16_bytes_to_samples(pcm_bytes)
+        aligned_pcm_bytes = pcm_bytes if len(pcm_bytes) % 2 == 0 else pcm_bytes[:-1]
+        if not aligned_pcm_bytes:
+            return []
+
+        source_samples = pcm16_bytes_to_samples(aligned_pcm_bytes)
         if source_rate != self._outbound_resampler.source_rate:
             self._outbound_resampler = LinearPcmResampler(
                 source_rate=source_rate,
                 target_rate=_TWILIO_OUTPUT_SAMPLE_RATE,
             )
-        pcm8_samples = self._outbound_resampler.resample(source_samples)
-        ulaw = samples_to_ulaw_bytes(pcm8_samples)
+        if source_rate != self._audioop_outbound_source_rate:
+            self._audioop_outbound_source_rate = source_rate
+            self._audioop_outbound_state = None
+        if source_samples:
+            pcm8k_bytes, self._audioop_outbound_state = audioop.ratecv(
+                aligned_pcm_bytes,
+                2,
+                1,
+                source_rate,
+                _TWILIO_OUTPUT_SAMPLE_RATE,
+                self._audioop_outbound_state,
+            )
+        else:
+            pcm8k_bytes = b""
+        ulaw = audioop.lin2ulaw(pcm8k_bytes, 2) if pcm8k_bytes else b""
         return _chunk_bytes(ulaw, self.twilio_frame_bytes)

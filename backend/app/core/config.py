@@ -53,11 +53,12 @@ class Settings(BaseSettings):
     twilio_gemini_turn_coverage: str = "activity_only"
     twilio_gemini_start_sensitivity: str = "high"
     twilio_gemini_end_sensitivity: str = "high"
-    twilio_gemini_prefix_padding_ms: int = 120
-    twilio_gemini_silence_duration_ms: int = 450
+    twilio_gemini_prefix_padding_ms: int = 40
+    twilio_gemini_silence_duration_ms: int = 200
+    twilio_greeting_interrupt_guard_ms: int = 900
     # Batch multiple 20ms Twilio inbound frames before pushing them upstream to
     # Gemini Live to reduce websocket chatter and bridge jitter.
-    twilio_media_stream_inbound_batch_ms: int = 100
+    twilio_media_stream_inbound_batch_ms: int = 20
     twilio_media_stream_debug_inbound_wav_enabled: bool = True
     twilio_media_stream_debug_inbound_wav_seconds: int = 5
     twilio_media_stream_debug_inbound_wav_dir: str = str(

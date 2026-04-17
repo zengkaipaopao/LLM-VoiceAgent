@@ -87,7 +87,7 @@ def test_trace_diagnostic_warns_when_stream_active_without_assistant_audio():
     assert diagnostic["category"] == "assistant_not_responding"
 
 
-def test_trace_diagnostic_reports_healthy_when_audio_flow_exists():
+def test_trace_diagnostic_warns_when_assistant_started_but_no_audio_flow_progress():
     diagnostic = build_twilio_trace_diagnostic(
         call_sid="CA127",
         stream_active=True,
@@ -109,5 +109,5 @@ def test_trace_diagnostic_reports_healthy_when_audio_flow_exists():
         ],
     )
 
-    assert diagnostic["status"] == "ok"
-    assert diagnostic["category"] == "healthy"
+    assert diagnostic["status"] == "warning"
+    assert diagnostic["category"] == "assistant_not_responding"

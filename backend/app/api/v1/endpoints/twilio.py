@@ -801,6 +801,7 @@ async def twilio_voice_media_stream(
     client = create_google_genai_client()
 
     twilio_started = asyncio.Event()
+    live_setup_complete = asyncio.Event()
     stream_done = asyncio.Event()
     state = TwilioMediaStreamState()
     codec = TwilioMediaAudioCodec(
@@ -816,6 +817,7 @@ async def twilio_voice_media_stream(
     send_lock = asyncio.Lock()
     finalize_lock = asyncio.Lock()
     inbound_debug_capture_lock = asyncio.Lock()
+    opening_turn_lock = asyncio.Lock()
     bound_call_id = None
     bound_call_finalized = False
     inbound_debug_capture_saved_variants: set[str] = set()
@@ -1012,6 +1014,54 @@ async def twilio_voice_media_stream(
                 level="success",
             )
 
+    async def _send_opening_turn_when_ready() -> None:
+        if not current_call_sid:
+            return
+        await twilio_started.wait()
+        await live_setup_complete.wait()
+        async with opening_turn_lock:
+            if state.opening_turn_sent:
+                return
+            guard_seconds = max(0, int(settings.twilio_greeting_interrupt_guard_ms or 0)) / 1000
+            state.start_opening_turn(guard_seconds=guard_seconds)
+            await _append_call_trace(
+                current_call_sid,
+                event_type="opening_turn_requested",
+                text=f"Requested Gemini Live opening greeting: {opening_text}",
+                level="info",
+            )
+            try:
+                await session.send_client_content(
+                    turns=types.Content(
+                        role="user",
+                        parts=[
+                            types.Part(
+                                text=(
+                                    "通話が接続されました。"
+                                    "次の一文を日本語で自然に一度だけ話してください。"
+                                    f"「{opening_text}」"
+                                    "この一文以外はまだ話さず、その後は相手の返答を待ってください。"
+                                )
+                            )
+                        ],
+                    ),
+                    turn_complete=True,
+                )
+                await _append_call_trace(
+                    current_call_sid,
+                    event_type="opening_turn_sent",
+                    text=f"via=send_client_content guard_ms={int(settings.twilio_greeting_interrupt_guard_ms or 0)}",
+                    level="info",
+                )
+            except Exception as exc:
+                state.cancel_opening_turn()
+                await _append_call_trace(
+                    current_call_sid,
+                    event_type="opening_turn_request_failed",
+                    text=str(exc),
+                    level="warning",
+                )
+
     try:
         async with client.aio.live.connect(model=selected_model, config=live_config) as session:
             logger.info(
@@ -1045,40 +1095,18 @@ async def twilio_voice_media_stream(
                 )
                 await _append_call_trace(
                     current_call_sid,
-                    event_type="opening_turn_requested",
-                    text=f"Requested Gemini Live opening greeting: {opening_text}",
+                    event_type="live_runtime_config",
+                    text=(
+                        f"backend={settings.google_genai_backend_mode} "
+                        f"modalities={','.join(live_config.response_modalities or [])} "
+                        f"activity_handling={settings.twilio_gemini_activity_handling} "
+                        f"turn_coverage={settings.twilio_gemini_turn_coverage} "
+                        f"prefix_padding_ms={settings.twilio_gemini_prefix_padding_ms} "
+                        f"silence_duration_ms={settings.twilio_gemini_silence_duration_ms} "
+                        f"batch_ms={settings.twilio_media_stream_inbound_batch_ms}"
+                    ),
                     level="info",
                 )
-                try:
-                    await session.send_client_content(
-                        turns=types.Content(
-                            role="user",
-                            parts=[
-                                types.Part(
-                                    text=(
-                                        "通話が接続されました。"
-                                        "次の一文を日本語で自然に一度だけ話してください。"
-                                        f"「{opening_text}」"
-                                        "この一文以外はまだ話さず、その後は相手の返答を待ってください。"
-                                    )
-                                )
-                            ],
-                        ),
-                        turn_complete=True,
-                    )
-                    await _append_call_trace(
-                        current_call_sid,
-                        event_type="opening_turn_sent",
-                        text="via=send_client_content",
-                        level="info",
-                    )
-                except Exception as exc:
-                    await _append_call_trace(
-                        current_call_sid,
-                        event_type="opening_turn_request_failed",
-                        text=str(exc),
-                        level="warning",
-                    )
 
             async def _send_realtime_audio(audio_bytes: bytes) -> None:
                 if not audio_bytes:
@@ -1226,6 +1254,18 @@ async def twilio_voice_media_stream(
             async def live_to_twilio() -> None:
                 await twilio_started.wait()
                 async for message in session.receive():
+                    if message.setup_complete:
+                        if not state.live_setup_complete:
+                            state.mark_live_setup_complete()
+                            live_setup_complete.set()
+                            await _append_call_trace(
+                                current_call_sid,
+                                event_type="live_setup_complete",
+                                text=f"session_id={message.setup_complete.session_id or '-'}",
+                                level="success",
+                            )
+                        await _send_opening_turn_when_ready()
+
                     content = message.server_content
                     if not content:
                         continue
@@ -1263,6 +1303,19 @@ async def twilio_voice_media_stream(
                             )
 
                     if content.interrupted and stream_sid:
+                        now_ts = time.monotonic()
+                        if state.should_guard_interrupt(now=now_ts):
+                            remaining_ms = max(0, int((state.opening_interrupt_guard_until - now_ts) * 1000))
+                            await _append_call_trace(
+                                current_call_sid,
+                                event_type="interrupted_guarded",
+                                text=(
+                                    "Ignored interrupt during opening-turn guard window "
+                                    f"remaining_ms={remaining_ms}"
+                                ),
+                                level="warning",
+                            )
+                            continue
                         state.interrupt(now=time.monotonic())
                         await _send_twilio_event({"event": "clear", "streamSid": stream_sid})
                         await _append_call_trace(
@@ -1295,6 +1348,7 @@ async def twilio_voice_media_stream(
                                     text=inline.mime_type or "audio/pcm",
                                     level="success",
                                 )
+                                state.note_opening_audio_started()
                             try:
                                 pcm_bytes = (
                                     base64.b64decode(inline.data.encode("ascii"), validate=False)

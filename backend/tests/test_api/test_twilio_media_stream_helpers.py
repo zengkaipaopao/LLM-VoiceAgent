@@ -186,12 +186,12 @@ def test_build_gemini_live_config_applies_explicit_auto_vad_settings(monkeypatch
         "app.services.twilio.live_config.settings",
         SimpleNamespace(
             twilio_gemini_activity_mode="auto",
-            twilio_gemini_activity_handling="no_interruption",
+            twilio_gemini_activity_handling="interrupt",
             twilio_gemini_turn_coverage="activity_only",
             twilio_gemini_start_sensitivity="high",
             twilio_gemini_end_sensitivity="high",
-            twilio_gemini_prefix_padding_ms=120,
-            twilio_gemini_silence_duration_ms=450,
+            twilio_gemini_prefix_padding_ms=40,
+            twilio_gemini_silence_duration_ms=200,
             twilio_agent_language="ja-JP",
         ),
     )
@@ -205,12 +205,13 @@ def test_build_gemini_live_config_applies_explicit_auto_vad_settings(monkeypatch
 
     aad = config.realtime_input_config.automatic_activity_detection
     assert aad.disabled is False
-    assert str(config.realtime_input_config.activity_handling.value) == "NO_INTERRUPTION"
+    assert config.response_modalities == ["AUDIO"]
+    assert str(config.realtime_input_config.activity_handling.value) == "START_OF_ACTIVITY_INTERRUPTS"
     assert str(config.realtime_input_config.turn_coverage.value) == "TURN_INCLUDES_ONLY_ACTIVITY"
     assert str(aad.start_of_speech_sensitivity.value) == "START_SENSITIVITY_HIGH"
     assert str(aad.end_of_speech_sensitivity.value) == "END_SENSITIVITY_HIGH"
-    assert aad.prefix_padding_ms == 120
-    assert aad.silence_duration_ms == 450
+    assert aad.prefix_padding_ms == 40
+    assert aad.silence_duration_ms == 200
     assert config.speech_config.language_code == "ja-JP"
     assert config.speech_config.voice_config.prebuilt_voice_config.voice_name == "Aoede"
 
