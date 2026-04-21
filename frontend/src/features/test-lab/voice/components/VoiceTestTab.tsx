@@ -15,7 +15,6 @@ import type { VoiceRouteMode } from '../../../../components/organisms/TestTabs/v
 import { useTwilioVoiceGateway, type UseTwilioVoiceGatewayResult } from '../adapters/twilio/useTwilioVoiceGateway';
 import { useGeminiVoiceCatalog } from '../../../../hooks/useGeminiVoiceCatalog';
 import { resolveVoiceRouteTransition } from '../routeMode';
-import { matchGeminiLiveVoice, resolveGeminiLiveVoice } from '../voiceSelection';
 import { useVoiceTestConsole } from '../hooks/useVoiceTestConsole';
 import {
   classifyDirectVoiceDiagnostic,
@@ -53,7 +52,6 @@ export function VoiceTestTab() {
     useGeminiVoiceCatalog();
 
   const [routeMode, setRouteMode] = useState<VoiceRouteMode>('direct');
-  const [twilioMediaStreamVoiceOverride, setTwilioMediaStreamVoiceOverride] = useState('');
   const previousRouteModeRef = useRef<VoiceRouteMode>('direct');
   const twilioConfigBootstrappedRef = useRef(false);
 
@@ -68,50 +66,13 @@ export function VoiceTestTab() {
   );
 
   const effectiveVoice = useMemo(() => {
-    const supportedGeminiVoices = geminiVoiceCatalog.voices;
     const defaultGeminiVoice = geminiVoiceCatalog.defaultVoice || 'Aoede';
-
-    if (routeMode === 'direct') {
-      const directOverrideVoice = (liveWebsocket.voice || '').trim();
-      if (directOverrideVoice) return directOverrideVoice;
-      const promptVoice = (selectedPrompt?.voiceId || '').trim();
-      if (promptVoice) return promptVoice;
-      return defaultGeminiVoice;
-    }
-
-    const mediaStreamOverride = twilioMediaStreamVoiceOverride.trim();
-    if (mediaStreamOverride) {
-      return resolveGeminiLiveVoice(mediaStreamOverride, {
-        voiceProvider: 'gemini',
-        supportedVoices: supportedGeminiVoices,
-        defaultVoice: defaultGeminiVoice,
-      });
-    }
-
-    return resolveGeminiLiveVoice(selectedPrompt?.voiceId, {
-      voiceProvider: selectedPrompt?.voiceProvider,
-      supportedVoices: supportedGeminiVoices,
-      defaultVoice: defaultGeminiVoice,
-    });
-  }, [
-    geminiVoiceCatalog.defaultVoice,
-    geminiVoiceCatalog.voices,
-    liveWebsocket.voice,
-    routeMode,
-    selectedPrompt?.voiceId,
-    selectedPrompt?.voiceProvider,
-    twilioMediaStreamVoiceOverride,
-  ]);
-
-  const isPromptVoiceConfigured =
-    routeMode === 'twilio'
-      ? Boolean(
-          matchGeminiLiveVoice(selectedPrompt?.voiceId, {
-            voiceProvider: selectedPrompt?.voiceProvider,
-            supportedVoices: geminiVoiceCatalog.voices,
-          })
-        )
-      : Boolean((selectedPrompt?.voiceId || '').trim());
+    const directOverrideVoice = (liveWebsocket.voice || '').trim();
+    if (directOverrideVoice) return directOverrideVoice;
+    const promptVoice = (selectedPrompt?.voiceId || '').trim();
+    if (promptVoice) return promptVoice;
+    return defaultGeminiVoice;
+  }, [geminiVoiceCatalog.defaultVoice, liveWebsocket.voice, selectedPrompt?.voiceId]);
 
   useEffect(() => {
     if (routeMode !== 'twilio') {
@@ -319,11 +280,6 @@ export function VoiceTestTab() {
               routeMode={routeMode}
               configLocked={configLocked}
               selectedPromptCode={selectedPromptCode}
-              selectedPrompt={selectedPrompt}
-              effectiveVoice={effectiveVoice}
-              isPromptVoiceConfigured={isPromptVoiceConfigured}
-              twilioMediaStreamVoiceOverride={twilioMediaStreamVoiceOverride}
-              setTwilioMediaStreamVoiceOverride={setTwilioMediaStreamVoiceOverride}
               geminiVoiceCatalog={geminiVoiceCatalog}
               loadingGeminiVoices={loadingGeminiVoices}
               directSessionActive={directSessionActive}
@@ -345,10 +301,6 @@ export function VoiceTestTab() {
           routeMode={routeMode}
           liveWebsocket={liveWebsocket}
           twilioGateway={twilioGateway}
-          selectedPromptCode={selectedPromptCode}
-          selectedPrompt={selectedPrompt}
-          effectiveVoice={effectiveVoice}
-          isPromptVoiceConfigured={isPromptVoiceConfigured}
           directDiagnostic={directDiagnostic}
           twilioDiagnostic={twilioDiagnostic}
         />

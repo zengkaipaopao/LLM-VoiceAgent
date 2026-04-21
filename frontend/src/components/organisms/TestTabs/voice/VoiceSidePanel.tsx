@@ -4,7 +4,6 @@ import { Stack, Tag, Tile } from '@carbon/react';
 import type { VoiceDiagnostic } from '../../../../features/test-lab/voice/diagnostics';
 import type { UseLiveWebSocketConsoleResult } from '../../../../hooks/useLiveWebSocketConsole';
 import type { UseTwilioVoiceGatewayResult } from '../../../../hooks/testTabs/useTwilioVoiceGateway';
-import type { PromptTemplate } from '../../../../types/shared';
 import styles from '../TwilioTabContent.module.scss';
 import type { DialogueHistoryItem, VoiceRouteMode } from './types';
 import { VoiceDiagnosticsTile } from './VoiceDiagnosticsTile';
@@ -13,10 +12,6 @@ interface VoiceSidePanelProps {
   routeMode: VoiceRouteMode;
   liveWebsocket: UseLiveWebSocketConsoleResult;
   twilioGateway: UseTwilioVoiceGatewayResult;
-  selectedPromptCode: string;
-  selectedPrompt?: PromptTemplate;
-  effectiveVoice: string;
-  isPromptVoiceConfigured: boolean;
   directDiagnostic: VoiceDiagnostic | null;
   twilioDiagnostic: VoiceDiagnostic | null;
 }
@@ -71,14 +66,9 @@ export function VoiceSidePanel({
   routeMode,
   liveWebsocket,
   twilioGateway,
-  selectedPromptCode,
-  selectedPrompt,
-  effectiveVoice,
-  isPromptVoiceConfigured,
   directDiagnostic,
   twilioDiagnostic,
 }: VoiceSidePanelProps) {
-  const isOfficialCaRoute = twilioGateway.transportMode === 'official_conversational_agents';
   const directDialogueHistory = useMemo<DialogueHistoryItem[]>(() => {
     const items: DialogueHistoryItem[] = [];
     for (const log of liveWebsocket.logs) {
@@ -204,7 +194,7 @@ export function VoiceSidePanel({
             </div>
             <div className={styles.metaRow}>
               <dt>当前 Prompt</dt>
-              <dd>{selectedPromptCode || '-'}</dd>
+              <dd>{liveWebsocket.selectedPromptCode || '-'}</dd>
             </div>
             <div className={styles.metaRow}>
               <dt>当前模型</dt>
@@ -269,21 +259,15 @@ export function VoiceSidePanel({
           </div>
           <div className={styles.metaRow}>
             <dt>音色来源</dt>
-            <dd>
-              {isOfficialCaRoute
-                ? '由 Google CX Agent Studio / CES Deployment 决定'
-                : isPromptVoiceConfigured
-                  ? `Prompt: ${selectedPrompt?.code}`
-                  : `Resolved: ${effectiveVoice || '-'}`}
-            </dd>
+            <dd>由 Google CX Agent Studio / CES Deployment 决定</dd>
           </div>
           <div className={styles.metaRow}>
             <dt>电话链路模式</dt>
-            <dd>{isOfficialCaRoute ? 'Official CA + Twilio' : 'Media Streams + Gemini Live'}</dd>
+            <dd>Official CA + Twilio</dd>
           </div>
           <div className={styles.metaRow}>
             <dt>语音引擎</dt>
-            <dd>{isOfficialCaRoute ? 'Conversational Agents' : 'Gemini Live'}</dd>
+            <dd>Conversational Agents</dd>
           </div>
           <div className={styles.metaRow}>
             <dt>系统能力</dt>
@@ -292,24 +276,10 @@ export function VoiceSidePanel({
                 电话网关（Twilio）{twilioGateway.capability.twilioWebcallImplemented ? ' OK' : ' Unavailable'}
               </Tag>
               &nbsp;
-              <Tag
-                type={
-                  isOfficialCaRoute
-                    ? twilioGateway.capability.conversationalAgentsImplemented
-                      ? 'green'
-                      : 'red'
-                    : twilioGateway.capability.geminiLiveImplemented
-                      ? 'green'
-                      : 'red'
-                }
-              >
-                {isOfficialCaRoute
-                  ? `Conversational Agents ${
-                      twilioGateway.capability.conversationalAgentsImplemented
-                        ? 'OK'
-                        : 'Unavailable'
-                    }`
-                  : `Gemini Live ${twilioGateway.capability.geminiLiveImplemented ? 'OK' : 'Unavailable'}`}
+              <Tag type={twilioGateway.capability.conversationalAgentsImplemented ? 'green' : 'red'}>
+                {`Conversational Agents ${
+                  twilioGateway.capability.conversationalAgentsImplemented ? 'OK' : 'Unavailable'
+                }`}
               </Tag>
             </dd>
           </div>
@@ -344,7 +314,7 @@ export function VoiceSidePanel({
             <dt>活跃流候选</dt>
             <dd>
               {twilioGateway.activeTraceCalls.length === 0 ? (
-                isOfficialCaRoute ? '暂无活跃官方电话流。' : '暂无活跃 Media Stream。'
+                '暂无活跃官方电话流。'
               ) : (
                 <ul className={styles.diagnosticList}>
                   {twilioGateway.activeTraceCalls.map((item) => (

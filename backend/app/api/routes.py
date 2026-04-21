@@ -13,6 +13,11 @@ from app.api.v1.endpoints import (
     prompts,
     realtime,
     twilio,
+    twilio_incoming,
+    twilio_legacy_stream,
+    twilio_management,
+    twilio_status,
+    twilio_trace,
 )
 
 api_router = APIRouter()
@@ -41,4 +46,9 @@ protected_router.include_router(llm.router, prefix="/llm", tags=["llm"])
 protected_router.include_router(realtime.router, prefix="/live", tags=["live"])
 
 api_router.include_router(twilio.router, prefix="/twilio", tags=["twilio"])
+api_router.include_router(twilio_incoming.router, prefix="/twilio", tags=["twilio"])
+api_router.include_router(twilio_legacy_stream.router, prefix="/twilio", tags=["twilio"])
+api_router.include_router(twilio_management.router, prefix="/twilio", tags=["twilio"])
+api_router.include_router(twilio_status.router, prefix="/twilio", tags=["twilio"])
+api_router.include_router(twilio_trace.router, prefix="/twilio", tags=["twilio"])
 api_router.include_router(protected_router)
