@@ -20,6 +20,17 @@ _TWILIO_VOICE_ROUTE_ALIASES = {
     "media_stream": "media_stream_live",
     "media_stream_live": "media_stream_live",
     "mediastream": "media_stream_live",
+    "official_demo": "official_demo_live",
+    "official_demo_live": "official_demo_live",
+    "officialdemo": "official_demo_live",
+    "official_baseline": "official_demo_live",
+    "baseline_demo": "official_demo_live",
+    "official_ca": "official_conversational_agents",
+    "official_ca_live": "official_conversational_agents",
+    "official_conversational_agents": "official_conversational_agents",
+    "conversational_agents": "official_conversational_agents",
+    "cx_agent_studio": "official_conversational_agents",
+    "ces_adapter": "official_conversational_agents",
     "stream": "media_stream_live",
 }
 _E164_PATTERN = re.compile(r"^\+[1-9]\d{7,14}$")

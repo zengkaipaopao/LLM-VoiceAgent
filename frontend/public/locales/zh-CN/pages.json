@@ -237,6 +237,7 @@
       "ariaLabel": "测试选项",
       "text": "文字测试",
       "voice": "语音测试",
+      "official_demo": "官方基线",
       "reviewer": "审查员模式",
       "appointment": "预约模拟"
     },

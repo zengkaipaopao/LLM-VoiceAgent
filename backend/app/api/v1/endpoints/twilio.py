@@ -26,6 +26,7 @@ from app.api.deps import get_db, require_api_key
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.model_defaults import require_live_model, resolve_vertex_live_model
+from app.exceptions import BusinessException
 from app.repositories.call_repository import CallRepository
 from app.schemas.base import ResponseBase
 from app.schemas.twilio import TwilioTokenResponse
@@ -46,7 +47,15 @@ from app.services.twilio.live_config import (
     _validate_twilio_activity_mode,
 )
 from app.services.twilio.media_stream_bootstrap import receive_twilio_media_stream_start
-from app.services.twilio.media_stream_state import TwilioMediaStreamState
+from app.services.twilio.media_stream_state import (
+    AssistantPlaybackOverlapBuffer,
+    TwilioMediaStreamState,
+)
+from app.services.twilio.official_conversational_agents import (
+    bridge_twilio_to_official_conversational_agents,
+    build_official_conversational_agents_config,
+    build_official_conversational_agents_stream_parameters,
+)
 from app.services.twilio.normalizers import (
     _normalize_e164_number,
     _normalize_gemini_live_voice_name,
@@ -94,15 +103,23 @@ from app.utils.twilio_security import verify_twilio_webhook_request
 router = APIRouter()
 logger = logging.getLogger(__name__)
 _TWILIO_FRAME_BYTES = 160  # 20ms at 8kHz G.711 mu-law
-_TWILIO_FALLBACK_OPENING = "いつもお世話になっております。光洲産業の自動受付AIです。本日はどのようなご用件でしょうか。"
 _MEDIA_STATS_INTERVAL_SECONDS = 2.0
 _TWILIO_CLOSING_REQUIRED_ALL = ("ご利用ありがとうございます",)
 _TWILIO_CLOSING_REQUIRED_ANY = ("承りました", "承知いたしました", "承知しました")
-_ECHO_COMPARE_NORMALIZER = re.compile(r"[\s\u3000。、，,．.!！?？・:：\"'「」『』（）()\-ー]")
 _PCM8K_RAW_DEBUG_VARIANT = "pcm8k_raw"
 _PCM16K_RESAMPLED_DEBUG_VARIANT = "pcm16k_resampled"
 _PCM8K_RAW_DEBUG_ARTIFACT = "inbound-pcm8k-raw"
 _PCM16K_RESAMPLED_DEBUG_ARTIFACT = "inbound-pcm16k-resampled"
+_FOLLOWUP_PCM8K_RAW_DEBUG_VARIANT = "followup_pcm8k_raw"
+_FOLLOWUP_PCM16K_RESAMPLED_DEBUG_VARIANT = "followup_pcm16k_resampled"
+_FOLLOWUP_PCM8K_RAW_DEBUG_ARTIFACT = "followup-pcm8k-raw"
+_FOLLOWUP_PCM16K_RESAMPLED_DEBUG_ARTIFACT = "followup-pcm16k-resampled"
+_FOLLOWUP_PROBE_RMS_THRESHOLD = 100
+_FOLLOWUP_PROBE_MIN_HITS = 2
+_DUPLEX_OVERLAP_RMS_THRESHOLD = 180
+_DUPLEX_OVERLAP_TRACE_INTERVAL_SECONDS = 1.5
+_UPSTREAM_AUDIO_STREAM_END_EVENT = "audio_stream_end_sent"
+_OFFICIAL_DEMO_TEMPLATE_CODE = "official_demo_baseline"
 __all__ = (
     "_build_gemini_live_config",
     "_build_twilio_media_stream_twiml",
@@ -120,20 +137,27 @@ __all__ = (
 )
 
 
+def _build_debug_capture(*, sample_rate: int, artifact_key: str) -> RollingPcmCapture:
+    duration_seconds = max(1, settings.twilio_media_stream_debug_inbound_wav_seconds)
+    return RollingPcmCapture(
+        sample_rate=sample_rate,
+        duration_seconds=duration_seconds,
+        artifact_key=artifact_key,
+    )
+
+
 def _build_twilio_inbound_debug_capture(variant: str) -> RollingPcmCapture:
     normalized_variant = (variant or "").strip().lower()
-    duration_seconds = max(1, settings.twilio_media_stream_debug_inbound_wav_seconds)
     if normalized_variant == _PCM8K_RAW_DEBUG_VARIANT:
-        return RollingPcmCapture(
-            sample_rate=8000,
-            duration_seconds=duration_seconds,
-            artifact_key=_PCM8K_RAW_DEBUG_ARTIFACT,
-        )
+        return _build_debug_capture(sample_rate=8000, artifact_key=_PCM8K_RAW_DEBUG_ARTIFACT)
     if normalized_variant == _PCM16K_RESAMPLED_DEBUG_VARIANT:
-        return RollingPcmCapture(
+        return _build_debug_capture(sample_rate=16000, artifact_key=_PCM16K_RESAMPLED_DEBUG_ARTIFACT)
+    if normalized_variant == _FOLLOWUP_PCM8K_RAW_DEBUG_VARIANT:
+        return _build_debug_capture(sample_rate=8000, artifact_key=_FOLLOWUP_PCM8K_RAW_DEBUG_ARTIFACT)
+    if normalized_variant == _FOLLOWUP_PCM16K_RESAMPLED_DEBUG_VARIANT:
+        return _build_debug_capture(
             sample_rate=16000,
-            duration_seconds=duration_seconds,
-            artifact_key=_PCM16K_RESAMPLED_DEBUG_ARTIFACT,
+            artifact_key=_FOLLOWUP_PCM16K_RESAMPLED_DEBUG_ARTIFACT,
         )
     raise ValueError(f"Unsupported inbound debug audio variant: {variant}")
 
@@ -194,20 +218,13 @@ def _extract_opening_sentence(system_instruction: str | None) -> str | None:
     return None
 
 
-def _build_twilio_opening_text(system_instruction: str | None) -> str:
-    return _extract_opening_sentence(system_instruction) or _TWILIO_FALLBACK_OPENING
-
-
-def _normalize_echo_candidate(text: str | None) -> str:
-    return _ECHO_COMPARE_NORMALIZER.sub("", (text or "").strip())
-
-
-def _looks_like_opening_echo(user_text: str | None, opening_text: str | None) -> bool:
-    user_token = _normalize_echo_candidate(user_text)
-    opening_token = _normalize_echo_candidate(opening_text)
-    if len(user_token) < 8 or len(opening_token) < 12:
-        return False
-    return user_token in opening_token or opening_token.startswith(user_token)
+def _require_opening_sentence(*, system_instruction: str | None, template_code: str) -> str:
+    opening_text = _extract_opening_sentence(system_instruction)
+    if opening_text:
+        return opening_text
+    raise BusinessException(
+        f"Twilio prompt template '{template_code}' must define the first assistant utterance in system prompt."
+    )
 
 
 def _build_twilio_session_instruction(system_instruction: str | None, *, opening_text: str | None) -> str | None:
@@ -243,28 +260,70 @@ async def _resolve_prompt_runtime(
     prompt_code: str | None,
     model_capability: str = "any",
 ) -> PromptRuntimeConfig:
-    effective_code = (settings.twilio_default_prompt_code or "").strip() or "general_appointment"
-    fallback_instruction = (
-        "あなたは日本語のコールセンター受付AIです。"
-        "丁寧に自然な会話を行い、推測せず不足情報は確認質問してください。"
-        "最初の発話は必ず次の一文で開始してください。"
-        "「いつもお世話になっております。光洲産業の自動受付AIです。"
-        "本日はどのようなご用件でしょうか。」"
-    )
+    effective_code = (settings.twilio_default_prompt_code or "").strip()
     prompt_service = PromptService(db)
     requested_code = (prompt_code or "").strip() or effective_code
-    return await resolve_prompt_runtime(
+    if not requested_code:
+        raise BusinessException("TWILIO_DEFAULT_PROMPT_CODE is not configured.")
+
+    runtime = await resolve_prompt_runtime(
         prompt_service,
         template_code=requested_code,
-        default_code=effective_code,
-        fallback_code="general_appointment",
+        default_code=requested_code,
+        fallback_code=None,
         render_system_instruction=True,
-        fallback_instruction=fallback_instruction,
-        missing_notice=(
-            f"Prompt template '{requested_code}' not found or inactive. "
-            "Applied fallback runtime instruction."
-        ),
+        fallback_instruction=None,
+        missing_notice=f"Prompt template '{requested_code}' not found or inactive.",
         model_capability=model_capability,
+    )
+    if runtime.template is None:
+        raise BusinessException(f"Prompt template '{requested_code}' not found or inactive.")
+    if not (runtime.system_instruction or "").strip():
+        raise BusinessException(
+            f"Prompt template '{runtime.template_code}' has empty system prompt."
+        )
+    return runtime
+
+
+def _is_official_demo_route(route_value: str | None) -> bool:
+    return (route_value or "").strip().lower() == "official_demo_live"
+
+
+def _is_official_conversational_agents_route(route_value: str | None) -> bool:
+    return (route_value or "").strip().lower() == "official_conversational_agents"
+
+
+def _build_official_demo_runtime() -> PromptRuntimeConfig:
+    system_instruction = (settings.twilio_official_demo_instruction or "").strip()
+    if not system_instruction:
+        raise BusinessException(
+            "TWILIO_OFFICIAL_DEMO_INSTRUCTION is required for the official baseline demo route."
+        )
+
+    configured_model = (settings.twilio_official_demo_model or settings.default_live_model).strip()
+    if not configured_model:
+        raise BusinessException(
+            "TWILIO_OFFICIAL_DEMO_MODEL or DEFAULT_LIVE_MODEL must be configured."
+        )
+
+    configured_voice = (
+        settings.twilio_official_demo_voice
+        or settings.default_live_voice
+        or "Aoede"
+    ).strip() or "Aoede"
+
+    return PromptRuntimeConfig(
+        template=None,
+        template_code=_OFFICIAL_DEMO_TEMPLATE_CODE,
+        template_name="Official Demo Baseline",
+        system_instruction=system_instruction,
+        llm_provider="gemini",
+        llm_model=configured_model,
+        temperature=float(settings.llm_temperature),
+        max_tokens=int(settings.llm_max_tokens),
+        voice_provider="gemini",
+        voice_id=configured_voice,
+        notice="Loaded official baseline Twilio demo runtime.",
     )
 
 
@@ -482,7 +541,10 @@ async def incoming_voice_webhook(
     mode: Optional[str] = Query(None),
     voice_route: Optional[str] = Query(
         default=None,
-        description="Inbound AI voice route: gather or media_stream_live.",
+        description=(
+            "Inbound AI voice route: gather, media_stream_live, "
+            "official_demo_live, or official_conversational_agents."
+        ),
     ),
     voice_engine: Optional[str] = Query(
         default=None,
@@ -503,12 +565,6 @@ async def incoming_voice_webhook(
     pending_route = pending_override.get("voice_route") if pending_override else None
     pending_engine = pending_override.get("voice_engine") if pending_override else None
     pending_voice_name = pending_override.get("voice_name") if pending_override else None
-    effective_prompt = prompt_code or pending_prompt
-    resolved_prompt_code = await _resolve_twilio_incoming_prompt_code(
-        db=db,
-        prompt_code=effective_prompt,
-        to_number=To,
-    )
     mode_value = ((mode or settings.twilio_incoming_default_mode or "agent").strip().lower())
     effective_route = voice_route or pending_route
     effective_engine = voice_engine or pending_engine
@@ -516,8 +572,23 @@ async def incoming_voice_webhook(
         voice_route=effective_route,
         voice_engine=effective_engine,
     )
+    effective_prompt = prompt_code or pending_prompt
+    resolved_prompt_code: str | None
+    if _is_official_demo_route(route_value):
+        resolved_prompt_code = _OFFICIAL_DEMO_TEMPLATE_CODE
+    else:
+        resolved_prompt_code = await _resolve_twilio_incoming_prompt_code(
+            db=db,
+            prompt_code=effective_prompt,
+            to_number=To,
+        )
     xml: str
-    if route_value not in {"gather", "media_stream_live"}:
+    if route_value not in {
+        "gather",
+        "media_stream_live",
+        "official_demo_live",
+        "official_conversational_agents",
+    }:
         logger.warning(
             "Twilio inbound voice route invalid. route=%s engine=%s call_sid=%s to=%s",
             effective_route,
@@ -532,12 +603,62 @@ async def incoming_voice_webhook(
         return Response(content=xml, media_type="application/xml")
 
     if mode_value == "agent":
-        if route_value == "media_stream_live":
-            runtime = await _resolve_prompt_runtime(
-                db=db,
-                prompt_code=resolved_prompt_code,
-                model_capability="live",
+        if _is_official_conversational_agents_route(route_value):
+            try:
+                official_ca_config = build_official_conversational_agents_config()
+            except ValueError as exc:
+                logger.warning(
+                    "Twilio inbound official Conversational Agents configuration invalid. error=%s",
+                    exc,
+                )
+                xml = twilio_voice_agent_service.build_hangup_twiml(
+                    say_text=(
+                        "官方 Conversational Agents 基线未正确配置。"
+                        "请检查后端 TWILIO_OFFICIAL_CA_* 配置后重试。"
+                    ),
+                    language=settings.twilio_agent_language,
+                )
+                return Response(content=xml, media_type="application/xml")
+
+            extra_parameters = build_official_conversational_agents_stream_parameters(
+                official_ca_config
             )
+            if official_ca_config.kickstart_text:
+                extra_parameters["ca_kickstart_text"] = official_ca_config.kickstart_text
+            xml = _build_twilio_media_stream_twiml(
+                request=request,
+                prompt_code=_OFFICIAL_DEMO_TEMPLATE_CODE,
+                from_number=From,
+                to_number=To,
+                voice_name=None,
+                route_name=route_value,
+                websocket_endpoint_name="twilio_voice_official_conversational_agents_stream",
+                extra_parameters=extra_parameters,
+            )
+        elif route_value in {"media_stream_live", "official_demo_live"}:
+            try:
+                if _is_official_demo_route(route_value):
+                    runtime = _build_official_demo_runtime()
+                else:
+                    runtime = await _resolve_prompt_runtime(
+                        db=db,
+                        prompt_code=resolved_prompt_code,
+                        model_capability="live",
+                    )
+            except BusinessException as exc:
+                logger.warning(
+                    "Twilio inbound media stream prompt configuration invalid. prompt=%s error=%s",
+                    resolved_prompt_code,
+                    exc,
+                )
+                xml = twilio_voice_agent_service.build_hangup_twiml(
+                    say_text=(
+                        "当前电话 Prompt 或官方基线 Demo 配置无效。"
+                        "请检查 Prompt 管理或官方 Demo 环境变量后重试。"
+                    ),
+                    language=settings.twilio_agent_language,
+                )
+                return Response(content=xml, media_type="application/xml")
             try:
                 selected_model = _resolve_gemini_live_model(runtime.llm_model)
             except ValueError as exc:
@@ -591,19 +712,41 @@ async def incoming_voice_webhook(
                 from_number=From,
                 to_number=To,
                 voice_name=resolved_live_voice,
+                route_name=route_value,
             )
         else:
+            try:
+                runtime = await _resolve_prompt_runtime(
+                    db=db,
+                    prompt_code=resolved_prompt_code,
+                    model_capability="generate",
+                )
+                opening_text = _require_opening_sentence(
+                    system_instruction=runtime.system_instruction,
+                    template_code=runtime.template_code,
+                )
+            except BusinessException as exc:
+                logger.warning(
+                    "Twilio gather prompt configuration invalid. prompt=%s error=%s",
+                    resolved_prompt_code,
+                    exc,
+                )
+                xml = twilio_voice_agent_service.build_hangup_twiml(
+                    say_text="当前电话 Prompt 未正确配置。请在 Prompt 管理中修正模板后重试。",
+                    language=settings.twilio_agent_language,
+                )
+                return Response(content=xml, media_type="application/xml")
             turn_url = str(request.url_for("twilio_voice_agent_turn"))
-            action_url = twilio_voice_agent_service.build_turn_action_url(turn_url, resolved_prompt_code)
+            action_url = twilio_voice_agent_service.build_turn_action_url(turn_url, runtime.template_code)
             call_sid = (CallSid or "").strip()
             if call_sid:
                 await twilio_voice_agent_service.ensure_session(
                     db=db,
                     call_sid=call_sid,
-                    prompt_code=resolved_prompt_code,
+                    prompt_code=runtime.template_code,
                 )
             xml = twilio_voice_agent_service.build_gather_twiml(
-                say_text=twilio_voice_agent_service.opening_text(),
+                say_text=opening_text,
                 action_url=action_url,
                 language=settings.twilio_agent_language,
             )
@@ -680,12 +823,25 @@ async def twilio_voice_agent_turn(
         )
         return Response(content=xml, media_type="application/xml")
 
-    reply = await twilio_voice_agent_service.generate_reply(
-        db=db,
-        call_sid=call_sid,
-        prompt_code=resolved_prompt_code,
-        user_text=user_text,
-    )
+    try:
+        reply = await twilio_voice_agent_service.generate_reply(
+            db=db,
+            call_sid=call_sid,
+            prompt_code=resolved_prompt_code,
+            user_text=user_text,
+        )
+    except BusinessException as exc:
+        logger.warning(
+            "Twilio gather turn prompt configuration invalid. call_sid=%s prompt=%s error=%s",
+            call_sid,
+            resolved_prompt_code,
+            exc,
+        )
+        xml = twilio_voice_agent_service.build_hangup_twiml(
+            say_text="当前电话 Prompt 未正确配置。请在 Prompt 管理中修正模板后重试。",
+            language=settings.twilio_agent_language,
+        )
+        return Response(content=xml, media_type="application/xml")
     xml = twilio_voice_agent_service.build_gather_twiml(
         say_text=reply,
         action_url=action_url,
@@ -714,14 +870,33 @@ async def twilio_voice_media_stream(
     stream_sid = bootstrap.stream_sid
     current_call_sid = bootstrap.call_sid
     prompt_code_from_stream = bootstrap.prompt_code
+    voice_route_from_stream = bootstrap.voice_route
     voice_name_from_stream = bootstrap.voice_name
     from_number_from_stream = bootstrap.from_number
     to_number_from_stream = bootstrap.to_number
 
     runtime_notice = None
-    async with AsyncSessionLocal() as db:
-        runtime = await _resolve_prompt_runtime(db=db, prompt_code=prompt_code_from_stream)
-        runtime_notice = runtime.notice
+    try:
+        if _is_official_demo_route(voice_route_from_stream):
+            runtime = _build_official_demo_runtime()
+            runtime_notice = runtime.notice
+        else:
+            async with AsyncSessionLocal() as db:
+                runtime = await _resolve_prompt_runtime(
+                    db=db,
+                    prompt_code=prompt_code_from_stream,
+                    model_capability="live",
+                )
+                runtime_notice = runtime.notice
+    except BusinessException as exc:
+        await _append_call_trace(
+            current_call_sid,
+            event_type="configuration_error",
+            text=str(exc),
+            level="error",
+        )
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason=str(exc)[:120])
+        return
 
     try:
         selected_model = _resolve_gemini_live_model(runtime.llm_model)
@@ -787,16 +962,15 @@ async def twilio_voice_media_stream(
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason=str(exc)[:120])
         return
 
-    opening_text = _build_twilio_opening_text(runtime.system_instruction)
-    twilio_session_instruction = _build_twilio_session_instruction(runtime.system_instruction, opening_text=None)
+    twilio_session_instruction = _build_twilio_session_instruction(
+        runtime.system_instruction,
+        opening_text=None,
+    )
     live_config = _build_gemini_live_config(
         model=selected_model,
         system_instruction=twilio_session_instruction,
         voice_name=selected_voice,
         manual_vad=False,
-    )
-    live_config.realtime_input_config.activity_handling = (
-        types.ActivityHandling.START_OF_ACTIVITY_INTERRUPTS
     )
     client = create_google_genai_client()
 
@@ -807,6 +981,16 @@ async def twilio_voice_media_stream(
     codec = TwilioMediaAudioCodec(
         input_batch_ms=settings.twilio_media_stream_inbound_batch_ms,
         twilio_frame_bytes=_TWILIO_FRAME_BYTES,
+        input_noise_gate_enabled=settings.twilio_media_stream_input_noise_gate_enabled,
+        input_noise_gate_open_rms=settings.twilio_media_stream_input_noise_gate_open_rms,
+        input_noise_gate_close_rms=settings.twilio_media_stream_input_noise_gate_close_rms,
+        input_noise_gate_hold_ms=settings.twilio_media_stream_input_noise_gate_hold_ms,
+    )
+    playback_overlap_buffer = AssistantPlaybackOverlapBuffer(
+        sample_rate=16000,
+        max_buffer_ms=settings.twilio_media_stream_playback_overlap_buffer_ms,
+        trigger_rms=settings.twilio_media_stream_playback_clear_rms,
+        min_hits=settings.twilio_media_stream_playback_clear_min_hits,
     )
     inbound_debug_captures = {
         _PCM8K_RAW_DEBUG_VARIANT: _build_twilio_inbound_debug_capture(_PCM8K_RAW_DEBUG_VARIANT),
@@ -814,13 +998,35 @@ async def twilio_voice_media_stream(
             _PCM16K_RESAMPLED_DEBUG_VARIANT
         ),
     }
+    followup_debug_captures = {
+        _FOLLOWUP_PCM8K_RAW_DEBUG_VARIANT: _build_twilio_inbound_debug_capture(
+            _FOLLOWUP_PCM8K_RAW_DEBUG_VARIANT
+        ),
+        _FOLLOWUP_PCM16K_RESAMPLED_DEBUG_VARIANT: _build_twilio_inbound_debug_capture(
+            _FOLLOWUP_PCM16K_RESAMPLED_DEBUG_VARIANT
+        ),
+    }
     send_lock = asyncio.Lock()
     finalize_lock = asyncio.Lock()
     inbound_debug_capture_lock = asyncio.Lock()
-    opening_turn_lock = asyncio.Lock()
+    followup_debug_capture_lock = asyncio.Lock()
     bound_call_id = None
     bound_call_finalized = False
     inbound_debug_capture_saved_variants: set[str] = set()
+    followup_probe_armed = False
+    followup_probe_started_at = 0.0
+    followup_probe_detection_hits = 0
+    followup_probe_capture_started = False
+    followup_probe_capture_saved = False
+    followup_probe_capture_started_at = 0.0
+    followup_probe_transcript_observed = False
+    last_duplex_overlap_trace_at = 0.0
+    playback_pending_barge_in_hits = 0
+    local_clear_sent_for_mark: str | None = None
+    upstream_pause_started_at: float | None = None
+    upstream_audio_stream_closed = False
+    upstream_input_segment_active = False
+    suppress_assistant_audio_until_turn_complete = False
 
     async def _send_twilio_event(payload: dict[str, object]) -> None:
         async with send_lock:
@@ -1014,53 +1220,114 @@ async def twilio_voice_media_stream(
                 level="success",
             )
 
-    async def _send_opening_turn_when_ready() -> None:
+    def _reset_followup_probe_captures() -> None:
+        for capture in followup_debug_captures.values():
+            capture.reset()
+
+    async def _persist_followup_debug_wav(*, trigger: str) -> None:
+        nonlocal followup_probe_capture_saved
+        nonlocal followup_probe_transcript_observed
+        if not settings.twilio_media_stream_debug_inbound_wav_enabled:
+            return
         if not current_call_sid:
             return
-        await twilio_started.wait()
-        await live_setup_complete.wait()
-        async with opening_turn_lock:
-            if state.opening_turn_sent:
-                return
-            guard_seconds = max(0, int(settings.twilio_greeting_interrupt_guard_ms or 0)) / 1000
-            state.start_opening_turn(guard_seconds=guard_seconds)
-            await _append_call_trace(
-                current_call_sid,
-                event_type="opening_turn_requested",
-                text=f"Requested Gemini Live opening greeting: {opening_text}",
-                level="info",
-            )
+
+        async with followup_debug_capture_lock:
+            saved_audio_items = []
             try:
-                await session.send_client_content(
-                    turns=types.Content(
-                        role="user",
-                        parts=[
-                            types.Part(
-                                text=(
-                                    "通話が接続されました。"
-                                    "次の一文を日本語で自然に一度だけ話してください。"
-                                    f"「{opening_text}」"
-                                    "この一文以外はまだ話さず、その後は相手の返答を待ってください。"
-                                )
-                            )
-                        ],
-                    ),
-                    turn_complete=True,
-                )
-                await _append_call_trace(
-                    current_call_sid,
-                    event_type="opening_turn_sent",
-                    text=f"via=send_client_content guard_ms={int(settings.twilio_greeting_interrupt_guard_ms or 0)}",
-                    level="info",
-                )
+                for variant, capture in followup_debug_captures.items():
+                    if not capture.has_audio():
+                        continue
+                    saved_audio = await asyncio.to_thread(
+                        capture.save_wav,
+                        output_dir=settings.twilio_media_stream_debug_inbound_wav_dir,
+                        call_sid=current_call_sid,
+                    )
+                    if saved_audio:
+                        saved_audio_items.append((variant, saved_audio))
             except Exception as exc:
-                state.cancel_opening_turn()
+                logger.warning(
+                    "Failed to persist Twilio follow-up debug audio. call_sid=%s trigger=%s error=%s",
+                    current_call_sid,
+                    trigger,
+                    exc,
+                )
                 await _append_call_trace(
                     current_call_sid,
-                    event_type="opening_turn_request_failed",
-                    text=str(exc),
+                    event_type="followup_debug_wav_error",
+                    text=f"trigger={trigger} error={exc}",
                     level="warning",
                 )
+                return
+
+            if not saved_audio_items:
+                return
+
+            followup_probe_capture_saved = True
+            await _append_call_trace(
+                current_call_sid,
+                event_type="followup_debug_wav_saved",
+                text=" ; ".join(
+                    [
+                        (
+                            f"trigger={trigger} variant={variant} duration_ms={saved_audio.duration_ms} "
+                            f"sample_rate={saved_audio.sample_rate} bytes={saved_audio.bytes} "
+                            f"path={saved_audio.path}"
+                        )
+                        for variant, saved_audio in saved_audio_items
+                    ]
+                ),
+                level="success",
+            )
+            if not followup_probe_transcript_observed:
+                await _append_call_trace(
+                    current_call_sid,
+                    event_type="gemini_turn_detection_stalled",
+                    text=(
+                        f"trigger={trigger} capture_seconds="
+                        f"{settings.twilio_media_stream_debug_inbound_wav_seconds} "
+                        "followup_audio_detected_but_no_new_input_transcript"
+                    ),
+                    level="warning",
+                )
+
+    async def _arm_followup_probe(*, trigger: str) -> None:
+        nonlocal followup_probe_armed
+        nonlocal followup_probe_started_at
+        nonlocal followup_probe_detection_hits
+        nonlocal followup_probe_capture_started
+        nonlocal followup_probe_capture_saved
+        nonlocal followup_probe_capture_started_at
+        nonlocal followup_probe_transcript_observed
+
+        followup_probe_armed = True
+        followup_probe_started_at = time.monotonic()
+        followup_probe_detection_hits = 0
+        followup_probe_capture_started = False
+        followup_probe_capture_saved = False
+        followup_probe_capture_started_at = 0.0
+        followup_probe_transcript_observed = False
+        _reset_followup_probe_captures()
+        await _append_call_trace(
+            current_call_sid,
+            event_type="followup_probe_armed",
+            text=f"trigger={trigger} rms_threshold={_FOLLOWUP_PROBE_RMS_THRESHOLD}",
+            level="info",
+        )
+
+    async def _disarm_followup_probe(*, reason: str) -> None:
+        nonlocal followup_probe_armed
+        nonlocal followup_probe_detection_hits
+        nonlocal followup_probe_capture_started
+        nonlocal followup_probe_capture_started_at
+        nonlocal followup_probe_transcript_observed
+        if followup_probe_capture_started and not followup_probe_capture_saved:
+            await _persist_followup_debug_wav(trigger=reason)
+        followup_probe_armed = False
+        followup_probe_detection_hits = 0
+        followup_probe_capture_started = False
+        followup_probe_capture_started_at = 0.0
+        followup_probe_transcript_observed = False
 
     try:
         async with client.aio.live.connect(model=selected_model, config=live_config) as session:
@@ -1088,8 +1355,9 @@ async def twilio_voice_media_stream(
                     current_call_sid,
                     event_type="stream_start",
                     text=(
-                        f"prompt={runtime.template_code or '-'} voice={selected_voice} "
-                        "activity_mode=auto"
+                        f"prompt={runtime.template_code or '-'} "
+                        f"route={voice_route_from_stream or 'media_stream_live'} "
+                        f"voice={selected_voice} activity_mode=auto"
                     ),
                     level="success",
                 )
@@ -1099,10 +1367,22 @@ async def twilio_voice_media_stream(
                     text=(
                         f"backend={settings.google_genai_backend_mode} "
                         f"modalities={','.join(live_config.response_modalities or [])} "
+                        "session_mode=pure_realtime "
+                        f"route={voice_route_from_stream or 'media_stream_live'} "
                         f"activity_handling={settings.twilio_gemini_activity_handling} "
                         f"turn_coverage={settings.twilio_gemini_turn_coverage} "
                         f"prefix_padding_ms={settings.twilio_gemini_prefix_padding_ms} "
                         f"silence_duration_ms={settings.twilio_gemini_silence_duration_ms} "
+                        "input_gate="
+                        f"{'on' if settings.twilio_media_stream_input_noise_gate_enabled else 'off'} "
+                        f"gate_open_rms={settings.twilio_media_stream_input_noise_gate_open_rms} "
+                        f"gate_close_rms={settings.twilio_media_stream_input_noise_gate_close_rms} "
+                        f"gate_hold_ms={settings.twilio_media_stream_input_noise_gate_hold_ms} "
+                        f"playback_clear_rms={settings.twilio_media_stream_playback_clear_rms} "
+                        f"playback_clear_hits={settings.twilio_media_stream_playback_clear_min_hits} "
+                        f"playback_overlap_buffer_ms={settings.twilio_media_stream_playback_overlap_buffer_ms} "
+                        f"upstream_activity_rms={settings.twilio_media_stream_upstream_activity_rms} "
+                        f"pause_flush_s={settings.twilio_media_stream_pause_flush_seconds} "
                         f"batch_ms={settings.twilio_media_stream_inbound_batch_ms}"
                     ),
                     level="info",
@@ -1119,6 +1399,27 @@ async def twilio_voice_media_stream(
                 pending_audio = codec.flush_inbound_audio()
                 if pending_audio:
                     await _send_realtime_audio(pending_audio)
+
+            async def _close_realtime_input_segment(*, reason: str, conditioned_rms: int | None = None) -> None:
+                nonlocal upstream_pause_started_at
+                nonlocal upstream_audio_stream_closed
+                nonlocal upstream_input_segment_active
+                if upstream_audio_stream_closed and not upstream_input_segment_active:
+                    return
+                await _flush_realtime_audio_buffer()
+                await session.send_realtime_input(audio_stream_end=True)
+                upstream_audio_stream_closed = True
+                upstream_input_segment_active = False
+                upstream_pause_started_at = None
+                text = f"reason={reason}"
+                if conditioned_rms is not None:
+                    text = f"{text} conditioned_rms={conditioned_rms}"
+                await _append_call_trace(
+                    current_call_sid,
+                    event_type=_UPSTREAM_AUDIO_STREAM_END_EVENT,
+                    text=text,
+                    level="info",
+                )
 
             async def _close_after_playback_if_needed() -> bool:
                 if not state.close_after_turn_complete:
@@ -1141,6 +1442,17 @@ async def twilio_voice_media_stream(
             async def twilio_to_live() -> None:
                 nonlocal stream_sid
                 nonlocal current_call_sid
+                nonlocal followup_probe_armed
+                nonlocal followup_probe_detection_hits
+                nonlocal followup_probe_capture_started
+                nonlocal followup_probe_capture_started_at
+                nonlocal last_duplex_overlap_trace_at
+                nonlocal playback_pending_barge_in_hits
+                nonlocal local_clear_sent_for_mark
+                nonlocal upstream_pause_started_at
+                nonlocal upstream_audio_stream_closed
+                nonlocal upstream_input_segment_active
+                nonlocal suppress_assistant_audio_until_turn_complete
                 while True:
                     raw = await websocket.receive_text()
                     try:
@@ -1166,6 +1478,10 @@ async def twilio_voice_media_stream(
                                 level="info",
                             )
                         if state.confirm_playback_mark(mark_name):
+                            playback_pending_barge_in_hits = 0
+                            local_clear_sent_for_mark = None
+                            suppress_assistant_audio_until_turn_complete = False
+                            playback_overlap_buffer.reset()
                             await _append_call_trace(
                                 current_call_sid,
                                 event_type="playback_complete",
@@ -1174,6 +1490,7 @@ async def twilio_voice_media_stream(
                             )
                             if await _close_after_playback_if_needed():
                                 return
+                            await _arm_followup_probe(trigger=mark_name or "assistant_audio")
                         continue
 
                     if event_type == "start":
@@ -1222,8 +1539,144 @@ async def twilio_voice_media_stream(
                         state.media_frames += 1
                         inbound_debug_captures[_PCM8K_RAW_DEBUG_VARIANT].append(decoded_audio.pcm8k)
                         inbound_debug_captures[_PCM16K_RESAMPLED_DEBUG_VARIANT].append(decoded_audio.pcm16k)
-                        for batch in codec.queue_inbound_audio(decoded_audio.pcm16k):
-                            await _send_realtime_audio(batch)
+                        if (
+                            (state.assistant_speaking or state.assistant_playback_pending)
+                            and decoded_audio.rms >= _DUPLEX_OVERLAP_RMS_THRESHOLD
+                            and (now_ts - last_duplex_overlap_trace_at)
+                            >= _DUPLEX_OVERLAP_TRACE_INTERVAL_SECONDS
+                        ):
+                            last_duplex_overlap_trace_at = now_ts
+                            assistant_phase = (
+                                "speaking_and_pending"
+                                if state.assistant_speaking and state.assistant_playback_pending
+                                else "speaking"
+                                if state.assistant_speaking
+                                else "playback_pending"
+                            )
+                            await _append_call_trace(
+                                current_call_sid,
+                                event_type="duplex_overlap_detected",
+                                text=(
+                                    f"rms={decoded_audio.rms} assistant_phase={assistant_phase} "
+                                    f"pending_mark={state.pending_playback_mark or '-'}"
+                                ),
+                                level="warning",
+                            )
+                        if followup_probe_armed:
+                            if not followup_probe_capture_started:
+                                if decoded_audio.rms >= _FOLLOWUP_PROBE_RMS_THRESHOLD:
+                                    followup_probe_detection_hits += 1
+                                else:
+                                    followup_probe_detection_hits = 0
+                                if followup_probe_detection_hits >= _FOLLOWUP_PROBE_MIN_HITS:
+                                    followup_probe_capture_started = True
+                                    followup_probe_capture_started_at = now_ts
+                                    await _append_call_trace(
+                                        current_call_sid,
+                                        event_type="followup_probe_speech_detected",
+                                        text=(
+                                            f"rms={decoded_audio.rms} after_ms="
+                                            f"{int((now_ts - followup_probe_started_at) * 1000)}"
+                                        ),
+                                        level="warning",
+                                    )
+                            if followup_probe_capture_started:
+                                followup_debug_captures[_FOLLOWUP_PCM8K_RAW_DEBUG_VARIANT].append(
+                                    decoded_audio.pcm8k
+                                )
+                                followup_debug_captures[
+                                    _FOLLOWUP_PCM16K_RESAMPLED_DEBUG_VARIANT
+                                ].append(decoded_audio.pcm16k)
+                                if (
+                                    not followup_probe_capture_saved
+                                    and all(capture.is_full for capture in followup_debug_captures.values())
+                                ):
+                                    await _persist_followup_debug_wav(trigger="followup_probe_full")
+                                    followup_probe_armed = False
+                                    followup_probe_detection_hits = 0
+                                    followup_probe_capture_started = False
+                                    followup_probe_capture_started_at = 0.0
+                        assistant_active = state.assistant_speaking or state.assistant_playback_pending
+                        if assistant_active:
+                            pending_mark = (
+                                state.pending_playback_mark
+                                or ("assistant-speaking" if state.assistant_speaking else "assistant_audio")
+                            )
+                            barge_in_ready = playback_overlap_buffer.observe(
+                                pcm16k=decoded_audio.pcm16k,
+                                conditioned_rms=decoded_audio.conditioned_rms,
+                            )
+                            if stream_sid and barge_in_ready and local_clear_sent_for_mark != pending_mark:
+                                local_clear_sent_for_mark = pending_mark
+                                playback_pending_barge_in_hits = 0
+                                suppress_assistant_audio_until_turn_complete = True
+                                state.interrupt(now=now_ts)
+                                await _disarm_followup_probe(reason="local_barge_in")
+                                await _send_twilio_event({"event": "clear", "streamSid": stream_sid})
+                                await _append_call_trace(
+                                    current_call_sid,
+                                    event_type="local_barge_in_clear_sent",
+                                    text=(
+                                        f"pending_mark={pending_mark} "
+                                        f"conditioned_rms={decoded_audio.conditioned_rms}"
+                                    ),
+                                    level="warning",
+                                )
+                                buffered_overlap_audio = playback_overlap_buffer.drain()
+                                upstream_pause_started_at = None
+                                upstream_input_segment_active = True
+                                if upstream_audio_stream_closed:
+                                    upstream_audio_stream_closed = False
+                                    await _append_call_trace(
+                                        current_call_sid,
+                                        event_type="audio_stream_resumed",
+                                        text=f"conditioned_rms={decoded_audio.conditioned_rms}",
+                                        level="info",
+                                    )
+                                for batch in codec.queue_inbound_audio(buffered_overlap_audio):
+                                    await _send_realtime_audio(batch)
+                            else:
+                                playback_pending_barge_in_hits = 0
+                                continue
+                        else:
+                            playback_pending_barge_in_hits = 0
+                            playback_overlap_buffer.reset()
+
+                        has_effective_activity = (
+                            decoded_audio.conditioned_rms
+                            >= settings.twilio_media_stream_upstream_activity_rms
+                        )
+                        if has_effective_activity:
+                            upstream_pause_started_at = None
+                            if not upstream_input_segment_active:
+                                upstream_input_segment_active = True
+                            if upstream_audio_stream_closed:
+                                upstream_audio_stream_closed = False
+                                await _append_call_trace(
+                                    current_call_sid,
+                                    event_type="audio_stream_resumed",
+                                    text=f"conditioned_rms={decoded_audio.conditioned_rms}",
+                                    level="info",
+                                )
+                            for batch in codec.queue_inbound_audio(decoded_audio.pcm16k):
+                                await _send_realtime_audio(batch)
+                        elif upstream_input_segment_active:
+                            for batch in codec.queue_inbound_audio(decoded_audio.pcm16k):
+                                await _send_realtime_audio(batch)
+                            if upstream_pause_started_at is None:
+                                upstream_pause_started_at = now_ts
+                            if (
+                                not upstream_audio_stream_closed
+                                and (now_ts - upstream_pause_started_at)
+                                >= settings.twilio_media_stream_pause_flush_seconds
+                            ):
+                                silence_ms = int((now_ts - upstream_pause_started_at) * 1000)
+                                await _close_realtime_input_segment(
+                                    reason=f"silence_timeout silence_ms={silence_ms}",
+                                    conditioned_rms=decoded_audio.conditioned_rms,
+                                )
+                        else:
+                            upstream_pause_started_at = None
                         if (now_ts - state.last_media_stats_at) >= _MEDIA_STATS_INTERVAL_SECONDS:
                             state.last_media_stats_at = now_ts
                             buffer_ms = int(codec.pending_inbound_bytes / 32)
@@ -1232,6 +1685,7 @@ async def twilio_voice_media_stream(
                                 event_type="media_stats",
                                 text=(
                                     f"frames={state.media_frames} rms={decoded_audio.rms} "
+                                    f"conditioned_rms={decoded_audio.conditioned_rms} "
                                     f"buffer_ms={buffer_ms} mode=auto_stream"
                                 ),
                                 level="info",
@@ -1245,6 +1699,7 @@ async def twilio_voice_media_stream(
                         except Exception:
                             pass
                         await _append_call_trace(current_call_sid, event_type="stream_stop", level="info")
+                        await _disarm_followup_probe(reason="stream_stop")
                         await _persist_inbound_debug_wav(trigger="stream_stop")
                         await _finalize_bound_call(trigger="stream_stop", run_extraction=True)
                         await _mark_stream_inactive(current_call_sid)
@@ -1252,6 +1707,9 @@ async def twilio_voice_media_stream(
                         return
 
             async def live_to_twilio() -> None:
+                nonlocal followup_probe_transcript_observed
+                nonlocal suppress_assistant_audio_until_turn_complete
+                nonlocal local_clear_sent_for_mark
                 await twilio_started.wait()
                 async for message in session.receive():
                     if message.setup_complete:
@@ -1264,7 +1722,12 @@ async def twilio_voice_media_stream(
                                 text=f"session_id={message.setup_complete.session_id or '-'}",
                                 level="success",
                             )
-                        await _send_opening_turn_when_ready()
+                            await _append_call_trace(
+                                current_call_sid,
+                                event_type="session_mode",
+                                text="pure_realtime input=RealtimeInput only explicit_client_content=disabled",
+                                level="info",
+                            )
 
                     content = message.server_content
                     if not content:
@@ -1272,6 +1735,8 @@ async def twilio_voice_media_stream(
 
                     if content.input_transcription and content.input_transcription.text:
                         state.assistant_last_output_at = time.monotonic()
+                        if followup_probe_started_at > 0.0:
+                            followup_probe_transcript_observed = True
                         await _append_call_trace(
                             current_call_sid,
                             event_type="input_transcript",
@@ -1280,6 +1745,7 @@ async def twilio_voice_media_stream(
                             level="info",
                         )
                         if content.input_transcription.finished:
+                            await _disarm_followup_probe(reason="input_transcript_finished")
                             await _append_bound_messages(
                                 [{"role": "user", "content": content.input_transcription.text}]
                             )
@@ -1303,20 +1769,11 @@ async def twilio_voice_media_stream(
                             )
 
                     if content.interrupted and stream_sid:
-                        now_ts = time.monotonic()
-                        if state.should_guard_interrupt(now=now_ts):
-                            remaining_ms = max(0, int((state.opening_interrupt_guard_until - now_ts) * 1000))
-                            await _append_call_trace(
-                                current_call_sid,
-                                event_type="interrupted_guarded",
-                                text=(
-                                    "Ignored interrupt during opening-turn guard window "
-                                    f"remaining_ms={remaining_ms}"
-                                ),
-                                level="warning",
-                            )
-                            continue
+                        suppress_assistant_audio_until_turn_complete = False
+                        local_clear_sent_for_mark = None
+                        playback_overlap_buffer.reset()
                         state.interrupt(now=time.monotonic())
+                        await _disarm_followup_probe(reason="interrupted")
                         await _send_twilio_event({"event": "clear", "streamSid": stream_sid})
                         await _append_call_trace(
                             current_call_sid,
@@ -1340,15 +1797,19 @@ async def twilio_voice_media_stream(
                             if not inline or not inline.data:
                                 continue
 
+                            if followup_probe_armed:
+                                await _disarm_followup_probe(reason="assistant_response_started")
                             state.note_assistant_activity(now=time.monotonic(), speaking=True)
+                            if suppress_assistant_audio_until_turn_complete:
+                                continue
                             if not state.model_turn_sent_audio:
+                                await _close_realtime_input_segment(reason="assistant_response_started")
                                 await _append_call_trace(
                                     current_call_sid,
                                     event_type="assistant_audio_started",
                                     text=inline.mime_type or "audio/pcm",
                                     level="success",
                                 )
-                                state.note_opening_audio_started()
                             try:
                                 pcm_bytes = (
                                     base64.b64decode(inline.data.encode("ascii"), validate=False)
@@ -1406,6 +1867,10 @@ async def twilio_voice_media_stream(
                                 )
 
                     if content.turn_complete:
+                        if suppress_assistant_audio_until_turn_complete:
+                            suppress_assistant_audio_until_turn_complete = False
+                            local_clear_sent_for_mark = None
+                        playback_overlap_buffer.reset()
                         if stream_sid and state.model_turn_sent_audio and not state.pending_playback_mark:
                             playback_mark = state.next_playback_mark()
                             await _send_twilio_event(
@@ -1447,6 +1912,7 @@ async def twilio_voice_media_stream(
     except WebSocketDisconnect:
         stream_done.set()
         await _append_call_trace(current_call_sid, event_type="stream_disconnect", level="warning")
+        await _disarm_followup_probe(reason="websocket_disconnect")
         await _persist_inbound_debug_wav(trigger="websocket_disconnect")
         try:
             await _finalize_bound_call(trigger="websocket_disconnect", run_extraction=True)
@@ -1462,6 +1928,7 @@ async def twilio_voice_media_stream(
             text=str(exc),
             level="error",
         )
+        await _disarm_followup_probe(reason="stream_error")
         await _persist_inbound_debug_wav(trigger="stream_error")
         try:
             await _finalize_bound_call(trigger="stream_error", run_extraction=True)
@@ -1471,12 +1938,38 @@ async def twilio_voice_media_stream(
         logger.exception("Twilio media stream bridge failed: %s", exc)
     finally:
         stream_done.set()
+        await _disarm_followup_probe(reason="stream_finally")
         await _persist_inbound_debug_wav(trigger="stream_finally")
         await _mark_stream_inactive(current_call_sid)
         try:
             await websocket.close()
         except Exception:
             pass
+
+
+@router.websocket(
+    "/voice/stream/official-ca",
+    name="twilio_voice_official_conversational_agents_stream",
+)
+async def twilio_voice_official_conversational_agents_stream(
+    websocket: WebSocket,
+    prompt_code: str | None = Query(default=None),
+    voice_name: str | None = Query(default=None),
+):
+    if not await _verify_websocket_or_close(websocket):
+        return
+    await websocket.accept()
+    bootstrap = await receive_twilio_media_stream_start(
+        websocket,
+        prompt_code=prompt_code,
+        voice_name=voice_name,
+    )
+    if bootstrap is None:
+        return
+    await bridge_twilio_to_official_conversational_agents(
+        websocket=websocket,
+        bootstrap=bootstrap,
+    )
 
 
 @router.post("/voice/stream/status", response_model=ResponseBase[dict], name="twilio_voice_stream_status_callback")
@@ -1640,7 +2133,10 @@ async def get_voice_trace_inbound_audio(
     call_sid: str = Query(..., min_length=1, description="Twilio call SID"),
     variant: str = Query(
         _PCM16K_RESAMPLED_DEBUG_VARIANT,
-        description="Debug audio variant: pcm8k_raw or pcm16k_resampled",
+        description=(
+            "Debug audio variant: pcm8k_raw, pcm16k_resampled, "
+            "followup_pcm8k_raw, or followup_pcm16k_resampled"
+        ),
     ),
 ):
     try:

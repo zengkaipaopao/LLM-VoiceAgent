@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.model_defaults import DEFAULT_GENERATE_MODEL, resolve_generate_model
+from app.exceptions import BusinessException
 from app.services.google_genai_client import google_genai_available
 from app.services.live_gateway import infer_provider_from_model, normalize_provider
 from app.services.prompt_runtime_resolver import resolve_prompt_runtime
@@ -48,10 +49,6 @@ class TwilioVoiceSession:
 
 
 class TwilioVoiceAgentService:
-    _OPENING_TEXT = (
-        "いつもお世話になっております。光洲産業の自動受付AIです。"
-        "本日はどのようなご用件でしょうか。"
-    )
     _RETRY_TEXT = "恐れ入ります。うまく聞き取れませんでした。もう一度お願いいたします。"
     _FAILURE_TEXT = "申し訳ありません。現在応答を生成できません。少し時間をおいてお試しください。"
     _NO_API_KEY_TEXT = "現在AIの設定が未完了です。担当者に設定確認を依頼してください。"
@@ -89,25 +86,25 @@ class TwilioVoiceAgentService:
                 existing.updated_at = datetime.now(UTC)
                 return existing
 
-        resolved_code = (
-            prompt_code or settings.twilio_default_prompt_code or "general_appointment"
-        ).strip()
+        resolved_code = (prompt_code or settings.twilio_default_prompt_code or "").strip()
+        if not resolved_code:
+            raise BusinessException("TWILIO_DEFAULT_PROMPT_CODE is not configured.")
         prompt_service = PromptService(db)
         runtime = await resolve_prompt_runtime(
             prompt_service,
             template_code=resolved_code,
             default_code=resolved_code,
-            fallback_code="general_appointment",
-            fallback_instruction=(
-                "あなたは日本語のコールセンター受付AIです。"
-                "丁寧に1項目ずつ確認し、推測せず、自然な会話で応答してください。"
-            ),
+            fallback_code=None,
+            fallback_instruction=None,
             model_capability="generate",
         )
-        system_prompt = runtime.system_instruction or (
-            "あなたは日本語のコールセンター受付AIです。"
-            "丁寧に1項目ずつ確認し、推測せず、自然な会話で応答してください。"
-        )
+        if runtime.template is None:
+            raise BusinessException(f"Prompt template '{resolved_code}' not found or inactive.")
+        system_prompt = (runtime.system_instruction or "").strip()
+        if not system_prompt:
+            raise BusinessException(
+                f"Prompt template '{runtime.template_code}' has empty system prompt."
+            )
         llm_provider = self._resolve_provider(
             provider=runtime.llm_provider,
             model=runtime.llm_model,
@@ -341,10 +338,6 @@ class TwilioVoiceAgentService:
         if normalized == "openai":
             return not (settings.openai_api_key or "").strip()
         return False
-
-    @classmethod
-    def opening_text(cls) -> str:
-        return cls._OPENING_TEXT
 
     @classmethod
     def retry_text(cls) -> str:

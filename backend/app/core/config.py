@@ -40,6 +40,18 @@ class Settings(BaseSettings):
     twilio_phone_number: str = ""
     twilio_default_identity: str = "webcall-tester"
     twilio_default_prompt_code: str = "base_appointment"
+    twilio_official_demo_model: str = DEFAULT_LIVE_MODEL
+    twilio_official_demo_voice: str = "Aoede"
+    twilio_official_demo_instruction: str = (
+        "あなたは日本語の電話受付AIです。"
+        "自然で簡潔な音声会話を行い、ユーザーの用件を一つずつ確認してください。"
+        "通話が始まったら最初に短く挨拶し、その後は相手の発話を待ってください。"
+        "余計な説明、メタ発言、英語の見出しは出力しないでください。"
+    )
+    twilio_official_ca_agent_id: str = ""
+    twilio_official_ca_deployment_id: str = ""
+    twilio_official_ca_environment: str = "prod"
+    twilio_official_ca_kickstart_text: str = ""
     # Comma-separated map, e.g. +815012345678:base_appointment,+815076543210:jp_cancel
     twilio_incoming_prompt_map: str = ""
     twilio_incoming_default_mode: str = "agent"
@@ -47,18 +59,30 @@ class Settings(BaseSettings):
     # Twilio Media Streams production path only supports Gemini automatic
     # activity detection. Any non-auto value should fail fast.
     twilio_gemini_activity_mode: str = "auto"
-    # Tune Gemini Live automatic activity detection for PSTN audio and let the
-    # model barge in naturally when the caller interrupts.
+    # Keep Gemini Live automatic activity detection close to the native-audio
+    # defaults first, then tune from production traces only when needed.
     twilio_gemini_activity_handling: str = "interrupt"
     twilio_gemini_turn_coverage: str = "activity_only"
-    twilio_gemini_start_sensitivity: str = "high"
-    twilio_gemini_end_sensitivity: str = "high"
-    twilio_gemini_prefix_padding_ms: int = 40
-    twilio_gemini_silence_duration_ms: int = 200
+    twilio_gemini_start_sensitivity: str = "low"
+    twilio_gemini_end_sensitivity: str = "low"
+    twilio_gemini_prefix_padding_ms: int = 100
+    twilio_gemini_silence_duration_ms: int = 800
     twilio_greeting_interrupt_guard_ms: int = 900
     # Batch multiple 20ms Twilio inbound frames before pushing them upstream to
     # Gemini Live to reduce websocket chatter and bridge jitter.
     twilio_media_stream_inbound_batch_ms: int = 20
+    # Input conditioning before forwarding Twilio inbound audio to Gemini Live.
+    # This is not local turn detection; it only suppresses low-energy noise tails
+    # that otherwise keep Gemini automatic activity detection from closing a turn.
+    twilio_media_stream_input_noise_gate_enabled: bool = True
+    twilio_media_stream_input_noise_gate_open_rms: int = 140
+    twilio_media_stream_input_noise_gate_close_rms: int = 90
+    twilio_media_stream_input_noise_gate_hold_ms: int = 240
+    twilio_media_stream_playback_clear_rms: int = 120
+    twilio_media_stream_playback_clear_min_hits: int = 3
+    twilio_media_stream_playback_overlap_buffer_ms: int = 800
+    twilio_media_stream_upstream_activity_rms: int = 48
+    twilio_media_stream_pause_flush_seconds: float = 1.0
     twilio_media_stream_debug_inbound_wav_enabled: bool = True
     twilio_media_stream_debug_inbound_wav_seconds: int = 5
     twilio_media_stream_debug_inbound_wav_dir: str = str(
@@ -125,6 +149,13 @@ class Settings(BaseSettings):
             (self.twilio_account_sid or "").strip()
             and (self.twilio_auth_token or "").strip()
             and (self.twilio_twiml_app_sid or "").strip()
+        )
+
+    @property
+    def twilio_official_ca_configured(self) -> bool:
+        return bool(
+            (self.twilio_official_ca_agent_id or "").strip()
+            or (self.twilio_official_ca_deployment_id or "").strip()
         )
 
     @property

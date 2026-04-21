@@ -18,9 +18,11 @@ class TwilioMediaStreamBootstrap:
     stream_sid: str | None
     call_sid: str | None
     prompt_code: str | None
+    voice_route: str | None
     voice_name: str | None
     from_number: str | None
     to_number: str | None
+    custom_parameters: dict[str, str]
 
 
 async def receive_twilio_media_stream_start(
@@ -30,6 +32,7 @@ async def receive_twilio_media_stream_start(
     voice_name: str | None,
 ) -> TwilioMediaStreamBootstrap | None:
     prompt_code_from_stream = (prompt_code or "").strip() or None
+    voice_route_from_stream: str | None = None
     voice_name_from_stream = _normalize_voice_name_token(voice_name)
 
     while True:
@@ -64,6 +67,7 @@ async def receive_twilio_media_stream_start(
 
         custom_parameters = _extract_stream_custom_parameters(payload)
         prompt_code_from_stream = custom_parameters.get("prompt_code") or prompt_code_from_stream
+        voice_route_from_stream = (custom_parameters.get("voice_route") or "").strip() or None
         voice_name_from_stream = _normalize_voice_name_token(
             custom_parameters.get("voice_name") or voice_name_from_stream
         )
@@ -75,7 +79,9 @@ async def receive_twilio_media_stream_start(
             stream_sid=stream_sid,
             call_sid=call_sid,
             prompt_code=prompt_code_from_stream,
+            voice_route=voice_route_from_stream,
             voice_name=voice_name_from_stream,
             from_number=from_number_from_stream,
             to_number=to_number_from_stream,
+            custom_parameters=custom_parameters,
         )

@@ -70,13 +70,18 @@ def _build_gemini_live_config(
     voice_name: str | None,
     manual_vad: bool,
 ) -> types.LiveConnectConfig:
+    language_code = (settings.twilio_agent_language or "").strip()
+    transcription_config = (
+        types.AudioTranscriptionConfig(language_codes=[language_code])
+        if language_code
+        else types.AudioTranscriptionConfig()
+    )
     payload: dict[str, object] = {
         "response_modalities": ["AUDIO"],
-        "input_audio_transcription": {},
-        "output_audio_transcription": {},
+        "input_audio_transcription": transcription_config,
+        "output_audio_transcription": transcription_config,
     }
     speech_config_payload: dict[str, object] = {}
-    language_code = (settings.twilio_agent_language or "").strip()
     if language_code:
         speech_config_payload["language_code"] = language_code
     if voice_name:

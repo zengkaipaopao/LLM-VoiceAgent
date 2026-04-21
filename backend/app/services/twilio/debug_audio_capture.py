@@ -54,10 +54,22 @@ class RollingPcmCapture:
     def has_audio(self) -> bool:
         return self._total_bytes > 0
 
+    @property
+    def current_bytes(self) -> int:
+        return self._total_bytes
+
+    @property
+    def is_full(self) -> bool:
+        return self.max_bytes > 0 and self._total_bytes >= self.max_bytes
+
     def build_bytes(self) -> bytes:
         if not self._chunks:
             return b""
         return b"".join(self._chunks)
+
+    def reset(self) -> None:
+        self._chunks.clear()
+        self._total_bytes = 0
 
     def build_output_path(self, *, output_dir: str | Path, call_sid: str | None) -> Path:
         safe_call_sid = _safe_token(call_sid, fallback="unknown-call")

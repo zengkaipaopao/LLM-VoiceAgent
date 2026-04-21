@@ -22,6 +22,82 @@ function toStatusLabel(status: VoiceDiagnostic['status']): string {
   return '未知';
 }
 
+function toMetaTagType(status: VoiceDiagnostic['status']): 'green' | 'red' | 'blue' | 'cool-gray' {
+  return toTagType(status);
+}
+
+function formatDiagnosticOwner(owner: string): string {
+  const mapping: Record<string, string> = {
+    system: '系统',
+    backend: '后端配置',
+    backend_bridge: '后端桥接',
+    backend_or_model: '后端 / 模型',
+    backend_audio_pipeline: '后端音频链路',
+    browser_device: '浏览器设备',
+    browser_network: '浏览器网络',
+    duplex_audio_path: '双工音频链路',
+    gemini_live_turn_detection: 'Gemini Live 回合检测',
+    gemini_or_prompt: 'Gemini / Prompt',
+    google_cloud_auth: 'Google Cloud 认证',
+    google_cloud_iam: 'Google Cloud IAM',
+    model_configuration: '模型配置',
+    prompt_or_model_config: 'Prompt / 模型配置',
+    twilio: 'Twilio',
+    twilio_credentials: 'Twilio 凭证',
+    twilio_transport: 'Twilio 传输层',
+    unknown: '未判定',
+  };
+  return mapping[owner] || owner.replace(/_/g, ' ');
+}
+
+function formatDiagnosticCategory(category: string): string {
+  const mapping: Record<string, string> = {
+    healthy: '链路正常',
+    assistant_audio_empty: '模型音频为空',
+    assistant_audio_not_playing: '模型音频未播放',
+    assistant_not_responding: '模型未响应',
+    backend_configuration: '后端配置错误',
+    duplex_overlap_vad_conflict: '双工重叠干扰 VAD',
+    gemini_turn_detection_stalled: 'Gemini 未提交新回合',
+    google_adc_missing: 'ADC 凭证缺失',
+    google_vertex_permission: 'Vertex 权限不足',
+    media_stream_bridge_runtime: '媒体桥运行时故障',
+    no_trace_events: '暂无 Trace',
+    twilio_call_status: 'Twilio 呼叫状态错误',
+    twilio_media_stream_transport: 'Twilio 媒体流传输错误',
+    twilio_stream_unexpected_stop: '媒体流提前停止',
+    upstream_audio_without_turn: '上行有语音但未形成回合',
+    user_heard_no_reply: '用户发言后无回复',
+  };
+  return mapping[category] || category.replace(/_/g, ' ');
+}
+
+function formatDiagnosticSource(source: VoiceDiagnostic['source']): string {
+  const mapping: Record<VoiceDiagnostic['source'], string> = {
+    backend_trace: '后端 Trace',
+    frontend_direct: '浏览器直连',
+    frontend_gateway: '前端网关',
+  };
+  return mapping[source] || source;
+}
+
+function formatEvidenceLabel(label: string): string {
+  const mapping: Record<string, string> = {
+    audio_stream_end_sent: '上行收口',
+    audio_stream_resumed: '上行恢复',
+    duplex_overlap_detected: '双工重叠',
+    gemini_turn_detection_stalled: '回合未提交',
+    local_barge_in_clear_sent: '本地插话清缓冲',
+    media_stream_status: '媒体流状态',
+    playback_clear_sent: '清理播放缓冲',
+    playback_complete: '播放完成',
+    playback_mark_sent: '播放标记',
+    stream_error: '流错误',
+    stream_stop: '流结束',
+  };
+  return mapping[label] || label.replace(/_/g, ' ');
+}
+
 export function VoiceDiagnosticsTile({ diagnostic, loading = false }: VoiceDiagnosticsTileProps) {
   return (
     <Tile className={styles.sideTile}>
@@ -38,28 +114,21 @@ export function VoiceDiagnosticsTile({ diagnostic, loading = false }: VoiceDiagn
         </p>
       ) : (
         <Stack gap={4}>
-          <div className={styles.diagnosticBlock}>
-            <h5 className={styles.diagnosticTitle}>{diagnostic.title}</h5>
-            <p className={styles.description}>{diagnostic.summary}</p>
+          <div className={styles.diagnosticHero}>
+            <div className={styles.diagnosticHeroTags}>
+              <Tag type={toMetaTagType(diagnostic.status)}>{formatDiagnosticOwner(diagnostic.owner || 'unknown')}</Tag>
+              <Tag type="cool-gray">{formatDiagnosticCategory(diagnostic.category || '-')}</Tag>
+              <Tag type="cool-gray">{formatDiagnosticSource(diagnostic.source)}</Tag>
+            </div>
+            <div className={styles.diagnosticBlock}>
+              <p className={styles.diagnosticEyebrow}>当前判断</p>
+              <h5 className={styles.diagnosticTitle}>{diagnostic.title}</h5>
+              <p className={styles.description}>{diagnostic.summary}</p>
+            </div>
           </div>
 
-          <dl className={styles.metaList}>
-            <div className={styles.metaRow}>
-              <dt>责任面</dt>
-              <dd>{diagnostic.owner || '-'}</dd>
-            </div>
-            <div className={styles.metaRow}>
-              <dt>诊断类别</dt>
-              <dd>{diagnostic.category || '-'}</dd>
-            </div>
-            <div className={styles.metaRow}>
-              <dt>诊断来源</dt>
-              <dd>{diagnostic.source}</dd>
-            </div>
-          </dl>
-
           <div className={styles.diagnosticBlock}>
-            <h5 className={styles.transcriptHeading}>建议动作</h5>
+            <h5 className={styles.transcriptHeading}>建议先做</h5>
             {diagnostic.actions.length === 0 ? (
               <p className={styles.emptyText}>暂无建议动作。</p>
             ) : (
@@ -74,15 +143,22 @@ export function VoiceDiagnosticsTile({ diagnostic, loading = false }: VoiceDiagn
           </div>
 
           <div className={styles.diagnosticBlock}>
-            <h5 className={styles.transcriptHeading}>证据</h5>
+            <div className={styles.diagnosticSectionHeader}>
+              <h5 className={styles.transcriptHeading}>关键证据</h5>
+              <span className={styles.diagnosticHint}>最近 {diagnostic.evidence.length} 条</span>
+            </div>
             {diagnostic.evidence.length === 0 ? (
               <p className={styles.emptyText}>暂无证据项。</p>
             ) : (
               <ul className={styles.diagnosticEvidenceList}>
                 {diagnostic.evidence.map((item, index) => (
                   <li key={`${diagnostic.category}-evidence-${index}`} className={styles.diagnosticEvidenceItem}>
-                    <span className={styles.diagnosticEvidenceLabel}>{item.label}</span>
-                    <span className={`${styles.logLevel} ${styles[`logLevel${item.level}`]}`}>{item.level.toUpperCase()}</span>
+                    <div className={styles.diagnosticEvidenceMeta}>
+                      <span className={styles.diagnosticEvidenceLabel}>{formatEvidenceLabel(item.label)}</span>
+                      <span className={`${styles.logLevel} ${styles[`logLevel${item.level}`]}`}>
+                        {item.level.toUpperCase()}
+                      </span>
+                    </div>
                     <span className={styles.logMessage}>{item.text}</span>
                   </li>
                 ))}

@@ -21,8 +21,9 @@ def _to_websocket_url(url: str) -> str:
 def _build_twilio_media_stream_url(
     *,
     request: Request,
+    websocket_endpoint_name: str = "twilio_voice_media_stream",
 ) -> str:
-    return _to_websocket_url(str(request.url_for("twilio_voice_media_stream")))
+    return _to_websocket_url(str(request.url_for(websocket_endpoint_name)))
 
 
 def _build_twilio_media_stream_twiml(
@@ -33,18 +34,30 @@ def _build_twilio_media_stream_twiml(
     to_number: str | None,
     voice_name: str | None,
     opening_text: str | None = None,
+    route_name: str | None = None,
+    websocket_endpoint_name: str = "twilio_voice_media_stream",
+    extra_parameters: dict[str, str] | None = None,
 ) -> str:
-    stream_url = _build_twilio_media_stream_url(request=request)
+    stream_url = _build_twilio_media_stream_url(
+        request=request,
+        websocket_endpoint_name=websocket_endpoint_name,
+    )
     status_callback_url = str(request.url_for("twilio_voice_stream_status_callback"))
     parameters: list[tuple[str, str]] = []
     if (prompt_code or "").strip():
         parameters.append(("prompt_code", prompt_code.strip()))
+    if (route_name or "").strip():
+        parameters.append(("voice_route", route_name.strip()))
     if (from_number or "").strip():
         parameters.append(("from", from_number.strip()))
     if (to_number or "").strip():
         parameters.append(("to", to_number.strip()))
     if (voice_name or "").strip():
         parameters.append(("voice_name", voice_name.strip()))
+    if extra_parameters:
+        for name, value in extra_parameters.items():
+            if (name or "").strip() and (value or "").strip():
+                parameters.append((name.strip(), value.strip()))
 
     parameter_xml = "".join(
         f'<Parameter name="{html.escape(name, quote=True)}" value="{html.escape(value, quote=True)}" />'

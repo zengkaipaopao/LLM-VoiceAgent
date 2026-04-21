@@ -237,6 +237,7 @@
       "ariaLabel": "Test Options",
       "text": "Text Test",
       "voice": "Voice Test",
+      "official_demo": "Official Baseline",
       "reviewer": "Reviewer Mode",
       "appointment": "Appointment Sim"
     },

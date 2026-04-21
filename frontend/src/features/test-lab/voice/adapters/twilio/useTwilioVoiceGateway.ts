@@ -6,7 +6,11 @@ import type { BackendTraceDiagnosticResponse } from '../../diagnostics';
 export type DialerStatus = 'idle' | 'fetching_token' | 'registering' | 'registered' | 'error';
 export type CallStatus = 'idle' | 'dialing' | 'in-call' | 'ended' | 'error';
 export type GatewayLogLevel = 'info' | 'success' | 'warning' | 'error';
-export type TwilioTransportMode = 'media_stream_live';
+export type TwilioTransportMode =
+  | 'media_stream_live'
+  | 'official_demo_live'
+  | 'official_conversational_agents';
+export type TwilioInboundDebugAudioKind = 'none' | 'tail' | 'followup';
 
 export interface DialerLogItem {
   id: string;
@@ -37,6 +41,7 @@ export interface TwilioCapabilitySnapshot {
   configuredPhoneNumber: string;
   geminiGenerateImplemented: boolean;
   geminiLiveImplemented: boolean;
+  conversationalAgentsImplemented: boolean;
   twilioWebcallImplemented: boolean;
 }
 
@@ -56,20 +61,25 @@ function formatTwilioSdkError(prefix: string, rawError: unknown): string {
 }
 
 interface StartDialOptions {
-  promptCode: string;
+  promptCode?: string;
   voiceName?: string;
 }
 
 interface PrepareInboundCallOptions {
-  promptCode: string;
+  promptCode?: string;
   voiceName?: string;
 }
 
 interface UseTwilioVoiceGatewayOptions {
   identity: string;
+  transportMode?: TwilioTransportMode;
+  requirePrompt?: boolean;
+  transportLabel?: string;
 }
 
 export interface UseTwilioVoiceGatewayResult {
+  transportMode: TwilioTransportMode;
+  transportLabel: string;
   capability: TwilioCapabilitySnapshot;
   loadingCapability: boolean;
   targetNumber: string;
@@ -86,6 +96,7 @@ export interface UseTwilioVoiceGatewayResult {
   inboundDebugAudioPcm8kUrl: string;
   inboundDebugAudioPcm16kUrl: string;
   inboundDebugAudioSummaryText: string;
+  inboundDebugAudioKind: TwilioInboundDebugAudioKind;
   loadingInboundDebugAudio: boolean;
   traceDiagnostic: BackendTraceDiagnosticResponse | null;
   loadingTraceDiagnostic: boolean;
@@ -117,11 +128,15 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 export function useTwilioVoiceGateway({
   identity,
+  transportMode = 'media_stream_live',
+  requirePrompt = true,
+  transportLabel = 'Twilio Media Streams -> Gemini Live 音频双向桥接',
 }: UseTwilioVoiceGatewayOptions): UseTwilioVoiceGatewayResult {
   const [capability, setCapability] = useState<TwilioCapabilitySnapshot>({
     configuredPhoneNumber: '',
     geminiGenerateImplemented: false,
     geminiLiveImplemented: false,
+    conversationalAgentsImplemented: false,
     twilioWebcallImplemented: false,
   });
   const [loadingCapability, setLoadingCapability] = useState(false);
@@ -140,6 +155,8 @@ export function useTwilioVoiceGateway({
   const [inboundDebugAudioPcm8kUrl, setInboundDebugAudioPcm8kUrl] = useState('');
   const [inboundDebugAudioPcm16kUrl, setInboundDebugAudioPcm16kUrl] = useState('');
   const [inboundDebugAudioSummaryText, setInboundDebugAudioSummaryText] = useState('');
+  const [inboundDebugAudioKind, setInboundDebugAudioKind] =
+    useState<TwilioInboundDebugAudioKind>('none');
   const [loadingInboundDebugAudio, setLoadingInboundDebugAudio] = useState(false);
   const [traceDiagnostic, setTraceDiagnostic] = useState<BackendTraceDiagnosticResponse | null>(null);
   const [loadingTraceDiagnostic, setLoadingTraceDiagnostic] = useState(false);
@@ -204,6 +221,7 @@ export function useTwilioVoiceGateway({
     setInboundDebugAudioPcm8kUrl('');
     setInboundDebugAudioPcm16kUrl('');
     setInboundDebugAudioSummaryText('');
+    setInboundDebugAudioKind('none');
     setLoadingInboundDebugAudio(false);
   }, []);
 
@@ -321,6 +339,7 @@ export function useTwilioVoiceGateway({
       const twilioWebcall = asRecord(matrix.twilio_webcall);
       const geminiGenerateGateway = asRecord(matrix.gemini_generate_gateway);
       const geminiLiveGateway = asRecord(matrix.gemini_live_gateway);
+      const conversationalAgentsGateway = asRecord(matrix.google_conversational_agents_twilio_adapter);
       const configuredNumber = String(twilioWebcall.configured_phone_number ?? '').trim();
 
       setCapability({
@@ -328,6 +347,8 @@ export function useTwilioVoiceGateway({
         twilioWebcallImplemented: String(twilioWebcall.status ?? '') === 'implemented',
         geminiGenerateImplemented: String(geminiGenerateGateway.status ?? '') === 'implemented',
         geminiLiveImplemented: String(geminiLiveGateway.status ?? '') === 'implemented',
+        conversationalAgentsImplemented:
+          String(conversationalAgentsGateway.status ?? '') === 'implemented',
       });
 
       if (configuredNumber) {
@@ -509,9 +530,10 @@ export function useTwilioVoiceGateway({
 
   useEffect(() => {
     const activeCallSid = traceCallSid.trim();
-    const latestSavedAudioEvent = [...traceEvents]
-      .reverse()
-      .find((event) => event.type === 'inbound_debug_wav_saved' && event.seq > 0);
+    const reversedEvents = [...traceEvents].reverse();
+    const latestSavedAudioEvent =
+      reversedEvents.find((event) => event.type === 'followup_debug_wav_saved' && event.seq > 0) ??
+      reversedEvents.find((event) => event.type === 'inbound_debug_wav_saved' && event.seq > 0);
 
     if (!activeCallSid) {
       clearInboundDebugAudio();
@@ -519,10 +541,14 @@ export function useTwilioVoiceGateway({
     }
 
     if (!latestSavedAudioEvent) {
+      clearInboundDebugAudio();
       return;
     }
 
     setInboundDebugAudioSummaryText(latestSavedAudioEvent.text ?? '');
+    const debugAudioKind: TwilioInboundDebugAudioKind =
+      latestSavedAudioEvent.type === 'followup_debug_wav_saved' ? 'followup' : 'tail';
+    setInboundDebugAudioKind(debugAudioKind);
     if (
       inboundDebugAudioSeqRef.current === latestSavedAudioEvent.seq &&
       (inboundDebugAudioPcm8kUrlRef.current || inboundDebugAudioPcm16kUrlRef.current)
@@ -535,7 +561,18 @@ export function useTwilioVoiceGateway({
     inboundDebugAudioRequestRef.current = controller;
     setLoadingInboundDebugAudio(true);
 
-    const loadVariant = async (variant: 'pcm8k_raw' | 'pcm16k_resampled') => {
+    const variants =
+      debugAudioKind === 'followup'
+        ? (['followup_pcm8k_raw', 'followup_pcm16k_resampled'] as const)
+        : (['pcm8k_raw', 'pcm16k_resampled'] as const);
+
+    const loadVariant = async (
+      variant:
+        | 'pcm8k_raw'
+        | 'pcm16k_resampled'
+        | 'followup_pcm8k_raw'
+        | 'followup_pcm16k_resampled'
+    ) => {
       const audioUrl =
         `${API_BASE_URL}/twilio/voice/trace/inbound-audio?call_sid=${encodeURIComponent(activeCallSid)}` +
         `&variant=${encodeURIComponent(variant)}`;
@@ -556,7 +593,7 @@ export function useTwilioVoiceGateway({
       };
     };
 
-    void Promise.allSettled([loadVariant('pcm8k_raw'), loadVariant('pcm16k_resampled')])
+    void Promise.allSettled([loadVariant(variants[0]), loadVariant(variants[1])])
       .then((results) => {
         if (controller.signal.aborted) {
           return;
@@ -576,7 +613,7 @@ export function useTwilioVoiceGateway({
 
           loadedCount += 1;
           const nextUrl = URL.createObjectURL(result.value.blob);
-          if (result.value.variant === 'pcm8k_raw') {
+          if (result.value.variant === 'pcm8k_raw' || result.value.variant === 'followup_pcm8k_raw') {
             if (inboundDebugAudioPcm8kUrlRef.current) {
               URL.revokeObjectURL(inboundDebugAudioPcm8kUrlRef.current);
             }
@@ -606,6 +643,7 @@ export function useTwilioVoiceGateway({
           }
           setInboundDebugAudioPcm8kUrl('');
           setInboundDebugAudioPcm16kUrl('');
+          setInboundDebugAudioKind('none');
         }
 
         if (shouldWarn && loadedCount === 0) {
@@ -695,12 +733,14 @@ export function useTwilioVoiceGateway({
                   echoCancellation: true,
                   noiseSuppression: true,
                   autoGainControl: true,
+                  channelCount: 1,
                 }
               : requestedAudio
                 ? {
                     echoCancellation: true,
                     noiseSuppression: true,
                     autoGainControl: true,
+                    channelCount: 1,
                   }
                 : requestedAudio;
 
@@ -786,7 +826,8 @@ export function useTwilioVoiceGateway({
           setError('请先配置有效的目标号码（E.164）。');
           return;
         }
-        if (!promptCode.trim()) {
+        const normalizedPromptCode = (promptCode || '').trim();
+        if (requirePrompt && !normalizedPromptCode) {
           setError('请先选择 Prompt 模板。');
           return;
         }
@@ -809,9 +850,11 @@ export function useTwilioVoiceGateway({
 
         const params: Record<string, string> = {
           To: target,
-          prompt_code: promptCode,
-          voice_route: 'media_stream_live',
+          voice_route: transportMode,
         };
+        if (normalizedPromptCode) {
+          params.prompt_code = normalizedPromptCode;
+        }
         const normalizedVoiceName = (voiceName || '').trim();
         if (normalizedVoiceName) {
           params.voice_name = normalizedVoiceName;
@@ -826,7 +869,7 @@ export function useTwilioVoiceGateway({
           setSdkCallSid(callSid);
         }
 
-        setInfo('已发起通话，当前链路为 Twilio Media Streams -> Gemini Live 音频双向桥接。');
+        setInfo(`已发起通话，当前链路为 ${transportLabel}。`);
       } catch (dialError) {
         const message = formatTwilioSdkError('拨号失败', dialError);
         setCallStatus('error');
@@ -834,7 +877,16 @@ export function useTwilioVoiceGateway({
         appendLog('error', message);
       }
     },
-    [appendLog, bindCallEvents, clearTraceBinding, registerDevice, targetNumber]
+    [
+      appendLog,
+      bindCallEvents,
+      clearTraceBinding,
+      registerDevice,
+      requirePrompt,
+      targetNumber,
+      transportLabel,
+      transportMode,
+    ]
   );
 
   const prepareInboundCall = useCallback(
@@ -847,32 +899,35 @@ export function useTwilioVoiceGateway({
           setError('当前没有可用的 Twilio 入站号码。请先检查后端 TWILIO_PHONE_NUMBER 配置。');
           return;
         }
-        if (!promptCode.trim()) {
+        const normalizedPromptCode = (promptCode || '').trim();
+        if (requirePrompt && !normalizedPromptCode) {
           setError('请先选择 Prompt 模板。');
           return;
         }
 
         const response = await http.post('/twilio/voice/incoming/prepare', {
           to_number: inboundNumber,
-          prompt_code: promptCode,
-          voice_route: 'media_stream_live',
+          prompt_code: normalizedPromptCode || undefined,
+          voice_route: transportMode,
           voice_name: (voiceName || '').trim() || undefined,
         });
         const data = asRecord(asRecord(response.data).data);
         const expiresIn = Number(data.expires_in_seconds ?? 0);
         const resolvedNumber = String(data.to_number ?? inboundNumber).trim() || inboundNumber;
-        const resolvedPrompt = String(data.prompt_code ?? promptCode).trim() || promptCode;
+        const resolvedPrompt = String(data.prompt_code ?? normalizedPromptCode).trim();
         const resolvedRoute = String(data.voice_route ?? '').trim();
         const resolvedVoice = String(data.voice_name ?? '').trim();
 
         appendLog(
           'success',
-          `已准备下一通入呼：${resolvedNumber}，Prompt=${resolvedPrompt}${
+          `已准备下一通入呼：${resolvedNumber}${resolvedPrompt ? `，Prompt=${resolvedPrompt}` : ''}${
             resolvedRoute ? `，Route=${resolvedRoute}` : ''
           }${resolvedVoice ? `，Voice=${resolvedVoice}` : ''}。`
         );
         setInfo(
-          `已为 ${resolvedNumber} 准备下一通入呼，${expiresIn || 180} 秒内拨入该 Twilio 号码会使用 Prompt ${resolvedPrompt}，并走 Twilio Media Streams -> Gemini Live${resolvedVoice ? `，音色 ${resolvedVoice}` : ''}。`
+          `已为 ${resolvedNumber} 准备下一通入呼，${expiresIn || 180} 秒内拨入该 Twilio 号码会使用${
+            resolvedPrompt ? ` Prompt ${resolvedPrompt}` : ' 官方基线 Demo'
+          }，并走 ${transportLabel}${resolvedVoice ? `，音色 ${resolvedVoice}` : ''}。`
         );
       } catch (prepareError) {
         const message = prepareError instanceof Error ? prepareError.message : String(prepareError);
@@ -880,7 +935,7 @@ export function useTwilioVoiceGateway({
         appendLog('error', `准备入呼失败: ${message}`);
       }
     },
-    [appendLog, capability.configuredPhoneNumber, targetNumber]
+    [appendLog, capability.configuredPhoneNumber, requirePrompt, targetNumber, transportLabel, transportMode]
   );
 
   const hangupCall = useCallback(() => {
@@ -931,6 +986,8 @@ export function useTwilioVoiceGateway({
 
   return useMemo(
     () => ({
+      transportMode,
+      transportLabel,
       capability,
       loadingCapability,
       targetNumber,
@@ -947,6 +1004,7 @@ export function useTwilioVoiceGateway({
       inboundDebugAudioPcm8kUrl,
       inboundDebugAudioPcm16kUrl,
       inboundDebugAudioSummaryText,
+      inboundDebugAudioKind,
       loadingInboundDebugAudio,
       traceDiagnostic,
       loadingTraceDiagnostic,
@@ -981,12 +1039,15 @@ export function useTwilioVoiceGateway({
       setTargetNumber,
       startDial,
       sdkCallSid,
+      transportLabel,
+      transportMode,
       targetNumber,
       targetNumberLocked,
       token,
       activeTraceCalls,
       inboundDebugAudioPcm16kUrl,
       inboundDebugAudioPcm8kUrl,
+      inboundDebugAudioKind,
       inboundDebugAudioSummaryText,
       loadingInboundDebugAudio,
       traceCallSid,

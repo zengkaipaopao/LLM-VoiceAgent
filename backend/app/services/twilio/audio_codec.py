@@ -162,14 +162,76 @@ class DecodedTwilioInboundAudio:
     pcm8k: bytes
     pcm16k: bytes
     rms: int
+    conditioned_rms: int
+
+
+@dataclass
+class PcmNoiseGate:
+    sample_rate: int
+    enabled: bool = True
+    open_rms: int = 140
+    close_rms: int = 90
+    frame_ms: int = 20
+    hold_ms: int = 240
+    _gate_open: bool = field(default=False, init=False, repr=False)
+    _hold_frames_remaining: int = field(default=0, init=False, repr=False)
+    _frame_samples: int = field(default=0, init=False, repr=False)
+    _hold_frames: int = field(default=0, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self._frame_samples = max(1, int((self.sample_rate * max(1, self.frame_ms)) / 1000))
+        self._hold_frames = max(0, int(max(0, self.hold_ms) / max(1, self.frame_ms)))
+
+    def process(self, pcm16_bytes: bytes) -> bytes:
+        if not self.enabled or not pcm16_bytes:
+            return pcm16_bytes
+
+        samples = pcm16_bytes_to_samples(pcm16_bytes)
+        if not samples:
+            return pcm16_bytes
+
+        output: list[int] = []
+        for index in range(0, len(samples), self._frame_samples):
+            frame = samples[index : index + self._frame_samples]
+            if not frame:
+                continue
+            rms = compute_pcm16_stats(frame, sample_rate=self.sample_rate)["rms"]
+            keep_frame = False
+
+            if self._gate_open:
+                if rms >= self.close_rms:
+                    self._hold_frames_remaining = self._hold_frames
+                    keep_frame = True
+                elif self._hold_frames_remaining > 0:
+                    self._hold_frames_remaining -= 1
+                    keep_frame = True
+                else:
+                    self._gate_open = False
+
+            if not self._gate_open and rms >= self.open_rms:
+                self._gate_open = True
+                self._hold_frames_remaining = self._hold_frames
+                keep_frame = True
+
+            if keep_frame:
+                output.extend(frame)
+            else:
+                output.extend(0 for _ in frame)
+
+        return _samples_to_pcm16_bytes(output)
 
 
 @dataclass
 class TwilioMediaAudioCodec:
     input_batch_ms: int = 100
     twilio_frame_bytes: int = 160
+    input_noise_gate_enabled: bool = True
+    input_noise_gate_open_rms: int = 140
+    input_noise_gate_close_rms: int = 90
+    input_noise_gate_hold_ms: int = 240
     _inbound_resampler: LinearPcmResampler = field(init=False, repr=False)
     _outbound_resampler: LinearPcmResampler = field(init=False, repr=False)
+    _input_noise_gate: PcmNoiseGate = field(init=False, repr=False)
     _audioop_inbound_state: object | None = field(default=None, init=False, repr=False)
     _audioop_outbound_state: object | None = field(default=None, init=False, repr=False)
     _audioop_outbound_source_rate: int = field(
@@ -188,6 +250,13 @@ class TwilioMediaAudioCodec:
         self._outbound_resampler = LinearPcmResampler(
             source_rate=_DEFAULT_MODEL_OUTPUT_SAMPLE_RATE,
             target_rate=_TWILIO_OUTPUT_SAMPLE_RATE,
+        )
+        self._input_noise_gate = PcmNoiseGate(
+            sample_rate=_TWILIO_INPUT_SAMPLE_RATE,
+            enabled=bool(self.input_noise_gate_enabled),
+            open_rms=max(0, int(self.input_noise_gate_open_rms or 0)),
+            close_rms=max(0, int(self.input_noise_gate_close_rms or 0)),
+            hold_ms=max(0, int(self.input_noise_gate_hold_ms or 0)),
         )
         batch_ms = max(20, int(self.input_batch_ms or 20))
         bytes_per_ms = (_GEMINI_INPUT_SAMPLE_RATE * 2) / 1000
@@ -212,8 +281,14 @@ class TwilioMediaAudioCodec:
         pcm8k_bytes = audioop.ulaw2lin(ulaw_bytes, 2)
         pcm8_samples = pcm16_bytes_to_samples(pcm8k_bytes)
         stats = compute_pcm16_stats(pcm8_samples, sample_rate=_TWILIO_INPUT_SAMPLE_RATE)
+        conditioned_pcm8k_bytes = self._input_noise_gate.process(pcm8k_bytes)
+        conditioned_pcm8_samples = pcm16_bytes_to_samples(conditioned_pcm8k_bytes)
+        conditioned_stats = compute_pcm16_stats(
+            conditioned_pcm8_samples,
+            sample_rate=_TWILIO_INPUT_SAMPLE_RATE,
+        )
         pcm16k_bytes, self._audioop_inbound_state = audioop.ratecv(
-            pcm8k_bytes,
+            conditioned_pcm8k_bytes,
             2,
             1,
             _TWILIO_INPUT_SAMPLE_RATE,
@@ -224,6 +299,7 @@ class TwilioMediaAudioCodec:
             pcm8k=pcm8k_bytes,
             pcm16k=pcm16k_bytes,
             rms=stats["rms"],
+            conditioned_rms=conditioned_stats["rms"],
         )
 
     def queue_inbound_audio(self, pcm16k: bytes) -> list[bytes]:

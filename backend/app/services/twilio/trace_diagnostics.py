@@ -57,6 +57,12 @@ def build_twilio_trace_diagnostic(
 
     error_events = [item for item in reversed_events if _lowered_text(item.get("level")) == "error"]
     warning_events = [item for item in reversed_events if _lowered_text(item.get("level")) == "warning"]
+    overlap_events = [
+        item for item in reversed_events if _normalized_text(item.get("type")) == "duplex_overlap_detected"
+    ]
+    stalled_events = [
+        item for item in reversed_events if _normalized_text(item.get("type")) == "gemini_turn_detection_stalled"
+    ]
 
     for event in error_events:
         event_type = _normalized_text(event.get("type"))
@@ -195,6 +201,36 @@ def build_twilio_trace_diagnostic(
                 evidence_events=[event],
             )
 
+    if stalled_events:
+        event = stalled_events[0]
+        if overlap_events:
+            return _build_diagnostic(
+                call_sid=call_sid,
+                status="warning",
+                category="duplex_overlap_vad_conflict",
+                owner="duplex_audio_path",
+                title="双工重叠音频干扰了 Gemini 自动 VAD",
+                summary="Trace 同时出现了 duplex_overlap_detected 和 gemini_turn_detection_stalled，说明后端持续上送的入站音频在助手播放窗口内与 Gemini 自动 VAD 发生了冲突，后续轮次没有被稳定提交。",
+                actions=[
+                    "优先用耳机复测浏览器外呼，避免扬声器回放重新进入麦克风。",
+                    "对照 live_runtime_config，确认新的 Gemini 自动 VAD 参数已经生效。",
+                ],
+                evidence_events=[event, *overlap_events[:2]],
+            )
+        return _build_diagnostic(
+            call_sid=call_sid,
+            status="warning",
+            category="gemini_turn_detection_stalled",
+            owner="gemini_live_turn_detection",
+            title="Gemini 未将后续电话语音提交成新回合",
+            summary="后端已经检测到后续轮次的人声，并保存了 5 秒调试音频，但在这段窗口内始终没有收到新的 input_transcript，说明 Gemini Live 的自动 turn detection 在这一轮没有完成提交。",
+            actions=[
+                "优先核对本次 trace 是否为 pure_realtime 会话，确认没有再混用显式 client content。",
+                "回放 followup PCM8k/PCM16k 调试音频；如果内容清晰但仍无 input_transcript，继续调 Gemini Live 的自动 activity 参数，而不是先怀疑 Twilio 解码。",
+            ],
+            evidence_events=[event],
+        )
+
     for event in warning_events:
         event_type = _normalized_text(event.get("type"))
         text = _normalized_text(event.get("text"))
@@ -262,6 +298,30 @@ def build_twilio_trace_diagnostic(
         _normalized_text(item.get("type")) in {"input_transcript", "interrupted"}
         for item in ordered_events
     )
+    resumed_events = [
+        item for item in reversed_events if _normalized_text(item.get("type")) == "audio_stream_resumed"
+    ]
+    pause_flush_events = [
+        item for item in reversed_events if _normalized_text(item.get("type")) == "audio_stream_end_sent"
+    ]
+
+    if resumed_events and not has_user_activity and not has_assistant_audio:
+        return _build_diagnostic(
+            call_sid=call_sid,
+            status="warning",
+            category="upstream_audio_without_turn",
+            owner="gemini_live_turn_detection",
+            title="检测到电话上行语音，但 Gemini 没有形成回合",
+            summary=(
+                "后端已经检测到有效电话语音活动，并把该段音频送入 Gemini Live，"
+                "但当前既没有新的用户转写，也没有模型语音回复。"
+            ),
+            actions=[
+                "优先核对当前上行音频是否被切得过碎，特别是 audio_stream_resumed / audio_stream_end_sent 的节奏。",
+                "回放最近 5 秒调试音频；如果内容清晰，问题更可能在 Gemini Live 自动 turn detection，而不是 Twilio 解码。",
+            ],
+            evidence_events=[*resumed_events[:2], *pause_flush_events[:1]],
+        )
 
     if stream_active and has_stream_start and not has_assistant_audio and latest_event_ts > 0 and (now_ms - latest_event_ts) >= 6000:
         return _build_diagnostic(

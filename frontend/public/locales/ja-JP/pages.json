@@ -237,6 +237,7 @@
       "ariaLabel": "テストオプション",
       "text": "テキストテスト",
       "voice": "音声テスト",
+      "official_demo": "公式ベースライン",
       "reviewer": "レビュアーモード",
       "appointment": "予約シミュレーション"
     },

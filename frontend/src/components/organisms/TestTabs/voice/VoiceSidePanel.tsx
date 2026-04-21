@@ -133,6 +133,19 @@ export function VoiceSidePanel({
     [twilioGateway.traceEvents]
   );
 
+  const inboundDebugAudioTitle =
+    twilioGateway.inboundDebugAudioKind === 'followup' ? '后续轮次候选音频对比' : '最近 5 秒入站音频对比';
+  const inboundDebugAudioSummaryFallback =
+    twilioGateway.inboundDebugAudioKind === 'followup'
+      ? '已保存上一轮 AI 播放完成后检测到的第一段可疑用户语音，可直接比较 8k 原始样本与 16k 上送样本。'
+      : '已保存最近 5 秒入站调试音频，可直接比较 8k 原始样本与 16k 上送样本。';
+  const inboundDebugAudioLoadingText =
+    twilioGateway.inboundDebugAudioKind === 'followup'
+      ? '正在加载后续轮次候选双路调试音频...'
+      : '正在加载最近 5 秒双路调试音频...';
+  const inboundDebugAudioEmptyText =
+    '通话结束或链路异常后，会自动保存最近 5 秒尾部样本；如果检测到上一轮 AI 播放完成后的疑似用户新一轮讲话，也会优先保存那段候选音频。';
+
   const twilioTraceStats = useMemo(() => {
     let finalUserTurns = 0;
     let finalAssistantTurns = 0;
@@ -330,7 +343,7 @@ export function VoiceSidePanel({
             <pre className={styles.transcriptBody}>{latestTwilioAssistantTurn || '等待模型回复...'}</pre>
           </div>
           <div className={styles.transcriptCard}>
-            <h5 className={styles.transcriptHeading}>最近 5 秒入站音频对比</h5>
+            <h5 className={styles.transcriptHeading}>{inboundDebugAudioTitle}</h5>
             {twilioGateway.inboundDebugAudioPcm8kUrl || twilioGateway.inboundDebugAudioPcm16kUrl ? (
               <>
                 <div className={styles.audioDebugGroup}>
@@ -369,15 +382,13 @@ export function VoiceSidePanel({
                 </div>
                 <p className={styles.audioCaption}>
                   {twilioGateway.inboundDebugAudioSummaryText ||
-                    '已保存最近 5 秒入站调试音频，可直接比较 8k 原始样本与 16k 上送样本。'}
+                    inboundDebugAudioSummaryFallback}
                 </p>
               </>
             ) : twilioGateway.loadingInboundDebugAudio ? (
-              <p className={styles.emptyText}>正在加载最近 5 秒双路调试音频...</p>
+              <p className={styles.emptyText}>{inboundDebugAudioLoadingText}</p>
             ) : (
-              <p className={styles.emptyText}>
-                通话结束或链路异常后，会自动保存最近 5 秒原始 PCM8k 与上送前 PCM16k 音频并在这里回放。
-              </p>
+              <p className={styles.emptyText}>{inboundDebugAudioEmptyText}</p>
             )}
           </div>
         </div>

@@ -125,10 +125,13 @@ function buildLiveWebsocket() {
 
 function buildTwilioGateway() {
   return {
+    transportMode: 'media_stream_live',
+    transportLabel: 'Twilio Media Streams -> Gemini Live 音频双向桥接',
     capability: {
       configuredPhoneNumber: '+815012345678',
       geminiGenerateImplemented: true,
       geminiLiveImplemented: true,
+      conversationalAgentsImplemented: false,
       twilioWebcallImplemented: true,
     },
     loadingCapability: false,
@@ -146,6 +149,7 @@ function buildTwilioGateway() {
     inboundDebugAudioPcm8kUrl: '',
     inboundDebugAudioPcm16kUrl: '',
     inboundDebugAudioSummaryText: '',
+    inboundDebugAudioKind: 'none',
     loadingInboundDebugAudio: false,
     traceDiagnostic: null,
     loadingTraceDiagnostic: false,

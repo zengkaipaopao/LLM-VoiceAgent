@@ -36,10 +36,23 @@ async def capability_matrix():
                 "status": "implemented",
                 "default_engine": settings.twilio_incoming_voice_engine,
                 "supported_engines": ["twilio", "gemini"],
-                "supported_routes": ["gather", "media_stream_live"],
+                "supported_routes": [
+                    "gather",
+                    "media_stream_live",
+                    "official_demo_live",
+                    "official_conversational_agents",
+                ],
                 "gemini_activity_mode": "auto_only",
                 "gemini_activity_handling": "start_of_activity_interrupts",
                 "runtime_store_backend": settings.twilio_runtime_store_backend,
+            },
+            "google_conversational_agents_twilio_adapter": {
+                "status": "implemented" if settings.twilio_official_ca_configured else "disabled",
+                "requires": [
+                    "TWILIO_OFFICIAL_CA_DEPLOYMENT_ID or TWILIO_OFFICIAL_CA_AGENT_ID",
+                    "Google ADC with roles/ces.client",
+                ],
+                "environment": settings.twilio_official_ca_environment,
             },
             "provider_support": {
                 "gemini": "implemented",
