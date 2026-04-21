@@ -52,11 +52,11 @@ function resolveTraceTime(timestampMs: number): string {
 
 function findLatestTraceTurn(
   events: UseTwilioVoiceGatewayResult['traceEvents'],
-  type: 'input_transcript' | 'output_transcript'
+  types: string[]
 ): string {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
-    if (event.type !== type) {
+    if (!types.includes(event.type)) {
       continue;
     }
     const text = resolveTraceText(event.type || '', event.text || '', event.final).trim();
@@ -78,6 +78,7 @@ export function VoiceSidePanel({
   directDiagnostic,
   twilioDiagnostic,
 }: VoiceSidePanelProps) {
+  const isOfficialCaRoute = twilioGateway.transportMode === 'official_conversational_agents';
   const directDialogueHistory = useMemo<DialogueHistoryItem[]>(() => {
     const items: DialogueHistoryItem[] = [];
     for (const log of liveWebsocket.logs) {
@@ -124,12 +125,17 @@ export function VoiceSidePanel({
   }, [directDialogueHistory]);
 
   const latestTwilioUserTurn = useMemo(
-    () => findLatestTraceTurn(twilioGateway.traceEvents, 'input_transcript'),
+    () => findLatestTraceTurn(twilioGateway.traceEvents, ['input_transcript']),
     [twilioGateway.traceEvents]
   );
 
   const latestTwilioAssistantTurn = useMemo(
-    () => findLatestTraceTurn(twilioGateway.traceEvents, 'output_transcript'),
+    () =>
+      findLatestTraceTurn(twilioGateway.traceEvents, [
+        'output_transcript',
+        'assistant_text',
+        'assistant_meta_text',
+      ]),
     [twilioGateway.traceEvents]
   );
 
@@ -263,15 +269,21 @@ export function VoiceSidePanel({
           </div>
           <div className={styles.metaRow}>
             <dt>音色来源</dt>
-            <dd>{isPromptVoiceConfigured ? `Prompt: ${selectedPrompt?.code}` : `Resolved: ${effectiveVoice || '-'}`}</dd>
+            <dd>
+              {isOfficialCaRoute
+                ? '由 Google CX Agent Studio / CES Deployment 决定'
+                : isPromptVoiceConfigured
+                  ? `Prompt: ${selectedPrompt?.code}`
+                  : `Resolved: ${effectiveVoice || '-'}`}
+            </dd>
           </div>
           <div className={styles.metaRow}>
             <dt>电话链路模式</dt>
-            <dd>Media Streams + Gemini Live</dd>
+            <dd>{isOfficialCaRoute ? 'Official CA + Twilio' : 'Media Streams + Gemini Live'}</dd>
           </div>
           <div className={styles.metaRow}>
             <dt>语音引擎</dt>
-            <dd>Gemini Live</dd>
+            <dd>{isOfficialCaRoute ? 'Conversational Agents' : 'Gemini Live'}</dd>
           </div>
           <div className={styles.metaRow}>
             <dt>系统能力</dt>
@@ -280,8 +292,24 @@ export function VoiceSidePanel({
                 电话网关（Twilio）{twilioGateway.capability.twilioWebcallImplemented ? ' OK' : ' Unavailable'}
               </Tag>
               &nbsp;
-              <Tag type={twilioGateway.capability.geminiLiveImplemented ? 'green' : 'red'}>
-                Gemini Live {twilioGateway.capability.geminiLiveImplemented ? ' OK' : ' Unavailable'}
+              <Tag
+                type={
+                  isOfficialCaRoute
+                    ? twilioGateway.capability.conversationalAgentsImplemented
+                      ? 'green'
+                      : 'red'
+                    : twilioGateway.capability.geminiLiveImplemented
+                      ? 'green'
+                      : 'red'
+                }
+              >
+                {isOfficialCaRoute
+                  ? `Conversational Agents ${
+                      twilioGateway.capability.conversationalAgentsImplemented
+                        ? 'OK'
+                        : 'Unavailable'
+                    }`
+                  : `Gemini Live ${twilioGateway.capability.geminiLiveImplemented ? 'OK' : 'Unavailable'}`}
               </Tag>
             </dd>
           </div>
@@ -316,7 +344,7 @@ export function VoiceSidePanel({
             <dt>活跃流候选</dt>
             <dd>
               {twilioGateway.activeTraceCalls.length === 0 ? (
-                '暂无活跃 Media Stream。'
+                isOfficialCaRoute ? '暂无活跃官方电话流。' : '暂无活跃 Media Stream。'
               ) : (
                 <ul className={styles.diagnosticList}>
                   {twilioGateway.activeTraceCalls.map((item) => (

@@ -38,8 +38,6 @@ async def capability_matrix():
                 "supported_engines": ["twilio", "gemini"],
                 "supported_routes": [
                     "gather",
-                    "media_stream_live",
-                    "official_demo_live",
                     "official_conversational_agents",
                 ],
                 "gemini_activity_mode": "auto_only",

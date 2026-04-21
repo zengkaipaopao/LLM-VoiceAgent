@@ -4,9 +4,9 @@ const LEGACY_TEST_TAB_ID_MAP: Record<string, string> = {
   twilio: 'voice',
   websocket: 'voice',
   live: 'voice',
-  official: 'official_demo',
-  baseline: 'official_demo',
-  adapter: 'official_demo',
+  official: 'voice',
+  baseline: 'voice',
+  adapter: 'voice',
 };
 
 export const DEFAULT_TEST_TAB_ID = 'text';

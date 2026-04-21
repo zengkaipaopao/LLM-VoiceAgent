@@ -47,11 +47,6 @@ export const testTabs: TestTabNavItem[] = [
     icon: PhoneVoice,
   },
   {
-    id: 'official_demo',
-    label: 'official_demo',
-    icon: Phone,
-  },
-  {
     id: 'reviewer',
     label: 'reviewer',
     icon: WatsonHealthAiStatus,

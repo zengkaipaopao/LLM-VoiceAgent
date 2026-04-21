@@ -14,12 +14,6 @@ const VoiceTestTab = lazy(() =>
   }))
 );
 
-const OfficialBaselineTab = lazy(() =>
-  import('./official-demo/components/OfficialBaselineTab').then((module) => ({
-    default: module.OfficialBaselineTab,
-  }))
-);
-
 const ReviewerTabContent = lazy(() =>
   import('../../components/organisms/TestTabs/ReviewerTabContent').then((module) => ({
     default: module.ReviewerTabContent,
@@ -29,6 +23,5 @@ const ReviewerTabContent = lazy(() =>
 export const testTabComponents: Record<string, ComponentType<TabComponentProps>> = {
   text: TextTestTab,
   voice: VoiceTestTab,
-  official_demo: OfficialBaselineTab,
   reviewer: ReviewerTabContent,
 };

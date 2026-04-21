@@ -404,7 +404,7 @@
         "goalValue": "音声接続性",
         "route": "接続方式",
         "routeDirect": "ブラウザから Gemini へ直接接続",
-        "routeTwilio": "電話ゲートウェイ（Media Streams）",
+        "routeTwilio": "電話ゲートウェイ（公式 Conversational Agents）",
         "connection": "接続状態",
         "audio": "音声入力",
         "prompt": "Prompt",

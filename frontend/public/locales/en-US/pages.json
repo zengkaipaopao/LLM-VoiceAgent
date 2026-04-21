@@ -404,7 +404,7 @@
         "goalValue": "Voice connectivity",
         "route": "Route",
         "routeDirect": "Browser direct to Gemini",
-        "routeTwilio": "Phone gateway (Media Streams)",
+        "routeTwilio": "Phone gateway (Official Conversational Agents)",
         "connection": "Connection",
         "audio": "Audio Capture",
         "prompt": "Prompt",

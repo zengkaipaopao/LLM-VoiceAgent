@@ -125,13 +125,13 @@ function buildLiveWebsocket() {
 
 function buildTwilioGateway() {
   return {
-    transportMode: 'media_stream_live',
-    transportLabel: 'Twilio Media Streams -> Gemini Live 音频双向桥接',
+    transportMode: 'official_conversational_agents',
+    transportLabel: '官方 Conversational Agents（Google CX Agent Studio + Twilio）',
     capability: {
       configuredPhoneNumber: '+815012345678',
       geminiGenerateImplemented: true,
       geminiLiveImplemented: true,
-      conversationalAgentsImplemented: false,
+      conversationalAgentsImplemented: true,
       twilioWebcallImplemented: true,
     },
     loadingCapability: false,

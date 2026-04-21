@@ -542,8 +542,9 @@ async def incoming_voice_webhook(
     voice_route: Optional[str] = Query(
         default=None,
         description=(
-            "Inbound AI voice route: gather, media_stream_live, "
-            "official_demo_live, or official_conversational_agents."
+            "Inbound AI voice route: gather or official_conversational_agents. "
+            "Legacy aliases media_stream_live and official_demo_live are normalized "
+            "to official_conversational_agents."
         ),
     ),
     voice_engine: Optional[str] = Query(

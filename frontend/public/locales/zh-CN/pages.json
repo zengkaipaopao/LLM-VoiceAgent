@@ -404,7 +404,7 @@
         "goalValue": "语音连通性",
         "route": "接入方式",
         "routeDirect": "浏览器直连 Gemini",
-        "routeTwilio": "电话网关（Media Streams）",
+        "routeTwilio": "电话网关（官方 Conversational Agents）",
         "connection": "连接状态",
         "audio": "音频采集",
         "prompt": "Prompt",

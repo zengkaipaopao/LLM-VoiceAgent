@@ -24,6 +24,7 @@ import {
 } from '../diagnostics';
 
 const DEFAULT_IDENTITY = 'webcall-tester';
+const OFFICIAL_CA_TRANSPORT_LABEL = '官方 Conversational Agents（Google CX Agent Studio + Twilio）';
 
 function toDialerTone(status: UseTwilioVoiceGatewayResult['dialerStatus']): 'green' | 'blue' | 'cool-gray' | 'red' {
   if (status === 'registered') return 'green';
@@ -42,7 +43,12 @@ function toCallTone(status: UseTwilioVoiceGatewayResult['callStatus']): 'green' 
 export function VoiceTestTab() {
   const { t } = useTranslation(['pages']);
   const liveWebsocket = useVoiceTestConsole();
-  const twilioGateway = useTwilioVoiceGateway({ identity: DEFAULT_IDENTITY });
+  const twilioGateway = useTwilioVoiceGateway({
+    identity: DEFAULT_IDENTITY,
+    transportMode: 'official_conversational_agents',
+    requirePrompt: false,
+    transportLabel: OFFICIAL_CA_TRANSPORT_LABEL,
+  });
   const { voiceCatalog: geminiVoiceCatalog, loadingVoices: loadingGeminiVoices } =
     useGeminiVoiceCatalog();
 
@@ -183,7 +189,7 @@ export function VoiceTestTab() {
       value:
         routeMode === 'direct'
           ? t('pages:test.voiceLab.summary.routeDirect', 'Browser direct to Gemini')
-          : t('pages:test.voiceLab.summary.routeTwilio', 'Phone gateway (Media Streams)'),
+          : t('pages:test.voiceLab.summary.routeTwilio', 'Phone gateway (Official CA)'),
       tone: 'teal',
     },
     {
@@ -203,15 +209,15 @@ export function VoiceTestTab() {
     {
       id: 'prompt',
       label: t('pages:test.voiceLab.summary.prompt', 'Prompt'),
-      value: selectedPromptCode || '-',
+      value: routeMode === 'direct' ? selectedPromptCode || '-' : 'Google CA managed',
       mono: true,
     },
     {
       id: 'voice',
       label: t('pages:test.voiceLab.summary.voice', 'Gemini Voice'),
-      value: effectiveVoice || '-',
+      value: routeMode === 'direct' ? effectiveVoice || '-' : 'Google CA managed',
       mono: true,
-      tone: routeMode === 'twilio' && isPromptVoiceConfigured ? 'teal' : 'cool-gray',
+      tone: routeMode === 'twilio' ? 'teal' : 'cool-gray',
     },
   ];
 
@@ -220,6 +226,9 @@ export function VoiceTestTab() {
   const compatibilityWarning = useMemo(() => {
     const translateModelWarning = (key: string, options: { defaultValue: string; [key: string]: unknown }) =>
       t(key, options);
+    if (routeMode !== 'direct') {
+      return null;
+    }
     const promptWarning = describeVoiceTabPromptModelWarning(
       selectedPrompt?.llmModel,
       selectedPromptCode,

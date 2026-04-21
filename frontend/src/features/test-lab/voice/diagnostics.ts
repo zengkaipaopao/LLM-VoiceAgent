@@ -272,7 +272,7 @@ export function classifyGatewayFallbackDiagnostic(params: {
       title: '电话已接通，但后端还没有写入 trace',
       summary: '浏览器侧显示通话已经进入 in-call，但测试页尚未拿到任何后端 trace 事件。',
       actions: [
-        '检查后端是否成功收到 Twilio Media Streams WebSocket 连接。',
+        '检查后端是否成功收到 Twilio 电话流并建立官方 Conversational Agents 会话。',
         '检查 Call SID 与 trace 轮询的 Call SID 是否一致。',
       ],
       evidence: evidence.slice(0, 3),

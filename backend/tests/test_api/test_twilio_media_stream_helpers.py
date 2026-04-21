@@ -504,7 +504,7 @@ async def test_pending_inbound_override_can_store_voice_route():
     payload = await _consume_pending_inbound_override_for_number("+815012345679")
     assert payload == {
         "prompt_code": "base_appointment",
-        "voice_route": "media_stream_live",
+        "voice_route": "official_conversational_agents",
         "voice_engine": None,
         "voice_name": "Aoede",
     }
@@ -516,14 +516,14 @@ def test_resolve_twilio_inbound_voice_route_prefers_explicit_route():
             voice_route="media_stream_live",
             voice_engine="twilio",
         )
-        == "media_stream_live"
+        == "official_conversational_agents"
     )
     assert (
         _resolve_twilio_inbound_voice_route(
             voice_route="official_demo_live",
             voice_engine="twilio",
         )
-        == "official_demo_live"
+        == "official_conversational_agents"
     )
     assert (
         _resolve_twilio_inbound_voice_route(
@@ -538,7 +538,7 @@ def test_resolve_twilio_inbound_voice_route_maps_legacy_engine_values():
     assert _resolve_twilio_inbound_voice_route(voice_route=None, voice_engine="twilio") == "gather"
     assert (
         _resolve_twilio_inbound_voice_route(voice_route=None, voice_engine="gemini")
-        == "media_stream_live"
+        == "official_conversational_agents"
     )
 
 

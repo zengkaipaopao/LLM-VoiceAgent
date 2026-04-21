@@ -128,9 +128,9 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 export function useTwilioVoiceGateway({
   identity,
-  transportMode = 'media_stream_live',
+  transportMode = 'official_conversational_agents',
   requirePrompt = true,
-  transportLabel = 'Twilio Media Streams -> Gemini Live 音频双向桥接',
+  transportLabel = '官方 Conversational Agents（Google CX Agent Studio + Twilio）',
 }: UseTwilioVoiceGatewayOptions): UseTwilioVoiceGatewayResult {
   const [capability, setCapability] = useState<TwilioCapabilitySnapshot>({
     configuredPhoneNumber: '',
@@ -926,7 +926,7 @@ export function useTwilioVoiceGateway({
         );
         setInfo(
           `已为 ${resolvedNumber} 准备下一通入呼，${expiresIn || 180} 秒内拨入该 Twilio 号码会使用${
-            resolvedPrompt ? ` Prompt ${resolvedPrompt}` : ' 官方基线 Demo'
+            resolvedPrompt ? ` Prompt ${resolvedPrompt}` : ' Google 官方 Conversational Agents 配置'
           }，并走 ${transportLabel}${resolvedVoice ? `，音色 ${resolvedVoice}` : ''}。`
         );
       } catch (prepareError) {
