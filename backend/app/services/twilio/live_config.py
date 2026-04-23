@@ -3,6 +3,22 @@ from google.genai import types
 from app.core.config import settings
 
 
+def _resolve_media_stream_bridge_profile() -> str:
+    token = (settings.twilio_media_stream_bridge_profile or "cx_agent_studio").strip().lower()
+    aliases = {
+        "cx": "cx_agent_studio",
+        "cx_agent_studio": "cx_agent_studio",
+        "cx-agent-studio": "cx_agent_studio",
+        "official_like": "cx_agent_studio",
+        "official": "cx_agent_studio",
+        "thin_bridge": "cx_agent_studio",
+        "legacy": "legacy_manual",
+        "legacy_manual": "legacy_manual",
+        "manual": "legacy_manual",
+    }
+    return aliases.get(token, token)
+
+
 def _use_manual_vad_control() -> bool:
     mode = (settings.twilio_gemini_activity_mode or "auto").strip().lower()
     return mode in {"manual", "manual_vad", "explicit"}
@@ -10,11 +26,21 @@ def _use_manual_vad_control() -> bool:
 
 def _validate_twilio_activity_mode() -> None:
     mode = (settings.twilio_gemini_activity_mode or "auto").strip().lower()
-    if mode in {"", "auto"}:
+    if mode in {"", "auto", "manual", "manual_vad", "explicit"}:
         return
     raise ValueError(
-        "Twilio Media Streams production path only supports Gemini automatic activity detection. "
-        "Set TWILIO_GEMINI_ACTIVITY_MODE=auto."
+        "Unsupported TWILIO_GEMINI_ACTIVITY_MODE. "
+        "Supported values: auto, manual."
+    )
+
+
+def _validate_twilio_media_stream_bridge_profile() -> None:
+    profile = _resolve_media_stream_bridge_profile()
+    if profile in {"cx_agent_studio", "legacy_manual"}:
+        return
+    raise ValueError(
+        "Unsupported TWILIO_MEDIA_STREAM_BRIDGE_PROFILE. "
+        "Supported values: cx_agent_studio, legacy_manual."
     )
 
 
@@ -69,6 +95,7 @@ def _build_gemini_live_config(
     system_instruction: str | None,
     voice_name: str | None,
     manual_vad: bool,
+    media_stream_bridge_profile: str | None = None,
 ) -> types.LiveConnectConfig:
     language_code = (settings.twilio_agent_language or "").strip()
     transcription_config = (
@@ -97,10 +124,19 @@ def _build_gemini_live_config(
 
     auto_detection = types.AutomaticActivityDetection(disabled=manual_vad)
     if not manual_vad:
-        start_sensitivity = _resolve_start_sensitivity()
-        end_sensitivity = _resolve_end_sensitivity()
-        prefix_padding_ms = max(0, int(settings.twilio_gemini_prefix_padding_ms or 0))
-        silence_duration_ms = max(0, int(settings.twilio_gemini_silence_duration_ms or 0))
+        bridge_profile = (media_stream_bridge_profile or "").strip().lower()
+        if bridge_profile == "cx_agent_studio":
+            # Keep this profile aligned with the hosted CX-style bridge:
+            # upstream owns turn detection, while the backend stays a thin transport.
+            start_sensitivity = types.StartSensitivity.START_SENSITIVITY_LOW
+            end_sensitivity = types.EndSensitivity.END_SENSITIVITY_LOW
+            prefix_padding_ms = 20
+            silence_duration_ms = 100
+        else:
+            start_sensitivity = _resolve_start_sensitivity()
+            end_sensitivity = _resolve_end_sensitivity()
+            prefix_padding_ms = max(0, int(settings.twilio_gemini_prefix_padding_ms or 0))
+            silence_duration_ms = max(0, int(settings.twilio_gemini_silence_duration_ms or 0))
         if start_sensitivity is not None:
             auto_detection.start_of_speech_sensitivity = start_sensitivity
         if end_sensitivity is not None:
@@ -114,8 +150,14 @@ def _build_gemini_live_config(
         automatic_activity_detection=auto_detection,
     )
     if not manual_vad:
-        activity_handling = _resolve_activity_handling()
-        turn_coverage = _resolve_turn_coverage()
+        bridge_profile = (media_stream_bridge_profile or "").strip().lower()
+        if bridge_profile == "cx_agent_studio":
+            # Do not reintroduce local activity ownership for the CX-style bridge.
+            activity_handling = types.ActivityHandling.START_OF_ACTIVITY_INTERRUPTS
+            turn_coverage = types.TurnCoverage.TURN_INCLUDES_ALL_INPUT
+        else:
+            activity_handling = _resolve_activity_handling()
+            turn_coverage = _resolve_turn_coverage()
         if activity_handling is not None:
             realtime_input_config.activity_handling = activity_handling
         if turn_coverage is not None:

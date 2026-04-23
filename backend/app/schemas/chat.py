@@ -98,6 +98,25 @@ class TestSessionAppendMessagesResponse(BaseModel):
     transcript_length: int = Field(..., description="Current transcript character length")
 
 
+class TestSessionOperationTurnRequest(BaseModel):
+    """Advance test session through ChatService operation flow without generic LLM fallback."""
+    call_id: UUID = Field(..., description="Call ID to update")
+    message: str = Field(..., description="Latest finalized user utterance")
+    template_code: Optional[str] = Field(None, description="Template code bound to the test session")
+    provider: Optional[str] = Field(None, description="LLM provider in use")
+    model: Optional[str] = Field(None, description="LLM model in use")
+
+
+class TestSessionOperationTurnResponse(BaseModel):
+    """Result returned after attempting to advance the operation flow."""
+    call_id: UUID = Field(..., description="Updated call ID")
+    handled: bool = Field(..., description="Whether ChatService operation flow handled this turn")
+    response: Optional[str] = Field(None, description="Deterministic assistant reply from operation flow")
+    operation: Optional[str] = Field(None, description="Current operation type: update or cancel")
+    state_status: Optional[str] = Field(None, description="Current operation flow state")
+    executed: bool = Field(False, description="Whether this turn executed the operation")
+
+
 class PromptTemplateResponse(BaseModel):
     """Prompt template response."""
     id: UUID

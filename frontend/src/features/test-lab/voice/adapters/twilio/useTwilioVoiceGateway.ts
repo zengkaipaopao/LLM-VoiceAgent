@@ -6,7 +6,7 @@ import type { BackendTraceDiagnosticResponse } from '../../diagnostics';
 export type DialerStatus = 'idle' | 'fetching_token' | 'registering' | 'registered' | 'error';
 export type CallStatus = 'idle' | 'dialing' | 'in-call' | 'ended' | 'error';
 export type GatewayLogLevel = 'info' | 'success' | 'warning' | 'error';
-export type TwilioTransportMode = 'official_conversational_agents';
+export type TwilioTransportMode = 'official_conversational_agents' | 'media_stream_live';
 export type TwilioInboundDebugAudioKind = 'none' | 'tail' | 'followup';
 
 export interface DialerLogItem {

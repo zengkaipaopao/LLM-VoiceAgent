@@ -7,8 +7,10 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass
+from typing import Optional
 
 import google.auth
+import httpx
 import websockets
 from fastapi import WebSocket, status
 from google.auth.transport import requests as google_auth_requests
@@ -38,6 +40,8 @@ _PCM8K_RAW_DEBUG_VARIANT = "pcm8k_raw"
 _PCM16K_RESAMPLED_DEBUG_VARIANT = "pcm16k_resampled"
 _PCM8K_RAW_DEBUG_ARTIFACT = "inbound-pcm8k-raw"
 _PCM16K_RESAMPLED_DEBUG_ARTIFACT = "inbound-pcm16k-resampled"
+_AUTO_HANGUP_MIN_DELAY_SECONDS = 2.0
+_AUTO_HANGUP_AUDIO_PADDING_SECONDS = 0.8
 
 
 @dataclass(frozen=True)
@@ -49,6 +53,66 @@ class OfficialConversationalAgentsConfig:
     session_id: str
     virtual_agent_endpoint: str
     kickstart_text: str | None
+
+
+def _should_auto_finalize_by_closing_phrase(content: str) -> bool:
+    if not content:
+        return False
+    normalized = "".join(str(content).split())
+    tail = normalized[-80:]
+    has_thanks = "ご利用ありがとうございます" in tail
+    has_accepted = ("承りました" in tail) or ("承知いたしました" in tail)
+    if tail.endswith("?") or tail.endswith("？"):
+        return False
+    return has_thanks and has_accepted
+
+
+async def _hangup_twilio_call(
+    *,
+    call_sid: str | None,
+    reason: str,
+) -> None:
+    if not call_sid:
+        return
+    account_sid = (settings.twilio_account_sid or "").strip()
+    auth_token = (settings.twilio_auth_token or "").strip()
+    if not account_sid or not auth_token:
+        await _append_call_trace(
+            call_sid,
+            event_type="official_ca_hangup_skipped",
+            text=f"reason={reason} missing_twilio_credentials",
+            level="warning",
+        )
+        return
+
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Calls/{call_sid}.json"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                url,
+                auth=(account_sid, auth_token),
+                data={"Status": "completed"},
+            )
+            response.raise_for_status()
+        await _append_call_trace(
+            call_sid,
+            event_type="official_ca_call_hangup_requested",
+            text=f"reason={reason}",
+            level="success",
+        )
+    except Exception as exc:
+        await _append_call_trace(
+            call_sid,
+            event_type="official_ca_call_hangup_failed",
+            text=f"reason={reason} error={exc}",
+            level="error",
+        )
+
+
+def _estimate_audio_seconds_from_mulaw(audio_bytes: bytes) -> float:
+    if not audio_bytes:
+        return 0.0
+    return max(0.0, len(audio_bytes) / float(_TWILIO_AUDIO_SAMPLING_RATE))
 
 
 def _extract_parent_app_from_deployment_id(deployment_id: str | None) -> str | None:
@@ -376,10 +440,42 @@ async def bridge_twilio_to_official_conversational_agents(
     ratecv_state_to_va = None
     ratecv_state_to_twilio = None
     va_ws = None
+    auto_hangup_task: asyncio.Task[None] | None = None
+    assistant_text_tail = ""
+    closing_phrase_detected = False
 
     async def _send_twilio_event(payload: dict[str, object]) -> None:
         async with send_lock:
             await websocket.send_text(json.dumps(payload))
+
+    def _cancel_auto_hangup_task() -> None:
+        nonlocal auto_hangup_task
+        if auto_hangup_task and not auto_hangup_task.done():
+            auto_hangup_task.cancel()
+        auto_hangup_task = None
+
+    def _arm_auto_hangup(delay_seconds: float, reason: str) -> None:
+        nonlocal auto_hangup_task
+        _cancel_auto_hangup_task()
+
+        async def _run() -> None:
+            try:
+                await asyncio.sleep(delay_seconds)
+                stop_event.set()
+                await _hangup_twilio_call(call_sid=current_call_sid, reason=reason)
+                if websocket.client_state != WebSocketState.DISCONNECTED:
+                    await websocket.close()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                await _append_call_trace(
+                    current_call_sid,
+                    event_type="official_ca_auto_hangup_error",
+                    text=f"reason={reason} error={exc}",
+                    level="error",
+                )
+
+        auto_hangup_task = asyncio.create_task(_run())
 
     async def forward_twilio_to_va() -> None:
         nonlocal va_ws
@@ -453,6 +549,8 @@ async def bridge_twilio_to_official_conversational_agents(
 
     async def forward_va_to_twilio() -> None:
         nonlocal ratecv_state_to_twilio
+        nonlocal assistant_text_tail
+        nonlocal closing_phrase_detected
         assistant_started = False
         try:
             while not stop_event.is_set():
@@ -463,12 +561,19 @@ async def bridge_twilio_to_official_conversational_agents(
                 if isinstance(session_output, dict):
                     session_text = str(session_output.get("text") or "").strip()
                     if session_text:
+                        assistant_text_tail = (assistant_text_tail + session_text)[-200:]
                         await _append_call_trace(
                             current_call_sid,
                             event_type="assistant_text",
                             text=session_text,
                             level="success",
                         )
+                        if _should_auto_finalize_by_closing_phrase(assistant_text_tail):
+                            closing_phrase_detected = True
+                            _arm_auto_hangup(
+                                _AUTO_HANGUP_MIN_DELAY_SECONDS,
+                                reason="closing_phrase_detected",
+                            )
 
                     audio_b64 = session_output.get("audio")
                     if isinstance(audio_b64, str) and audio_b64.strip():
@@ -507,6 +612,15 @@ async def bridge_twilio_to_official_conversational_agents(
                             text=f"bytes={len(va_audio)}",
                             level="info",
                         )
+                        if closing_phrase_detected:
+                            _arm_auto_hangup(
+                                max(
+                                    _AUTO_HANGUP_MIN_DELAY_SECONDS,
+                                    _estimate_audio_seconds_from_mulaw(mulaw_audio)
+                                    + _AUTO_HANGUP_AUDIO_PADDING_SECONDS,
+                                ),
+                                reason="closing_phrase_audio_drained",
+                            )
                     continue
 
                 if "endSession" in va_data:
@@ -517,6 +631,10 @@ async def bridge_twilio_to_official_conversational_agents(
                         level="warning",
                     )
                     stop_event.set()
+                    await _hangup_twilio_call(
+                        call_sid=current_call_sid,
+                        reason="virtual_agent_end_session",
+                    )
                     if websocket.client_state != WebSocketState.DISCONNECTED:
                         await websocket.close()
                     return
@@ -573,6 +691,7 @@ async def bridge_twilio_to_official_conversational_agents(
         logger.exception("Official Conversational Agents bridge failed")
     finally:
         stop_event.set()
+        _cancel_auto_hangup_task()
         try:
             await _persist_inbound_debug_wav(
                 call_sid=current_call_sid,

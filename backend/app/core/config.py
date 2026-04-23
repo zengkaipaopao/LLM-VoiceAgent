@@ -56,8 +56,15 @@ class Settings(BaseSettings):
     twilio_incoming_prompt_map: str = ""
     twilio_incoming_default_mode: str = "agent"
     twilio_incoming_voice_engine: str = "twilio"
-    # Twilio Media Streams production path only supports Gemini automatic
-    # activity detection. Any non-auto value should fail fast.
+    # Bridge profile for the self-built Twilio Media Streams path.
+    # - cx_agent_studio: mimic the official CX Agent Studio bridge as closely as
+    #   possible; keep the backend as a thin transport layer and let the
+    #   upstream runtime own turn detection.
+    # - legacy_manual: preserve the older locally-segmented bridge behavior.
+    twilio_media_stream_bridge_profile: str = "cx_agent_studio"
+    # Gemini Live activity boundary mode for the self-built Twilio Media Streams
+    # bridge. This only applies when the bridge profile allows local turn
+    # ownership, such as "legacy_manual".
     twilio_gemini_activity_mode: str = "auto"
     # Keep Gemini Live automatic activity detection close to the native-audio
     # defaults first, then tune from production traces only when needed.

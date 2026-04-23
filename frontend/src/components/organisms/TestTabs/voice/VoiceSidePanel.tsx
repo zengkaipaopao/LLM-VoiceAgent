@@ -69,6 +69,14 @@ export function VoiceSidePanel({
   directDiagnostic,
   twilioDiagnostic,
 }: VoiceSidePanelProps) {
+  const isMediaStreamRoute = routeMode === 'twilio_media_stream';
+  const voiceSourceLabel = isMediaStreamRoute
+    ? '由本地 Prompt / Media Streams 桥接配置决定'
+    : '由 Google CX Agent Studio / CES Deployment 决定';
+  const phoneTransportLabel = isMediaStreamRoute ? '自建 Media Streams + Twilio' : 'Official CA + Twilio';
+  const speechEngineLabel = isMediaStreamRoute ? 'Gemini Live' : 'Conversational Agents';
+  const activeTraceEmptyLabel = isMediaStreamRoute ? '暂无活跃自建电话流。' : '暂无活跃官方电话流。';
+
   const directDialogueHistory = useMemo<DialogueHistoryItem[]>(() => {
     const items: DialogueHistoryItem[] = [];
     for (const log of liveWebsocket.logs) {
@@ -259,15 +267,15 @@ export function VoiceSidePanel({
           </div>
           <div className={styles.metaRow}>
             <dt>音色来源</dt>
-            <dd>由 Google CX Agent Studio / CES Deployment 决定</dd>
+            <dd>{voiceSourceLabel}</dd>
           </div>
           <div className={styles.metaRow}>
             <dt>电话链路模式</dt>
-            <dd>Official CA + Twilio</dd>
+            <dd>{phoneTransportLabel}</dd>
           </div>
           <div className={styles.metaRow}>
             <dt>语音引擎</dt>
-            <dd>Conversational Agents</dd>
+            <dd>{speechEngineLabel}</dd>
           </div>
           <div className={styles.metaRow}>
             <dt>系统能力</dt>
@@ -314,7 +322,7 @@ export function VoiceSidePanel({
             <dt>活跃流候选</dt>
             <dd>
               {twilioGateway.activeTraceCalls.length === 0 ? (
-                '暂无活跃官方电话流。'
+                activeTraceEmptyLabel
               ) : (
                 <ul className={styles.diagnosticList}>
                   {twilioGateway.activeTraceCalls.map((item) => (

@@ -1,6 +1,7 @@
 from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from uuid import uuid4
 
 import pytest
 
@@ -313,3 +314,97 @@ async def test_find_operation_candidates_prefers_counterpart_when_name_is_generi
     kwargs = repo.search_operation_candidates_with_call.await_args.kwargs
     assert kwargs["caller_name"] is None
     assert kwargs["counterpart"] == "+819012345678"
+
+
+@pytest.mark.asyncio
+async def test_process_test_session_operation_turn_persists_handled_turn():
+    call_id = uuid4()
+    call = SimpleNamespace(id=call_id, extra_data={}, transcript="")
+    runtime = SimpleNamespace(
+        get_or_create_call=AsyncMock(return_value=call),
+        setup_chat_context=AsyncMock(
+            return_value={
+                "messages": [{"role": "assistant", "content": "前回の返答"}],
+                "template": SimpleNamespace(),
+                "system_prompt": "",
+                "template_code": "base_appointment",
+                "llm_provider": "gemini",
+                "llm_model": "gemini-2.5-flash",
+            }
+        ),
+        persist_turn=AsyncMock(),
+    )
+
+    async def handle_flow(target_call, user_message):
+        assert target_call is call
+        assert user_message == "この予約をキャンセルしてください"
+        target_call.extra_data = {
+            "appointment_operation_flow": {
+                "status": "await_target_confirmation",
+                "operation": "cancel",
+            }
+        }
+        return "キャンセル対象を確認しました。"
+
+    service = ChatService.__new__(ChatService)
+    service._build_chat_runtime_service = lambda: runtime
+    service._handle_appointment_operation_flow = handle_flow
+    service._sanitize_assistant_response = lambda value: value
+    service._strip_redundant_opening_greeting = lambda value, prior_assistant_messages: value
+
+    result = await service.process_test_session_operation_turn(
+        call_id=call_id,
+        message="この予約をキャンセルしてください",
+        template_code="base_appointment",
+    )
+
+    assert result.handled is True
+    assert result.response == "キャンセル対象を確認しました。"
+    assert result.operation == "cancel"
+    assert result.state_status == "await_target_confirmation"
+    assert result.executed is False
+    runtime.persist_turn.assert_awaited_once()
+    persisted = runtime.persist_turn.await_args.kwargs
+    assert persisted["user_message"] == "この予約をキャンセルしてください"
+    assert persisted["assistant_message"] == "キャンセル対象を確認しました。"
+    assert persisted["messages"][-2:] == [
+        {"role": "user", "content": "この予約をキャンセルしてください"},
+        {"role": "assistant", "content": "キャンセル対象を確認しました。"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_process_test_session_operation_turn_skips_persist_when_not_handled():
+    call_id = uuid4()
+    call = SimpleNamespace(id=call_id, extra_data={}, transcript="")
+    runtime = SimpleNamespace(
+        get_or_create_call=AsyncMock(return_value=call),
+        setup_chat_context=AsyncMock(
+            return_value={
+                "messages": [],
+                "template": SimpleNamespace(),
+                "system_prompt": "",
+                "template_code": "base_appointment",
+                "llm_provider": "gemini",
+                "llm_model": "gemini-2.5-flash",
+            }
+        ),
+        persist_turn=AsyncMock(),
+    )
+
+    service = ChatService.__new__(ChatService)
+    service._build_chat_runtime_service = lambda: runtime
+    service._handle_appointment_operation_flow = AsyncMock(return_value=None)
+    service._sanitize_assistant_response = lambda value: value
+    service._strip_redundant_opening_greeting = lambda value, prior_assistant_messages: value
+
+    result = await service.process_test_session_operation_turn(
+        call_id=call_id,
+        message="新規予約をしたいです",
+        template_code="base_appointment",
+    )
+
+    assert result.handled is False
+    assert result.response is None
+    assert result.executed is False
+    runtime.persist_turn.assert_not_awaited()

@@ -11,6 +11,7 @@ import { fetchLiveAuthToken } from '../../../../api/live';
 import {
   appendTestSessionMessages,
   finalizeTestSession,
+  processTestSessionOperationTurn,
   startTestSession,
   type FinalizeTestSessionResponse,
   type StartTestSessionResponse,
@@ -255,6 +256,7 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
   const isManualDisconnectRef = useRef(false);
   const finalizeInFlightRef = useRef(false);
   const autoFinalizeTriggeredRef = useRef(false);
+  const suppressGeminiTurnRef = useRef(false);
 
   const pushLog = useCallback((level: LogLevel, message: string) => {
     setLogs((prev) => appendEventLog(prev, level, message, 180));
@@ -427,8 +429,80 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
     setAssistantText((prev) => prev + value);
   }, []);
 
+  const appendBackendAssistantTurn = useCallback(
+    (value: string) => {
+      const finalized = value.trim();
+      if (!finalized) {
+        return;
+      }
+
+      setAssistantText((prev) => {
+        if (!prev) {
+          return `${finalized}\n`;
+        }
+        return prev.endsWith('\n') ? `${prev}${finalized}\n` : `${prev}\n${finalized}\n`;
+      });
+
+      const nextHistory = `${outputTranscriptHistoryRef.current}${finalized}\n`;
+      outputTranscriptHistoryRef.current = nextHistory;
+      outputTranscriptTurnRef.current = '';
+      setOutputTranscript(nextHistory);
+
+      if (lastLoggedOutputRef.current !== finalized) {
+        pushLog('success', `AI(业务流): ${finalized}`);
+        lastLoggedOutputRef.current = finalized;
+      }
+      lastCompletedAssistantTurnRef.current = finalized;
+    },
+    [pushLog]
+  );
+
+  const processOperationFlowTurn = useCallback(
+    async (finalizedUserTurn: string) => {
+      const activeSession = testSessionRef.current;
+      if (!activeSession) {
+        return false;
+      }
+
+      await flushPersistedMessages();
+
+      try {
+        const result = await processTestSessionOperationTurn({
+          call_id: activeSession.call_id,
+          message: finalizedUserTurn,
+          template_code: activeSession.template_code || undefined,
+          provider: activeSession.llm_provider,
+          model: activeSession.llm_model,
+        });
+        if (!result.handled || !result.response) {
+          return false;
+        }
+
+        suppressGeminiTurnRef.current = true;
+        appendBackendAssistantTurn(result.response);
+        if (result.executed) {
+          setInfo(`已通过业务状态机完成预约${result.operation === 'cancel' ? '取消' : '变更'}。`);
+        } else if (result.operation) {
+          setInfo(`已进入预约${result.operation === 'cancel' ? '取消' : '变更'}业务流程。`);
+        }
+        pushLog(
+          'info',
+          `ChatService operation flow handled turn: operation=${result.operation || '-'} state=${result.state_status || '-'} executed=${result.executed ? 'yes' : 'no'}`
+        );
+        return true;
+      } catch (operationError) {
+        pushLog(
+          'error',
+          `Failed to advance ChatService operation flow: ${operationError instanceof Error ? operationError.message : String(operationError)}`
+        );
+        return false;
+      }
+    },
+    [appendBackendAssistantTurn, flushPersistedMessages, pushLog]
+  );
+
   const appendInputTranscript = useCallback(
-    (chunk: string, isFinal: boolean) => {
+    async (chunk: string, isFinal: boolean) => {
       const mergedTurn = mergeTranscriptChunk(inputTranscriptTurnRef.current, chunk);
       if (!mergedTurn) return;
 
@@ -451,10 +525,14 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
         lastLoggedInputRef.current = finalized;
       }
       if (finalized) {
+        const handledByOperationFlow = await processOperationFlowTurn(finalized);
+        if (handledByOperationFlow) {
+          return;
+        }
         queuePersistableMessage('user', finalized);
       }
     },
-    [pushLog, queuePersistableMessage]
+    [processOperationFlowTurn, pushLog, queuePersistableMessage]
   );
 
   const appendOutputTranscript = useCallback(
@@ -519,6 +597,17 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
 
   const handlePayload = useCallback(
     async (payload: LiveEventPayload) => {
+      const normalizedType = (payload.type || '').toLowerCase();
+
+      if (
+        suppressGeminiTurnRef.current &&
+        (normalizedType === 'text' ||
+          normalizedType === 'output_transcript' ||
+          normalizedType === 'audio_chunk')
+      ) {
+        return;
+      }
+
       await handleLiveEventPayload({
         event: payload,
         setSocketStatus,
@@ -537,8 +626,10 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
         setError: (value) => setError(value),
       });
 
-      const normalizedType = (payload.type || '').toLowerCase();
       if (normalizedType === 'turn_complete' || normalizedType === 'interrupted') {
+        if (suppressGeminiTurnRef.current) {
+          suppressGeminiTurnRef.current = false;
+        }
         await flushPersistedMessages();
       }
 
@@ -601,6 +692,7 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
       lastLoadedPromptLogRef.current = '';
       lastTextSendRef.current = { text: '', ts: 0 };
       autoFinalizeTriggeredRef.current = false;
+      suppressGeminiTurnRef.current = false;
       setLogs([]);
       setTotalTokens(0);
       setError(null);
@@ -620,6 +712,7 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
       );
 
       closeDirectTransport('Gemini Live direct session closed.');
+      suppressGeminiTurnRef.current = false;
 
       await finalizeActiveTestSession(hasDialogue);
     })();
@@ -677,6 +770,7 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
         lastCompletedAssistantTurnRef.current = '';
         lastTextSendRef.current = { text: '', ts: 0 };
         autoFinalizeTriggeredRef.current = false;
+        suppressGeminiTurnRef.current = false;
 
         const createdSession = await startTestSession({
           template_code: selectedPromptCode.trim() || 'base_appointment',
@@ -753,6 +847,7 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
               setWsOpen(false);
               setSocketStatus('disconnected');
               setSessionId('');
+              suppressGeminiTurnRef.current = false;
               if (hasActiveMicrophoneResources()) {
                 resetMicrophone();
               }
@@ -838,6 +933,7 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
       }
       sessionRef.current?.close();
       sessionRef.current = null;
+      suppressGeminiTurnRef.current = false;
       resetRemotePlayback();
     };
   }, [hasActiveMicrophoneResources, resetRemotePlayback, stopMicrophone]);

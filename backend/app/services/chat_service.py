@@ -22,6 +22,7 @@ from app.schemas.chat import (
     ChatResponse,
     ExtractionRequest,
     ExtractionResponse,
+    TestSessionOperationTurnResponse,
     TestSessionFinalizeResponse,
     TestSessionStartResponse,
 )
@@ -1774,6 +1775,84 @@ class ChatService:
         total_tokens = count_tokens(input_text) + count_tokens(response)
 
         return ChatResponse(response=response, call_id=call.id, tokens_used=total_tokens)
+
+    async def process_test_session_operation_turn(
+        self,
+        *,
+        call_id: UUID,
+        message: str,
+        template_code: Optional[str] = None,
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
+    ) -> TestSessionOperationTurnResponse:
+        """Advance test session through operation flow only, without generic LLM fallback."""
+        normalized_message = message.strip()
+        if not normalized_message:
+            raise ValueError("Message cannot be empty")
+
+        chat_runtime = self._build_chat_runtime_service()
+        call = await chat_runtime.get_or_create_call(call_id)
+        extra_data = dict(call.extra_data or {})
+        messages = self._normalize_messages(extra_data.get("messages"))
+        if not messages:
+            messages = self._parse_messages_from_transcript(call.transcript)
+        prior_assistant_messages = [
+            str(item.get("content", "")).strip()
+            for item in messages
+            if item.get("role") == "assistant" and str(item.get("content", "")).strip()
+        ]
+        context = {
+            "template_code": template_code or extra_data.get("template_code") or "general_appointment",
+            "llm_provider": provider or extra_data.get("llm_provider") or "gemini",
+            "llm_model": model or extra_data.get("llm_model") or "",
+        }
+
+        response = await self._handle_appointment_operation_flow(call, normalized_message)
+        if response is None:
+            flow = dict((call.extra_data or {}).get(self._OP_FLOW_KEY) or {})
+            return TestSessionOperationTurnResponse(
+                call_id=call.id,
+                handled=False,
+                operation=str(flow.get("operation") or "") or None,
+                state_status=str(flow.get("status") or "") or None,
+                executed=isinstance((call.extra_data or {}).get("operation_execution"), dict),
+            )
+
+        response = self._sanitize_assistant_response(response)
+        response = self._strip_redundant_opening_greeting(
+            response,
+            prior_assistant_messages=prior_assistant_messages,
+        )
+
+        messages.append({"role": "user", "content": normalized_message})
+        messages.append({"role": "assistant", "content": response})
+        await chat_runtime.persist_turn(
+            call=call,
+            user_message=normalized_message,
+            assistant_message=response,
+            context=context,
+            messages=messages,
+            quota_notice_reason=None,
+        )
+
+        refreshed_extra_data = dict(call.extra_data or {})
+        flow = dict(refreshed_extra_data.get(self._OP_FLOW_KEY) or {})
+        operation_execution = refreshed_extra_data.get("operation_execution")
+        executed = isinstance(operation_execution, dict)
+        operation = None
+        if executed:
+            operation = str(operation_execution.get("operation") or "") or None
+        if not operation:
+            operation = str(flow.get("operation") or "") or None
+
+        return TestSessionOperationTurnResponse(
+            call_id=call.id,
+            handled=True,
+            response=response,
+            operation=operation,
+            state_status=str(flow.get("status") or "") or None,
+            executed=executed,
+        )
 
     async def stream_chat(self, request: ChatRequest) -> AsyncIterator[str]:
         """Process a chat request and stream the response via SSE."""

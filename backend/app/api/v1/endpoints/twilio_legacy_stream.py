@@ -3,6 +3,7 @@ import base64
 import json
 import logging
 import time
+from collections import deque
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
 from google.genai import types
@@ -22,7 +23,13 @@ from app.services.twilio.debug_audio_runtime import (
     _PCM16K_RESAMPLED_DEBUG_VARIANT,
     _PCM8K_RAW_DEBUG_VARIANT,
 )
-from app.services.twilio.live_config import _build_gemini_live_config, _validate_twilio_activity_mode
+from app.services.twilio.live_config import (
+    _build_gemini_live_config,
+    _resolve_media_stream_bridge_profile,
+    _use_manual_vad_control,
+    _validate_twilio_activity_mode,
+    _validate_twilio_media_stream_bridge_profile,
+)
 from app.services.twilio.media_stream_bootstrap import receive_twilio_media_stream_start
 from app.services.twilio.media_stream_state import (
     AssistantPlaybackOverlapBuffer,
@@ -51,7 +58,13 @@ _FOLLOWUP_PROBE_RMS_THRESHOLD = 100
 _FOLLOWUP_PROBE_MIN_HITS = 2
 _DUPLEX_OVERLAP_RMS_THRESHOLD = 180
 _DUPLEX_OVERLAP_TRACE_INTERVAL_SECONDS = 1.5
-_UPSTREAM_AUDIO_STREAM_END_EVENT = "audio_stream_end_sent"
+_MANUAL_ACTIVITY_PROGRESS_TRACE_INTERVAL_SECONDS = 0.75
+_MANUAL_ACTIVITY_SILENCE_RESET_TRACE_MS = 200
+_TWILIO_MEDIA_FRAME_MS = 20
+_LIVE_AUDIO_STREAM_END = object()
+_LIVE_ACTIVITY_START = object()
+_LIVE_ACTIVITY_END = object()
+_LIVE_AUDIO_QUEUE_MAXSIZE = 64
 
 
 @router.websocket("/voice/stream", name="twilio_voice_media_stream")
@@ -160,6 +173,7 @@ async def twilio_voice_media_stream(
         )
     try:
         _validate_twilio_activity_mode()
+        _validate_twilio_media_stream_bridge_profile()
     except ValueError as exc:
         await _append_call_trace(
             current_call_sid,
@@ -170,6 +184,15 @@ async def twilio_voice_media_stream(
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason=str(exc)[:120])
         return
 
+    bridge_profile = _resolve_media_stream_bridge_profile()
+    requested_manual_vad = _use_manual_vad_control()
+    manual_vad = requested_manual_vad and bridge_profile == "legacy_manual"
+    cx_agent_studio_bridge = bridge_profile == "cx_agent_studio"
+    auto_vad_prefix_padding_ms = 20 if cx_agent_studio_bridge and not manual_vad else settings.twilio_gemini_prefix_padding_ms
+    auto_vad_silence_duration_ms = 100 if cx_agent_studio_bridge and not manual_vad else settings.twilio_gemini_silence_duration_ms
+    input_noise_gate_enabled = (
+        False if cx_agent_studio_bridge else settings.twilio_media_stream_input_noise_gate_enabled
+    )
     twilio_session_instruction = _build_twilio_session_instruction(
         runtime.system_instruction,
         opening_text=None,
@@ -178,7 +201,8 @@ async def twilio_voice_media_stream(
         model=selected_model,
         system_instruction=twilio_session_instruction,
         voice_name=selected_voice,
-        manual_vad=False,
+        manual_vad=manual_vad,
+        media_stream_bridge_profile=bridge_profile,
     )
     client = create_google_genai_client()
 
@@ -186,19 +210,14 @@ async def twilio_voice_media_stream(
     live_setup_complete = asyncio.Event()
     stream_done = asyncio.Event()
     state = TwilioMediaStreamState()
+    live_audio_queue: asyncio.Queue[bytes | object] = asyncio.Queue(maxsize=_LIVE_AUDIO_QUEUE_MAXSIZE)
     codec = TwilioMediaAudioCodec(
         input_batch_ms=settings.twilio_media_stream_inbound_batch_ms,
         twilio_frame_bytes=_TWILIO_FRAME_BYTES,
-        input_noise_gate_enabled=settings.twilio_media_stream_input_noise_gate_enabled,
+        input_noise_gate_enabled=input_noise_gate_enabled,
         input_noise_gate_open_rms=settings.twilio_media_stream_input_noise_gate_open_rms,
         input_noise_gate_close_rms=settings.twilio_media_stream_input_noise_gate_close_rms,
         input_noise_gate_hold_ms=settings.twilio_media_stream_input_noise_gate_hold_ms,
-    )
-    playback_overlap_buffer = AssistantPlaybackOverlapBuffer(
-        sample_rate=16000,
-        max_buffer_ms=settings.twilio_media_stream_playback_overlap_buffer_ms,
-        trigger_rms=settings.twilio_media_stream_playback_clear_rms,
-        min_hits=settings.twilio_media_stream_playback_clear_min_hits,
     )
     inbound_debug_captures = {
         _PCM8K_RAW_DEBUG_VARIANT: _build_twilio_inbound_debug_capture(_PCM8K_RAW_DEBUG_VARIANT),
@@ -229,12 +248,118 @@ async def twilio_voice_media_stream(
     followup_probe_capture_started_at = 0.0
     followup_probe_transcript_observed = False
     last_duplex_overlap_trace_at = 0.0
-    playback_pending_barge_in_hits = 0
+    playback_overlap_buffer = AssistantPlaybackOverlapBuffer(
+        sample_rate=16000,
+        max_buffer_ms=settings.twilio_media_stream_playback_overlap_buffer_ms,
+        trigger_rms=settings.twilio_media_stream_playback_clear_rms,
+        min_hits=settings.twilio_media_stream_playback_clear_min_hits,
+    )
     local_clear_sent_for_mark: str | None = None
-    upstream_pause_started_at: float | None = None
-    upstream_audio_stream_closed = False
-    upstream_input_segment_active = False
-    suppress_assistant_audio_until_turn_complete = False
+    manual_activity_active = False
+    manual_activity_hits = 0
+    manual_silence_hits = 0
+    manual_activity_started_at = 0.0
+    manual_activity_last_trace_at = 0.0
+    manual_activity_peak_raw_rms = 0
+    manual_activity_lowest_conditioned_rms = 0
+    manual_activity_last_raw_rms = 0
+    manual_activity_last_conditioned_rms = 0
+    manual_prefix_frames = deque[
+        bytes
+    ](maxlen=max(1, int(settings.twilio_gemini_prefix_padding_ms / _TWILIO_MEDIA_FRAME_MS)))
+    manual_start_rms = max(
+        int(settings.twilio_media_stream_upstream_activity_rms or 0),
+        _FOLLOWUP_PROBE_RMS_THRESHOLD,
+    )
+    # 电话链路的条件化噪声底通常会维持在 80~100 左右；如果 end threshold 过低，
+    # activityEnd 很容易永远发不出去，导致 Gemini Live 一直不提交后续 turn。
+    manual_end_rms = max(
+        _FOLLOWUP_PROBE_RMS_THRESHOLD,
+        min(140, max(manual_start_rms, int(manual_start_rms * 1.1))),
+    )
+    manual_start_hits_required = 2
+    manual_barge_rms = max(900, _DUPLEX_OVERLAP_RMS_THRESHOLD * 4)
+    manual_barge_hits_required = 4
+    manual_silence_hits_required = max(
+        2,
+        int(max(0, settings.twilio_gemini_silence_duration_ms) / _TWILIO_MEDIA_FRAME_MS),
+    )
+
+    def _reset_manual_activity_runtime() -> None:
+        nonlocal manual_activity_started_at
+        nonlocal manual_activity_last_trace_at
+        nonlocal manual_activity_peak_raw_rms
+        nonlocal manual_activity_lowest_conditioned_rms
+        nonlocal manual_activity_last_raw_rms
+        nonlocal manual_activity_last_conditioned_rms
+
+        manual_activity_started_at = 0.0
+        manual_activity_last_trace_at = 0.0
+        manual_activity_peak_raw_rms = 0
+        manual_activity_lowest_conditioned_rms = 0
+        manual_activity_last_raw_rms = 0
+        manual_activity_last_conditioned_rms = 0
+
+    def _manual_activity_elapsed_ms(*, now_ts: float | None = None) -> int:
+        if manual_activity_started_at <= 0.0:
+            return 0
+        current_ts = time.monotonic() if now_ts is None else now_ts
+        return max(0, int((current_ts - manual_activity_started_at) * 1000))
+
+    def _record_manual_activity_frame(
+        *,
+        now_ts: float,
+        raw_rms: int,
+        conditioned_rms: int,
+    ) -> None:
+        nonlocal manual_activity_peak_raw_rms
+        nonlocal manual_activity_lowest_conditioned_rms
+        nonlocal manual_activity_last_raw_rms
+        nonlocal manual_activity_last_conditioned_rms
+        nonlocal manual_activity_started_at
+
+        if manual_activity_started_at <= 0.0:
+            manual_activity_started_at = now_ts
+        manual_activity_last_raw_rms = max(0, int(raw_rms))
+        manual_activity_last_conditioned_rms = max(0, int(conditioned_rms))
+        manual_activity_peak_raw_rms = max(manual_activity_peak_raw_rms, manual_activity_last_raw_rms)
+        if manual_activity_lowest_conditioned_rms == 0:
+            manual_activity_lowest_conditioned_rms = manual_activity_last_conditioned_rms
+        else:
+            manual_activity_lowest_conditioned_rms = min(
+                manual_activity_lowest_conditioned_rms,
+                manual_activity_last_conditioned_rms,
+            )
+
+    async def _append_manual_activity_trace(
+        *,
+        event_type: str,
+        reason: str,
+        level: str = "info",
+        now_ts: float | None = None,
+        silence_ms: int | None = None,
+    ) -> None:
+        if not current_call_sid or manual_activity_started_at <= 0.0:
+            return
+        resolved_now = time.monotonic() if now_ts is None else now_ts
+        resolved_silence_ms = (
+            manual_silence_hits * _TWILIO_MEDIA_FRAME_MS if silence_ms is None else max(0, silence_ms)
+        )
+        await _append_call_trace(
+            current_call_sid,
+            event_type=event_type,
+            text=(
+                f"reason={reason} elapsed_ms={_manual_activity_elapsed_ms(now_ts=resolved_now)} "
+                f"silence_ms={resolved_silence_ms} silence_target_ms="
+                f"{manual_silence_hits_required * _TWILIO_MEDIA_FRAME_MS} "
+                f"last_raw_rms={manual_activity_last_raw_rms} "
+                f"last_conditioned_rms={manual_activity_last_conditioned_rms} "
+                f"peak_raw_rms={manual_activity_peak_raw_rms} "
+                f"lowest_conditioned_rms={manual_activity_lowest_conditioned_rms} "
+                f"end_rms={manual_end_rms}"
+            ),
+            level=level,
+        )
 
     async def _send_twilio_event(payload: dict[str, object]) -> None:
         async with send_lock:
@@ -488,6 +613,12 @@ async def twilio_voice_media_stream(
                 level="success",
             )
             if not followup_probe_transcript_observed:
+                if manual_vad and manual_activity_active:
+                    await _append_manual_activity_trace(
+                        event_type="manual_activity_end_overdue",
+                        reason=f"{trigger}_no_input_transcript",
+                        level="warning",
+                    )
                 await _append_call_trace(
                     current_call_sid,
                     event_type="gemini_turn_detection_stalled",
@@ -537,16 +668,48 @@ async def twilio_voice_media_stream(
         followup_probe_capture_started_at = 0.0
         followup_probe_transcript_observed = False
 
+    async def _clear_playback_for_local_barge_in(
+        *,
+        now_ts: float,
+        rms: int,
+        conditioned_rms: int,
+    ) -> None:
+        nonlocal local_clear_sent_for_mark
+        if not stream_sid:
+            return
+        pending_mark = state.pending_playback_mark
+        if not pending_mark or local_clear_sent_for_mark == pending_mark:
+            return
+        buffered_overlap_audio = playback_overlap_buffer.drain()
+        local_clear_sent_for_mark = pending_mark
+        state.interrupt(now=now_ts, preserve_pending_mark=True)
+        codec.clear_outbound_audio()
+        await _disarm_followup_probe(reason="local_barge_in_clear")
+        await _send_twilio_event({"event": "clear", "streamSid": stream_sid})
+        if buffered_overlap_audio:
+            await _queue_pcm16k_payload(buffered_overlap_audio)
+        await _append_call_trace(
+            current_call_sid,
+            event_type="local_barge_in_clear_sent",
+            text=(
+                f"pending_mark={pending_mark} rms={rms} "
+                f"conditioned_rms={conditioned_rms} "
+                f"replayed_ms={int(len(buffered_overlap_audio) / 32)}"
+            ),
+            level="warning",
+        )
+
     try:
         async with client.aio.live.connect(model=selected_model, config=live_config) as session:
             logger.info(
-                "Twilio media stream connected. provider=%s model=%s voice=%s prompt=%s notice=%s activity_mode=%s",
+                "Twilio media stream connected. provider=%s model=%s voice=%s prompt=%s notice=%s activity_mode=%s bridge_profile=%s",
                 selected_provider,
                 selected_model,
                 selected_voice,
                 runtime.template_code,
                 runtime_notice,
-                "auto",
+                "manual" if manual_vad else "auto",
+                bridge_profile,
             )
             if current_call_sid:
                 await _mark_stream_active(current_call_sid)
@@ -561,13 +724,40 @@ async def twilio_voice_media_stream(
                     )
                 await _append_call_trace(
                     current_call_sid,
-                    event_type="stream_start",
-                    text=(
-                        f"prompt={runtime.template_code or '-'} "
-                        f"route={voice_route_from_stream or 'media_stream_live'} "
-                        f"voice={selected_voice} activity_mode=auto"
-                    ),
-                    level="success",
+                        event_type="stream_start",
+                        text=(
+                            f"prompt={runtime.template_code or '-'} "
+                            f"route={voice_route_from_stream or 'media_stream_live'} "
+                            f"voice={selected_voice} activity_mode={'manual' if manual_vad else 'auto'} "
+                            f"bridge_profile={bridge_profile}"
+                        ),
+                        level="success",
+                    )
+                effective_activity_handling = (
+                    "client_owned"
+                    if manual_vad
+                    else (
+                        "start_of_activity_interrupts"
+                        if cx_agent_studio_bridge
+                        else (settings.twilio_gemini_activity_handling or "-")
+                    )
+                )
+                effective_turn_coverage = (
+                    "client_owned"
+                    if manual_vad
+                    else (
+                        "all_input"
+                        if cx_agent_studio_bridge
+                        else (settings.twilio_gemini_turn_coverage or "-")
+                    )
+                )
+                interruption_source = (
+                    "model_or_local_barge_in"
+                    if cx_agent_studio_bridge and not manual_vad
+                    else "model_only"
+                )
+                local_overlap_gate = (
+                    "on" if cx_agent_studio_bridge and not manual_vad else "off"
                 )
                 await _append_call_trace(
                     current_call_sid,
@@ -575,59 +765,123 @@ async def twilio_voice_media_stream(
                     text=(
                         f"backend={settings.google_genai_backend_mode} "
                         f"modalities={','.join(live_config.response_modalities or [])} "
-                        "session_mode=pure_realtime "
+                        "session_mode=thin_bridge_realtime "
                         f"route={voice_route_from_stream or 'media_stream_live'} "
-                        f"activity_handling={settings.twilio_gemini_activity_handling} "
-                        f"turn_coverage={settings.twilio_gemini_turn_coverage} "
-                        f"prefix_padding_ms={settings.twilio_gemini_prefix_padding_ms} "
-                        f"silence_duration_ms={settings.twilio_gemini_silence_duration_ms} "
-                        "input_gate="
-                        f"{'on' if settings.twilio_media_stream_input_noise_gate_enabled else 'off'} "
-                        f"gate_open_rms={settings.twilio_media_stream_input_noise_gate_open_rms} "
-                        f"gate_close_rms={settings.twilio_media_stream_input_noise_gate_close_rms} "
-                        f"gate_hold_ms={settings.twilio_media_stream_input_noise_gate_hold_ms} "
-                        f"playback_clear_rms={settings.twilio_media_stream_playback_clear_rms} "
-                        f"playback_clear_hits={settings.twilio_media_stream_playback_clear_min_hits} "
-                        f"playback_overlap_buffer_ms={settings.twilio_media_stream_playback_overlap_buffer_ms} "
-                        f"upstream_activity_rms={settings.twilio_media_stream_upstream_activity_rms} "
-                        f"pause_flush_s={settings.twilio_media_stream_pause_flush_seconds} "
+                        f"bridge_profile={bridge_profile} "
+                        f"requested_activity_mode={'manual' if requested_manual_vad else 'auto'} "
+                        f"activity_mode={'manual_explicit_boundaries' if manual_vad else 'auto_server_vad'} "
+                        f"activity_handling={effective_activity_handling} "
+                        f"turn_coverage={effective_turn_coverage} "
+                        f"prefix_padding_ms={auto_vad_prefix_padding_ms} "
+                        f"silence_duration_ms={auto_vad_silence_duration_ms} "
+                        f"manual_start_rms={manual_start_rms} "
+                        f"manual_end_rms={manual_end_rms} "
+                        f"manual_barge_rms={manual_barge_rms} "
+                        f"input_gate={'on' if input_noise_gate_enabled else 'off'} "
+                        f"input_gate_open_rms={settings.twilio_media_stream_input_noise_gate_open_rms} "
+                        f"input_gate_close_rms={settings.twilio_media_stream_input_noise_gate_close_rms} "
+                        "manual_start_signal=raw_rms "
+                        "manual_end_signal=conditioned_rms "
+                        f"local_overlap_gate={local_overlap_gate} "
+                        f"local_turn_segmentation={'minimal_manual_activity_boundaries' if manual_vad else 'off'} "
+                        f"interruption_source={interruption_source} "
+                        "upstream_send_loop=queued "
+                        "outbound_frame_ms=20 "
+                        "outbound_tail_padding=on "
                         f"batch_ms={settings.twilio_media_stream_inbound_batch_ms}"
                     ),
                     level="info",
                 )
 
-            async def _send_realtime_audio(audio_bytes: bytes) -> None:
-                if not audio_bytes:
+            async def _queue_realtime_audio(audio_bytes: bytes) -> None:
+                if audio_bytes:
+                    await live_audio_queue.put(audio_bytes)
+
+            async def _queue_realtime_activity_start() -> None:
+                await live_audio_queue.put(_LIVE_ACTIVITY_START)
+
+            async def _queue_realtime_activity_end() -> None:
+                await live_audio_queue.put(_LIVE_ACTIVITY_END)
+
+            async def _queue_pcm16k_payload(audio_bytes: bytes) -> None:
+                for batch in codec.queue_inbound_audio(audio_bytes):
+                    await _queue_realtime_audio(batch)
+
+            async def _send_manual_activity_end(*, reason: str, silence_ms: int | None = None) -> None:
+                nonlocal manual_activity_active
+                nonlocal manual_activity_hits
+                nonlocal manual_silence_hits
+                if not manual_vad or not manual_activity_active:
+                    manual_activity_hits = 0
+                    manual_silence_hits = 0
+                    manual_prefix_frames.clear()
+                    _reset_manual_activity_runtime()
                     return
-                await session.send_realtime_input(
-                    audio=types.Blob(data=audio_bytes, mime_type="audio/pcm;rate=16000")
+                await _flush_realtime_audio_buffer()
+                await _queue_realtime_activity_end()
+                await _append_manual_activity_trace(
+                    event_type="manual_activity_end_sent",
+                    reason=reason,
+                    silence_ms=silence_ms,
                 )
+                manual_activity_active = False
+                manual_activity_hits = 0
+                manual_silence_hits = 0
+                manual_prefix_frames.clear()
+                _reset_manual_activity_runtime()
 
             async def _flush_realtime_audio_buffer() -> None:
                 pending_audio = codec.flush_inbound_audio()
                 if pending_audio:
-                    await _send_realtime_audio(pending_audio)
+                    await _queue_realtime_audio(pending_audio)
 
-            async def _close_realtime_input_segment(*, reason: str, conditioned_rms: int | None = None) -> None:
-                nonlocal upstream_pause_started_at
-                nonlocal upstream_audio_stream_closed
-                nonlocal upstream_input_segment_active
-                if upstream_audio_stream_closed and not upstream_input_segment_active:
-                    return
-                await _flush_realtime_audio_buffer()
-                await session.send_realtime_input(audio_stream_end=True)
-                upstream_audio_stream_closed = True
-                upstream_input_segment_active = False
-                upstream_pause_started_at = None
-                text = f"reason={reason}"
-                if conditioned_rms is not None:
-                    text = f"{text} conditioned_rms={conditioned_rms}"
+            async def _start_manual_activity(
+                *,
+                now_ts: float,
+                mode: str,
+                threshold: int,
+                raw_rms: int,
+                conditioned_rms: int,
+                prefix_payload: bytes,
+            ) -> None:
+                nonlocal manual_activity_active
+                nonlocal manual_activity_hits
+                nonlocal manual_silence_hits
+                nonlocal manual_activity_started_at
+                nonlocal manual_activity_last_trace_at
+                nonlocal manual_activity_peak_raw_rms
+                nonlocal manual_activity_lowest_conditioned_rms
+                nonlocal manual_activity_last_raw_rms
+                nonlocal manual_activity_last_conditioned_rms
+
+                manual_activity_active = True
+                manual_activity_hits = 0
+                manual_silence_hits = 0
+                manual_activity_started_at = now_ts
+                manual_activity_last_trace_at = now_ts
+                manual_activity_peak_raw_rms = max(0, int(raw_rms))
+                manual_activity_lowest_conditioned_rms = max(0, int(conditioned_rms))
+                manual_activity_last_raw_rms = max(0, int(raw_rms))
+                manual_activity_last_conditioned_rms = max(0, int(conditioned_rms))
+                await _queue_realtime_activity_start()
+                if prefix_payload:
+                    await _queue_pcm16k_payload(prefix_payload)
                 await _append_call_trace(
                     current_call_sid,
-                    event_type=_UPSTREAM_AUDIO_STREAM_END_EVENT,
-                    text=text,
+                    event_type="manual_activity_start_sent",
+                    text=(
+                        f"raw_rms={raw_rms} conditioned_rms={conditioned_rms} "
+                        f"threshold={threshold} end_threshold={manual_end_rms} "
+                        f"prefix_ms={settings.twilio_gemini_prefix_padding_ms} mode={mode}"
+                    ),
                     level="info",
                 )
+
+            async def _close_realtime_audio_input() -> None:
+                await _flush_realtime_audio_buffer()
+                if manual_vad and manual_activity_active:
+                    await _send_manual_activity_end(reason="stream_close")
+                await live_audio_queue.put(_LIVE_AUDIO_STREAM_END)
 
             async def _close_after_playback_if_needed() -> bool:
                 if not state.close_after_turn_complete:
@@ -647,6 +901,23 @@ async def twilio_voice_media_stream(
                     pass
                 return True
 
+            async def live_audio_sender() -> None:
+                while True:
+                    queued = await live_audio_queue.get()
+                    if queued is _LIVE_ACTIVITY_START:
+                        await session.send_realtime_input(activity_start=types.ActivityStart())
+                        continue
+                    if queued is _LIVE_ACTIVITY_END:
+                        await session.send_realtime_input(activity_end=types.ActivityEnd())
+                        continue
+                    if queued is _LIVE_AUDIO_STREAM_END:
+                        if not manual_vad:
+                            await session.send_realtime_input(audio_stream_end=True)
+                        return
+                    await session.send_realtime_input(
+                        audio=types.Blob(data=queued, mime_type="audio/pcm;rate=16000")
+                    )
+
             async def twilio_to_live() -> None:
                 nonlocal stream_sid
                 nonlocal current_call_sid
@@ -655,268 +926,330 @@ async def twilio_voice_media_stream(
                 nonlocal followup_probe_capture_started
                 nonlocal followup_probe_capture_started_at
                 nonlocal last_duplex_overlap_trace_at
-                nonlocal playback_pending_barge_in_hits
+                nonlocal manual_activity_active
+                nonlocal manual_activity_hits
+                nonlocal manual_silence_hits
+                nonlocal manual_activity_last_trace_at
                 nonlocal local_clear_sent_for_mark
-                nonlocal upstream_pause_started_at
-                nonlocal upstream_audio_stream_closed
-                nonlocal upstream_input_segment_active
-                nonlocal suppress_assistant_audio_until_turn_complete
-                while True:
-                    raw = await websocket.receive_text()
-                    try:
-                        payload = json.loads(raw)
-                    except json.JSONDecodeError:
-                        continue
+                try:
+                    while True:
+                        raw = await websocket.receive_text()
+                        try:
+                            payload = json.loads(raw)
+                        except json.JSONDecodeError:
+                            continue
 
-                    event_type = str(payload.get("event") or "").strip().lower()
-                    if event_type == "connected":
-                        continue
+                        event_type = str(payload.get("event") or "").strip().lower()
+                        if event_type == "connected":
+                            continue
 
-                    if event_type == "mark":
-                        mark_payload = payload.get("mark") or {}
-                        if isinstance(mark_payload, dict):
-                            mark_name = str(mark_payload.get("name") or "").strip()
-                        else:
-                            mark_name = ""
-                        if mark_name:
-                            await _append_call_trace(
-                                current_call_sid,
-                                event_type="playback_mark",
-                                text=mark_name,
-                                level="info",
-                            )
-                        if state.confirm_playback_mark(mark_name):
-                            playback_pending_barge_in_hits = 0
-                            local_clear_sent_for_mark = None
-                            suppress_assistant_audio_until_turn_complete = False
-                            playback_overlap_buffer.reset()
-                            await _append_call_trace(
-                                current_call_sid,
-                                event_type="playback_complete",
-                                text=mark_name or "assistant_audio",
-                                level="success",
-                            )
-                            if await _close_after_playback_if_needed():
-                                return
-                            await _arm_followup_probe(trigger=mark_name or "assistant_audio")
-                        continue
-
-                    if event_type == "start":
-                        start = payload.get("start") or {}
-                        stream_sid = str(start.get("streamSid") or payload.get("streamSid") or "").strip() or None
-                        current_call_sid = (
-                            str(start.get("callSid") or payload.get("callSid") or "").strip() or None
-                        )
-                        await _mark_stream_active(current_call_sid)
-                        twilio_started.set()
-                        await _ensure_bound_call_id()
-                        continue
-
-                    if event_type == "media":
-                        media = payload.get("media") or {}
-                        track = str(media.get("track") or "").strip().lower()
-                        if track and "inbound" not in track:
-                            if not state.logged_non_inbound_track:
-                                state.logged_non_inbound_track = True
+                        if event_type == "mark":
+                            mark_payload = payload.get("mark") or {}
+                            if isinstance(mark_payload, dict):
+                                mark_name = str(mark_payload.get("name") or "").strip()
+                            else:
+                                mark_name = ""
+                            if mark_name:
                                 await _append_call_trace(
                                     current_call_sid,
-                                    event_type="media_track_ignored",
-                                    text=f"track={track}",
+                                    event_type="playback_mark",
+                                    text=mark_name,
                                     level="info",
                                 )
-                            continue
-                        encoded = media.get("payload")
-                        if not isinstance(encoded, str) or not encoded.strip():
-                            continue
-                        try:
-                            decoded_audio = codec.decode_twilio_payload(encoded)
-                        except Exception:
-                            state.decode_fail_count += 1
-                            now_ts = time.monotonic()
-                            if (now_ts - state.last_decode_error_at) >= _MEDIA_STATS_INTERVAL_SECONDS:
-                                state.last_decode_error_at = now_ts
+                            if state.confirm_playback_mark(mark_name):
+                                replay_after_clear = local_clear_sent_for_mark == mark_name
+                                buffered_overlap_audio = (
+                                    playback_overlap_buffer.drain() if replay_after_clear else b""
+                                )
+                                local_clear_sent_for_mark = None
+                                if not replay_after_clear:
+                                    playback_overlap_buffer.reset()
+                                if buffered_overlap_audio:
+                                    await _queue_pcm16k_payload(buffered_overlap_audio)
                                 await _append_call_trace(
                                     current_call_sid,
-                                    event_type="media_decode_error",
-                                    text=f"count={state.decode_fail_count}",
-                                    level="warning",
+                                    event_type="playback_complete",
+                                    text=mark_name or "assistant_audio",
+                                    level="success",
                                 )
-                            continue
-
-                        now_ts = time.monotonic()
-                        state.media_frames += 1
-                        inbound_debug_captures[_PCM8K_RAW_DEBUG_VARIANT].append(decoded_audio.pcm8k)
-                        inbound_debug_captures[_PCM16K_RESAMPLED_DEBUG_VARIANT].append(decoded_audio.pcm16k)
-                        if (
-                            (state.assistant_speaking or state.assistant_playback_pending)
-                            and decoded_audio.rms >= _DUPLEX_OVERLAP_RMS_THRESHOLD
-                            and (now_ts - last_duplex_overlap_trace_at)
-                            >= _DUPLEX_OVERLAP_TRACE_INTERVAL_SECONDS
-                        ):
-                            last_duplex_overlap_trace_at = now_ts
-                            assistant_phase = (
-                                "speaking_and_pending"
-                                if state.assistant_speaking and state.assistant_playback_pending
-                                else "speaking"
-                                if state.assistant_speaking
-                                else "playback_pending"
-                            )
-                            await _append_call_trace(
-                                current_call_sid,
-                                event_type="duplex_overlap_detected",
-                                text=(
-                                    f"rms={decoded_audio.rms} assistant_phase={assistant_phase} "
-                                    f"pending_mark={state.pending_playback_mark or '-'}"
-                                ),
-                                level="warning",
-                            )
-                        if followup_probe_armed:
-                            if not followup_probe_capture_started:
-                                if decoded_audio.rms >= _FOLLOWUP_PROBE_RMS_THRESHOLD:
-                                    followup_probe_detection_hits += 1
-                                else:
-                                    followup_probe_detection_hits = 0
-                                if followup_probe_detection_hits >= _FOLLOWUP_PROBE_MIN_HITS:
-                                    followup_probe_capture_started = True
-                                    followup_probe_capture_started_at = now_ts
+                                if buffered_overlap_audio:
                                     await _append_call_trace(
                                         current_call_sid,
-                                        event_type="followup_probe_speech_detected",
+                                        event_type="local_barge_in_buffer_replayed",
                                         text=(
-                                            f"rms={decoded_audio.rms} after_ms="
-                                            f"{int((now_ts - followup_probe_started_at) * 1000)}"
+                                            f"mark={mark_name} replayed_ms="
+                                            f"{int(len(buffered_overlap_audio) / 32)}"
                                         ),
+                                        level="info",
+                                    )
+                                if await _close_after_playback_if_needed():
+                                    return
+                                await _arm_followup_probe(trigger=mark_name or "assistant_audio")
+                            continue
+
+                        if event_type == "start":
+                            start = payload.get("start") or {}
+                            stream_sid = (
+                                str(start.get("streamSid") or payload.get("streamSid") or "").strip()
+                                or None
+                            )
+                            current_call_sid = (
+                                str(start.get("callSid") or payload.get("callSid") or "").strip() or None
+                            )
+                            await _mark_stream_active(current_call_sid)
+                            twilio_started.set()
+                            await _ensure_bound_call_id()
+                            continue
+
+                        if event_type == "media":
+                            media = payload.get("media") or {}
+                            track = str(media.get("track") or "").strip().lower()
+                            if track and "inbound" not in track:
+                                if not state.logged_non_inbound_track:
+                                    state.logged_non_inbound_track = True
+                                    await _append_call_trace(
+                                        current_call_sid,
+                                        event_type="media_track_ignored",
+                                        text=f"track={track}",
+                                        level="info",
+                                    )
+                                continue
+                            encoded = media.get("payload")
+                            if not isinstance(encoded, str) or not encoded.strip():
+                                continue
+                            try:
+                                decoded_audio = codec.decode_twilio_payload(encoded)
+                            except Exception:
+                                state.decode_fail_count += 1
+                                now_ts = time.monotonic()
+                                if (
+                                    now_ts - state.last_decode_error_at
+                                ) >= _MEDIA_STATS_INTERVAL_SECONDS:
+                                    state.last_decode_error_at = now_ts
+                                    await _append_call_trace(
+                                        current_call_sid,
+                                        event_type="media_decode_error",
+                                        text=f"count={state.decode_fail_count}",
                                         level="warning",
                                     )
-                            if followup_probe_capture_started:
-                                followup_debug_captures[_FOLLOWUP_PCM8K_RAW_DEBUG_VARIANT].append(
-                                    decoded_audio.pcm8k
+                                continue
+
+                            now_ts = time.monotonic()
+                            state.media_frames += 1
+                            inbound_debug_captures[_PCM8K_RAW_DEBUG_VARIANT].append(decoded_audio.pcm8k)
+                            inbound_debug_captures[_PCM16K_RESAMPLED_DEBUG_VARIANT].append(
+                                decoded_audio.pcm16k
+                            )
+                            if (
+                                (state.assistant_speaking or state.assistant_playback_pending)
+                                and decoded_audio.rms >= _DUPLEX_OVERLAP_RMS_THRESHOLD
+                                and (now_ts - last_duplex_overlap_trace_at)
+                                >= _DUPLEX_OVERLAP_TRACE_INTERVAL_SECONDS
+                            ):
+                                last_duplex_overlap_trace_at = now_ts
+                                assistant_phase = (
+                                    "speaking_and_pending"
+                                    if state.assistant_speaking and state.assistant_playback_pending
+                                    else "speaking"
+                                    if state.assistant_speaking
+                                    else "playback_pending"
                                 )
-                                followup_debug_captures[
-                                    _FOLLOWUP_PCM16K_RESAMPLED_DEBUG_VARIANT
-                                ].append(decoded_audio.pcm16k)
-                                if (
-                                    not followup_probe_capture_saved
-                                    and all(capture.is_full for capture in followup_debug_captures.values())
-                                ):
-                                    await _persist_followup_debug_wav(trigger="followup_probe_full")
-                                    followup_probe_armed = False
-                                    followup_probe_detection_hits = 0
-                                    followup_probe_capture_started = False
-                                    followup_probe_capture_started_at = 0.0
-                        assistant_active = state.assistant_speaking or state.assistant_playback_pending
-                        if assistant_active:
-                            pending_mark = (
-                                state.pending_playback_mark
-                                or ("assistant-speaking" if state.assistant_speaking else "assistant_audio")
-                            )
-                            barge_in_ready = playback_overlap_buffer.observe(
-                                pcm16k=decoded_audio.pcm16k,
-                                conditioned_rms=decoded_audio.conditioned_rms,
-                            )
-                            if stream_sid and barge_in_ready and local_clear_sent_for_mark != pending_mark:
-                                local_clear_sent_for_mark = pending_mark
-                                playback_pending_barge_in_hits = 0
-                                suppress_assistant_audio_until_turn_complete = True
-                                state.interrupt(now=now_ts)
-                                await _disarm_followup_probe(reason="local_barge_in")
-                                await _send_twilio_event({"event": "clear", "streamSid": stream_sid})
                                 await _append_call_trace(
                                     current_call_sid,
-                                    event_type="local_barge_in_clear_sent",
+                                    event_type="duplex_overlap_detected",
                                     text=(
-                                        f"pending_mark={pending_mark} "
-                                        f"conditioned_rms={decoded_audio.conditioned_rms}"
+                                        f"rms={decoded_audio.rms} assistant_phase={assistant_phase} "
+                                        f"pending_mark={state.pending_playback_mark or '-'}"
                                     ),
                                     level="warning",
                                 )
-                                buffered_overlap_audio = playback_overlap_buffer.drain()
-                                upstream_pause_started_at = None
-                                upstream_input_segment_active = True
-                                if upstream_audio_stream_closed:
-                                    upstream_audio_stream_closed = False
-                                    await _append_call_trace(
-                                        current_call_sid,
-                                        event_type="audio_stream_resumed",
-                                        text=f"conditioned_rms={decoded_audio.conditioned_rms}",
-                                        level="info",
+                            playback_locked = state.assistant_speaking or state.assistant_playback_pending
+                            hold_for_local_overlap_gate = False
+                            if (
+                                cx_agent_studio_bridge
+                                and not manual_vad
+                                and playback_locked
+                            ):
+                                # For the CX-style bridge, overlap frames are held locally first.
+                                # We only forward them upstream after a real barge-in is confirmed
+                                # and Twilio playback has been cleared.
+                                hold_for_local_overlap_gate = True
+                                if playback_overlap_buffer.observe(
+                                    pcm16k=decoded_audio.pcm16k,
+                                    conditioned_rms=decoded_audio.conditioned_rms,
+                                ):
+                                    await _clear_playback_for_local_barge_in(
+                                        now_ts=now_ts,
+                                        rms=decoded_audio.rms,
+                                        conditioned_rms=decoded_audio.conditioned_rms,
                                     )
-                                for batch in codec.queue_inbound_audio(buffered_overlap_audio):
-                                    await _send_realtime_audio(batch)
-                            else:
-                                playback_pending_barge_in_hits = 0
-                                continue
-                        else:
-                            playback_pending_barge_in_hits = 0
-                            playback_overlap_buffer.reset()
+                            elif not playback_locked:
+                                playback_overlap_buffer.reset()
+                            if followup_probe_armed:
+                                if not followup_probe_capture_started:
+                                    if decoded_audio.rms >= _FOLLOWUP_PROBE_RMS_THRESHOLD:
+                                        followup_probe_detection_hits += 1
+                                    else:
+                                        followup_probe_detection_hits = 0
+                                    if followup_probe_detection_hits >= _FOLLOWUP_PROBE_MIN_HITS:
+                                        followup_probe_capture_started = True
+                                        followup_probe_capture_started_at = now_ts
+                                        await _append_call_trace(
+                                            current_call_sid,
+                                            event_type="followup_probe_speech_detected",
+                                            text=(
+                                                f"rms={decoded_audio.rms} after_ms="
+                                                f"{int((now_ts - followup_probe_started_at) * 1000)}"
+                                            ),
+                                            level="warning",
+                                        )
+                                if followup_probe_capture_started:
+                                    followup_debug_captures[_FOLLOWUP_PCM8K_RAW_DEBUG_VARIANT].append(
+                                        decoded_audio.pcm8k
+                                    )
+                                    followup_debug_captures[
+                                        _FOLLOWUP_PCM16K_RESAMPLED_DEBUG_VARIANT
+                                    ].append(decoded_audio.pcm16k)
+                                    if (
+                                        not followup_probe_capture_saved
+                                        and all(
+                                            capture.is_full
+                                            for capture in followup_debug_captures.values()
+                                        )
+                                    ):
+                                        await _persist_followup_debug_wav(
+                                            trigger="followup_probe_full"
+                                        )
+                                        followup_probe_armed = False
+                                        followup_probe_detection_hits = 0
+                                        followup_probe_capture_started = False
+                                        followup_probe_capture_started_at = 0.0
+                            if manual_vad:
+                                if playback_locked and not manual_activity_active:
+                                    if decoded_audio.rms >= manual_barge_rms:
+                                        manual_prefix_frames.append(decoded_audio.pcm16k)
+                                        manual_activity_hits += 1
+                                    else:
+                                        manual_activity_hits = 0
+                                        manual_prefix_frames.clear()
 
-                        has_effective_activity = (
-                            decoded_audio.conditioned_rms
-                            >= settings.twilio_media_stream_upstream_activity_rms
-                        )
-                        if has_effective_activity:
-                            upstream_pause_started_at = None
-                            if not upstream_input_segment_active:
-                                upstream_input_segment_active = True
-                            if upstream_audio_stream_closed:
-                                upstream_audio_stream_closed = False
+                                    if manual_activity_hits >= manual_barge_hits_required:
+                                        prefix_payload = b"".join(manual_prefix_frames)
+                                        manual_prefix_frames.clear()
+                                        await _start_manual_activity(
+                                            now_ts=now_ts,
+                                            mode="barge_in_during_playback",
+                                            threshold=manual_barge_rms,
+                                            raw_rms=decoded_audio.rms,
+                                            conditioned_rms=decoded_audio.conditioned_rms,
+                                            prefix_payload=prefix_payload,
+                                        )
+                                elif not playback_locked and not manual_activity_active:
+                                    manual_prefix_frames.append(decoded_audio.pcm16k)
+                                    if decoded_audio.rms >= manual_start_rms:
+                                        manual_activity_hits += 1
+                                    else:
+                                        manual_activity_hits = 0
+
+                                    if manual_activity_hits >= manual_start_hits_required:
+                                        prefix_payload = b"".join(manual_prefix_frames)
+                                        manual_prefix_frames.clear()
+                                        await _start_manual_activity(
+                                            now_ts=now_ts,
+                                            mode="normal_after_playback",
+                                            threshold=manual_start_rms,
+                                            raw_rms=decoded_audio.rms,
+                                            conditioned_rms=decoded_audio.conditioned_rms,
+                                            prefix_payload=prefix_payload,
+                                        )
+                                elif manual_activity_active:
+                                    await _queue_pcm16k_payload(decoded_audio.pcm16k)
+                                    _record_manual_activity_frame(
+                                        now_ts=now_ts,
+                                        raw_rms=decoded_audio.rms,
+                                        conditioned_rms=decoded_audio.conditioned_rms,
+                                    )
+                                    if decoded_audio.conditioned_rms >= manual_end_rms:
+                                        silence_ms_before_reset = (
+                                            manual_silence_hits * _TWILIO_MEDIA_FRAME_MS
+                                        )
+                                        if (
+                                            manual_silence_hits > 0
+                                            and silence_ms_before_reset
+                                            >= _MANUAL_ACTIVITY_SILENCE_RESET_TRACE_MS
+                                        ):
+                                            await _append_manual_activity_trace(
+                                                event_type="manual_activity_silence_reset",
+                                                reason="voice_energy_resumed_before_timeout",
+                                                now_ts=now_ts,
+                                                silence_ms=silence_ms_before_reset,
+                                            )
+                                        manual_silence_hits = 0
+                                    else:
+                                        manual_silence_hits += 1
+                                    if (
+                                        (now_ts - manual_activity_last_trace_at)
+                                        >= _MANUAL_ACTIVITY_PROGRESS_TRACE_INTERVAL_SECONDS
+                                    ):
+                                        manual_activity_last_trace_at = now_ts
+                                        await _append_manual_activity_trace(
+                                            event_type="manual_activity_progress",
+                                            reason="awaiting_end_boundary",
+                                            now_ts=now_ts,
+                                        )
+                                    if manual_silence_hits >= manual_silence_hits_required:
+                                        await _send_manual_activity_end(
+                                            reason="silence_timeout",
+                                            silence_ms=manual_silence_hits * _TWILIO_MEDIA_FRAME_MS,
+                                        )
+                                else:
+                                    manual_activity_hits = 0
+                                    manual_silence_hits = 0
+                                    manual_prefix_frames.clear()
+                                    _reset_manual_activity_runtime()
+                            else:
+                                if not hold_for_local_overlap_gate:
+                                    for batch in codec.queue_inbound_audio(decoded_audio.pcm16k):
+                                        await _queue_realtime_audio(batch)
+                            if (now_ts - state.last_media_stats_at) >= _MEDIA_STATS_INTERVAL_SECONDS:
+                                state.last_media_stats_at = now_ts
+                                buffer_ms = int(codec.pending_inbound_bytes / 32)
                                 await _append_call_trace(
                                     current_call_sid,
-                                    event_type="audio_stream_resumed",
-                                    text=f"conditioned_rms={decoded_audio.conditioned_rms}",
+                                    event_type="media_stats",
+                                    text=(
+                                        f"frames={state.media_frames} rms={decoded_audio.rms} "
+                                        f"conditioned_rms={decoded_audio.conditioned_rms} "
+                                        f"buffer_ms={buffer_ms} mode=thin_bridge_stream"
+                                    ),
                                     level="info",
                                 )
-                            for batch in codec.queue_inbound_audio(decoded_audio.pcm16k):
-                                await _send_realtime_audio(batch)
-                        elif upstream_input_segment_active:
-                            for batch in codec.queue_inbound_audio(decoded_audio.pcm16k):
-                                await _send_realtime_audio(batch)
-                            if upstream_pause_started_at is None:
-                                upstream_pause_started_at = now_ts
-                            if (
-                                not upstream_audio_stream_closed
-                                and (now_ts - upstream_pause_started_at)
-                                >= settings.twilio_media_stream_pause_flush_seconds
-                            ):
-                                silence_ms = int((now_ts - upstream_pause_started_at) * 1000)
-                                await _close_realtime_input_segment(
-                                    reason=f"silence_timeout silence_ms={silence_ms}",
-                                    conditioned_rms=decoded_audio.conditioned_rms,
-                                )
-                        else:
-                            upstream_pause_started_at = None
-                        if (now_ts - state.last_media_stats_at) >= _MEDIA_STATS_INTERVAL_SECONDS:
-                            state.last_media_stats_at = now_ts
-                            buffer_ms = int(codec.pending_inbound_bytes / 32)
-                            await _append_call_trace(
-                                current_call_sid,
-                                event_type="media_stats",
-                                text=(
-                                    f"frames={state.media_frames} rms={decoded_audio.rms} "
-                                    f"conditioned_rms={decoded_audio.conditioned_rms} "
-                                    f"buffer_ms={buffer_ms} mode=auto_stream"
-                                ),
-                                level="info",
-                            )
-                        continue
+                            continue
 
-                    if event_type == "stop":
-                        try:
-                            await _flush_realtime_audio_buffer()
-                            await session.send_realtime_input(audio_stream_end=True)
-                        except Exception:
-                            pass
-                        await _append_call_trace(current_call_sid, event_type="stream_stop", level="info")
-                        await _disarm_followup_probe(reason="stream_stop")
-                        await _persist_inbound_debug_wav(trigger="stream_stop")
-                        await _finalize_bound_call(trigger="stream_stop", run_extraction=True)
-                        await _mark_stream_inactive(current_call_sid)
-                        stream_done.set()
-                        return
+                        if event_type == "stop":
+                            try:
+                                await _close_realtime_audio_input()
+                            except Exception:
+                                pass
+                            await _append_call_trace(
+                                current_call_sid, event_type="stream_stop", level="info"
+                            )
+                            await _disarm_followup_probe(reason="stream_stop")
+                            await _persist_inbound_debug_wav(trigger="stream_stop")
+                            await _finalize_bound_call(trigger="stream_stop", run_extraction=True)
+                            await _mark_stream_inactive(current_call_sid)
+                            stream_done.set()
+                            return
+                except WebSocketDisconnect:
+                    try:
+                        await _close_realtime_audio_input()
+                    except Exception:
+                        pass
+                    raise
 
             async def live_to_twilio() -> None:
                 nonlocal followup_probe_transcript_observed
-                nonlocal suppress_assistant_audio_until_turn_complete
+                nonlocal manual_activity_active
                 nonlocal local_clear_sent_for_mark
                 await twilio_started.wait()
                 async for message in session.receive():
@@ -977,10 +1310,11 @@ async def twilio_voice_media_stream(
                             )
 
                     if content.interrupted and stream_sid:
-                        suppress_assistant_audio_until_turn_complete = False
-                        local_clear_sent_for_mark = None
-                        playback_overlap_buffer.reset()
-                        state.interrupt(now=time.monotonic())
+                        state.interrupt(
+                            now=time.monotonic(),
+                            preserve_pending_mark=bool(state.pending_playback_mark),
+                        )
+                        codec.clear_outbound_audio()
                         await _disarm_followup_probe(reason="interrupted")
                         await _send_twilio_event({"event": "clear", "streamSid": stream_sid})
                         await _append_call_trace(
@@ -989,6 +1323,8 @@ async def twilio_voice_media_stream(
                             text="Model response interrupted by activity.",
                             level="warning",
                         )
+                        playback_overlap_buffer.reset()
+                        local_clear_sent_for_mark = None
 
                     if content.model_turn and content.model_turn.parts:
                         for part in content.model_turn.parts:
@@ -1007,11 +1343,12 @@ async def twilio_voice_media_stream(
 
                             if followup_probe_armed:
                                 await _disarm_followup_probe(reason="assistant_response_started")
+                            if manual_vad and manual_activity_active:
+                                await _send_manual_activity_end(reason="assistant_response_started")
+                            playback_overlap_buffer.reset()
+                            local_clear_sent_for_mark = None
                             state.note_assistant_activity(now=time.monotonic(), speaking=True)
-                            if suppress_assistant_audio_until_turn_complete:
-                                continue
                             if not state.model_turn_sent_audio:
-                                await _close_realtime_input_segment(reason="assistant_response_started")
                                 await _append_call_trace(
                                     current_call_sid,
                                     event_type="assistant_audio_started",
@@ -1052,33 +1389,53 @@ async def twilio_voice_media_stream(
                                 )
                                 continue
 
-                            await _append_call_trace(
-                                current_call_sid,
-                                event_type="assistant_audio_forwarded",
-                                text=(
-                                    f"mime_type={inline.mime_type or 'audio/pcm'} "
-                                    f"source_bytes={len(pcm_bytes)} frames={len(frames)} "
-                                    f"payload_bytes={sum(len(frame) for frame in frames)}"
-                                ),
-                                level="info",
-                            )
-                            state.mark_model_audio_sent()
-                            for frame in frames:
-                                await _send_twilio_event(
-                                    {
-                                        "event": "media",
-                                        "streamSid": stream_sid,
-                                        "media": {
-                                            "payload": base64.b64encode(frame).decode("ascii"),
-                                        },
-                                    }
+                            if frames:
+                                await _append_call_trace(
+                                    current_call_sid,
+                                    event_type="assistant_audio_forwarded",
+                                    text=(
+                                        f"mime_type={inline.mime_type or 'audio/pcm'} "
+                                        f"source_bytes={len(pcm_bytes)} frames={len(frames)} "
+                                        f"payload_bytes={sum(len(frame) for frame in frames)}"
+                                    ),
+                                    level="info",
                                 )
+                                state.mark_model_audio_sent()
+                                for frame in frames:
+                                    await _send_twilio_event(
+                                        {
+                                            "event": "media",
+                                            "streamSid": stream_sid,
+                                            "media": {
+                                                "payload": base64.b64encode(frame).decode("ascii"),
+                                            },
+                                        }
+                                    )
 
                     if content.turn_complete:
-                        if suppress_assistant_audio_until_turn_complete:
-                            suppress_assistant_audio_until_turn_complete = False
-                            local_clear_sent_for_mark = None
-                        playback_overlap_buffer.reset()
+                        if stream_sid:
+                            tail_frames = codec.flush_outbound_audio(pad_to_frame=True)
+                            if tail_frames:
+                                await _append_call_trace(
+                                    current_call_sid,
+                                    event_type="assistant_audio_tail_flushed",
+                                    text=(
+                                        f"frames={len(tail_frames)} "
+                                        f"payload_bytes={sum(len(frame) for frame in tail_frames)}"
+                                    ),
+                                    level="info",
+                                )
+                                state.mark_model_audio_sent()
+                                for frame in tail_frames:
+                                    await _send_twilio_event(
+                                        {
+                                            "event": "media",
+                                            "streamSid": stream_sid,
+                                            "media": {
+                                                "payload": base64.b64encode(frame).decode("ascii"),
+                                            },
+                                        }
+                                    )
                         if stream_sid and state.model_turn_sent_audio and not state.pending_playback_mark:
                             playback_mark = state.next_playback_mark()
                             await _send_twilio_event(
@@ -1116,7 +1473,7 @@ async def twilio_voice_media_stream(
                         if await _close_after_playback_if_needed():
                             return
 
-            await asyncio.gather(twilio_to_live(), live_to_twilio())
+            await asyncio.gather(live_audio_sender(), twilio_to_live(), live_to_twilio())
     except WebSocketDisconnect:
         stream_done.set()
         await _append_call_trace(current_call_sid, event_type="stream_disconnect", level="warning")

@@ -17,11 +17,13 @@ from app.api.v1.endpoints.twilio import (
     _extract_twilio_tts_voice_ids,
     _is_auto_closing_reply,
     _require_opening_sentence,
+    _resolve_media_stream_bridge_profile,
     _resolve_gemini_live_model,
     _resolve_twilio_inbound_voice_route,
     _set_pending_inbound_override_for_number,
     _use_manual_vad_control,
     _validate_twilio_activity_mode,
+    _validate_twilio_media_stream_bridge_profile,
 )
 from app.exceptions import BusinessException
 from app.services.twilio.audio_codec import (
@@ -326,6 +328,42 @@ def test_build_gemini_live_config_applies_explicit_auto_vad_settings(monkeypatch
     assert config.output_audio_transcription.language_codes == ["ja-JP"]
 
 
+def test_build_gemini_live_config_uses_cx_agent_studio_profile_overrides(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.twilio.live_config.settings",
+        SimpleNamespace(
+            twilio_gemini_activity_mode="manual",
+            twilio_gemini_activity_handling="interrupt",
+            twilio_gemini_turn_coverage="activity_only",
+            twilio_gemini_start_sensitivity="high",
+            twilio_gemini_end_sensitivity="high",
+            twilio_gemini_prefix_padding_ms=100,
+            twilio_gemini_silence_duration_ms=800,
+            twilio_agent_language="ja-JP",
+        ),
+    )
+
+    config = _build_gemini_live_config(
+        model="gemini-live-2.5-flash-native-audio",
+        system_instruction="hello",
+        voice_name="Aoede",
+        manual_vad=False,
+        media_stream_bridge_profile="cx_agent_studio",
+    )
+
+    aad = config.realtime_input_config.automatic_activity_detection
+    assert aad.disabled is False
+    assert str(aad.start_of_speech_sensitivity.value) == "START_SENSITIVITY_LOW"
+    assert str(aad.end_of_speech_sensitivity.value) == "END_SENSITIVITY_LOW"
+    assert aad.prefix_padding_ms == 20
+    assert aad.silence_duration_ms == 100
+    assert (
+        str(config.realtime_input_config.activity_handling.value)
+        == "START_OF_ACTIVITY_INTERRUPTS"
+    )
+    assert str(config.realtime_input_config.turn_coverage.value) == "TURN_INCLUDES_ALL_INPUT"
+
+
 def test_normalize_gemini_live_voice_name_accepts_short_and_twilio_google_names():
     assert _normalize_gemini_live_voice_name("Aoede") == "Aoede"
     assert _normalize_gemini_live_voice_name("ja-JP-Chirp3-HD-Aoede") == "Aoede"
@@ -460,6 +498,22 @@ def test_media_stream_state_interrupt_clears_runtime_locks():
     assert state.model_turn_sent_audio is False
 
 
+def test_media_stream_state_interrupt_can_preserve_pending_playback_mark():
+    state = TwilioMediaStreamState()
+    state.assistant_speaking = True
+    state.pending_playback_mark = "assistant-turn-3"
+    state.assistant_playback_pending = True
+    state.model_turn_sent_audio = True
+
+    state.interrupt(now=21.0, preserve_pending_mark=True)
+
+    assert state.assistant_speaking is False
+    assert state.pending_playback_mark == "assistant-turn-3"
+    assert state.assistant_playback_pending is True
+    assert state.assistant_last_output_at == 21.0
+    assert state.model_turn_sent_audio is False
+
+
 def test_is_auto_closing_reply_requires_closing_tokens_and_non_question_suffix():
     assert _is_auto_closing_reply("依頼内容を承りました。ご利用ありがとうございます。")
     assert _is_auto_closing_reply("承知いたしました。ご利用ありがとうございます。")
@@ -504,7 +558,7 @@ async def test_pending_inbound_override_can_store_voice_route():
     payload = await _consume_pending_inbound_override_for_number("+815012345679")
     assert payload == {
         "prompt_code": "base_appointment",
-        "voice_route": "official_conversational_agents",
+        "voice_route": "media_stream_live",
         "voice_engine": None,
         "voice_name": "Aoede",
     }
@@ -516,7 +570,7 @@ def test_resolve_twilio_inbound_voice_route_prefers_explicit_route():
             voice_route="media_stream_live",
             voice_engine="twilio",
         )
-        == "official_conversational_agents"
+        == "media_stream_live"
     )
     assert (
         _resolve_twilio_inbound_voice_route(
@@ -551,14 +605,31 @@ def test_twilio_defaults_to_auto_vad_control(monkeypatch):
     _validate_twilio_activity_mode()
 
 
-def test_twilio_manual_vad_mode_is_rejected_for_media_stream_bridge(monkeypatch):
+def test_twilio_manual_vad_mode_is_allowed_for_media_stream_bridge(monkeypatch):
     monkeypatch.setattr(
         "app.services.twilio.live_config.settings",
         SimpleNamespace(twilio_gemini_activity_mode="manual"),
     )
     assert _use_manual_vad_control() is True
-    with pytest.raises(ValueError, match="only supports Gemini automatic activity detection"):
-        _validate_twilio_activity_mode()
+    _validate_twilio_activity_mode()
+
+
+def test_twilio_media_stream_bridge_profile_defaults_to_cx_agent_studio(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.twilio.live_config.settings",
+        SimpleNamespace(twilio_media_stream_bridge_profile=""),
+    )
+    assert _resolve_media_stream_bridge_profile() == "cx_agent_studio"
+    _validate_twilio_media_stream_bridge_profile()
+
+
+def test_twilio_media_stream_bridge_profile_accepts_legacy_alias(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.twilio.live_config.settings",
+        SimpleNamespace(twilio_media_stream_bridge_profile="manual"),
+    )
+    assert _resolve_media_stream_bridge_profile() == "legacy_manual"
+    _validate_twilio_media_stream_bridge_profile()
 
 
 def test_twilio_media_audio_codec_batches_twilio_frames_before_sending_upstream():
@@ -593,7 +664,38 @@ def test_twilio_media_audio_codec_encodes_model_audio_back_to_twilio_frames():
     )
 
     assert frames
-    assert all(len(frame) <= 160 for frame in frames)
+    assert all(len(frame) == 160 for frame in frames)
+
+
+def test_twilio_media_audio_codec_buffers_partial_model_audio_until_full_frame():
+    codec = TwilioMediaAudioCodec(input_batch_ms=100, twilio_frame_bytes=160)
+    first = codec.encode_model_audio(
+        b"\x00\x00" * 300,
+        mime_type="audio/pcm;rate=24000",
+    )
+    second = codec.encode_model_audio(
+        b"\x00\x00" * 180,
+        mime_type="audio/pcm;rate=24000",
+    )
+
+    assert first == []
+    assert len(second) == 1
+    assert len(second[0]) == 160
+    assert codec.pending_outbound_bytes == 0
+
+
+def test_twilio_media_audio_codec_can_flush_tail_frame_with_padding():
+    codec = TwilioMediaAudioCodec(input_batch_ms=100, twilio_frame_bytes=160)
+    codec.encode_model_audio(
+        b"\x00\x00" * 300,
+        mime_type="audio/pcm;rate=24000",
+    )
+
+    tail_frames = codec.flush_outbound_audio(pad_to_frame=True)
+
+    assert len(tail_frames) == 1
+    assert len(tail_frames[0]) == 160
+    assert codec.pending_outbound_bytes == 0
 
 
 def test_twilio_media_audio_codec_noise_gate_suppresses_low_rms_tail_noise():
@@ -623,6 +725,8 @@ def test_twilio_media_audio_codec_noise_gate_suppresses_low_rms_tail_noise():
     assert max(abs(sample) for sample in loud_samples) > 0
     assert max(abs(sample) for sample in quiet_after_samples) > 0
     assert max(abs(sample) for sample in quiet_final_samples) <= 64
+    assert quiet_before.rms > quiet_before.conditioned_rms
+    assert quiet_final.rms > quiet_final.conditioned_rms
 
 
 def test_resolve_gemini_live_model_maps_legacy_preview_to_vertex_native_audio(monkeypatch):

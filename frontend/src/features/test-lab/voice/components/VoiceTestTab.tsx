@@ -24,6 +24,11 @@ import {
 
 const DEFAULT_IDENTITY = 'webcall-tester';
 const OFFICIAL_CA_TRANSPORT_LABEL = '官方 Conversational Agents（Google CX Agent Studio + Twilio）';
+const MEDIA_STREAM_TRANSPORT_LABEL = '自建 Media Streams（Twilio + 自己后端主控 + Gemini Live）';
+
+function isTwilioRouteMode(mode: VoiceRouteMode): boolean {
+  return mode !== 'direct';
+}
 
 function toDialerTone(status: UseTwilioVoiceGatewayResult['dialerStatus']): 'green' | 'blue' | 'cool-gray' | 'red' {
   if (status === 'registered') return 'green';
@@ -42,18 +47,21 @@ function toCallTone(status: UseTwilioVoiceGatewayResult['callStatus']): 'green' 
 export function VoiceTestTab() {
   const { t } = useTranslation(['pages']);
   const liveWebsocket = useVoiceTestConsole();
-  const twilioGateway = useTwilioVoiceGateway({
-    identity: DEFAULT_IDENTITY,
-    transportMode: 'official_conversational_agents',
-    requirePrompt: false,
-    transportLabel: OFFICIAL_CA_TRANSPORT_LABEL,
-  });
-  const { voiceCatalog: geminiVoiceCatalog, loadingVoices: loadingGeminiVoices } =
-    useGeminiVoiceCatalog();
-
   const [routeMode, setRouteMode] = useState<VoiceRouteMode>('direct');
   const previousRouteModeRef = useRef<VoiceRouteMode>('direct');
   const twilioConfigBootstrappedRef = useRef(false);
+  const twilioTransportMode =
+    routeMode === 'twilio_media_stream' ? 'media_stream_live' : 'official_conversational_agents';
+  const twilioTransportLabel =
+    routeMode === 'twilio_media_stream' ? MEDIA_STREAM_TRANSPORT_LABEL : OFFICIAL_CA_TRANSPORT_LABEL;
+  const twilioGateway = useTwilioVoiceGateway({
+    identity: DEFAULT_IDENTITY,
+    transportMode: twilioTransportMode,
+    requirePrompt: twilioTransportMode === 'media_stream_live',
+    transportLabel: twilioTransportLabel,
+  });
+  const { voiceCatalog: geminiVoiceCatalog, loadingVoices: loadingGeminiVoices } =
+    useGeminiVoiceCatalog();
 
   const prompts = liveWebsocket.prompts;
   const selectedPromptCode = liveWebsocket.selectedPromptCode;
@@ -75,7 +83,7 @@ export function VoiceTestTab() {
   }, [geminiVoiceCatalog.defaultVoice, liveWebsocket.voice, selectedPrompt?.voiceId]);
 
   useEffect(() => {
-    if (routeMode !== 'twilio') {
+    if (!isTwilioRouteMode(routeMode)) {
       return;
     }
     if (twilioConfigBootstrappedRef.current) {
@@ -137,6 +145,9 @@ export function VoiceTestTab() {
         ? 'teal'
         : 'cool-gray';
 
+  const isOfficialTwilio = routeMode === 'twilio_official';
+  const isMediaStreamTwilio = routeMode === 'twilio_media_stream';
+
   const summaryItems: TestWorkbenchSummaryItem[] = [
     {
       id: 'goal',
@@ -150,7 +161,9 @@ export function VoiceTestTab() {
       value:
         routeMode === 'direct'
           ? t('pages:test.voiceLab.summary.routeDirect', 'Browser direct to Gemini')
-          : t('pages:test.voiceLab.summary.routeTwilio', 'Phone gateway (Official CA)'),
+          : isOfficialTwilio
+            ? '电话网关（官方 Conversational Agents）'
+            : '电话网关（自建 Media Streams + 后端主控）',
       tone: 'teal',
     },
     {
@@ -170,15 +183,25 @@ export function VoiceTestTab() {
     {
       id: 'prompt',
       label: t('pages:test.voiceLab.summary.prompt', 'Prompt'),
-      value: routeMode === 'direct' ? selectedPromptCode || '-' : 'Google CA managed',
+      value:
+        routeMode === 'direct'
+          ? selectedPromptCode || '-'
+          : isOfficialTwilio
+            ? 'Google CA managed'
+            : selectedPromptCode || '-',
       mono: true,
     },
     {
       id: 'voice',
       label: t('pages:test.voiceLab.summary.voice', 'Gemini Voice'),
-      value: routeMode === 'direct' ? effectiveVoice || '-' : 'Google CA managed',
+      value:
+        routeMode === 'direct'
+          ? effectiveVoice || '-'
+          : isOfficialTwilio
+            ? 'Google CA managed'
+            : effectiveVoice || '-',
       mono: true,
-      tone: routeMode === 'twilio' ? 'teal' : 'cool-gray',
+      tone: routeMode !== 'direct' ? 'teal' : 'cool-gray',
     },
   ];
 
@@ -280,6 +303,8 @@ export function VoiceTestTab() {
               routeMode={routeMode}
               configLocked={configLocked}
               selectedPromptCode={selectedPromptCode}
+              effectiveVoice={effectiveVoice}
+              selectedPromptModel={selectedPrompt?.llmModel || ''}
               geminiVoiceCatalog={geminiVoiceCatalog}
               loadingGeminiVoices={loadingGeminiVoices}
               directSessionActive={directSessionActive}

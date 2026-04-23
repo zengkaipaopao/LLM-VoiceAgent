@@ -5,8 +5,10 @@ from app.core.model_defaults import require_live_model, resolve_vertex_live_mode
 from app.services.twilio.debug_audio_runtime import _build_twilio_inbound_debug_capture
 from app.services.twilio.live_config import (
     _build_gemini_live_config,
+    _resolve_media_stream_bridge_profile,
     _use_manual_vad_control,
     _validate_twilio_activity_mode,
+    _validate_twilio_media_stream_bridge_profile,
 )
 from app.services.twilio.media_stream_bootstrap import receive_twilio_media_stream_start
 from app.services.twilio.normalizers import _resolve_twilio_inbound_voice_route
@@ -36,6 +38,7 @@ from app.services.twilio.voice_catalog import (
 router = APIRouter()
 __all__ = (
     "_build_gemini_live_config",
+    "_resolve_media_stream_bridge_profile",
     "_build_twilio_inbound_debug_capture",
     "_build_twilio_media_stream_twiml",
     "_candidate_websocket_signature_urls",
@@ -51,6 +54,7 @@ __all__ = (
     "_set_pending_inbound_override_for_number",
     "_use_manual_vad_control",
     "_validate_twilio_activity_mode",
+    "_validate_twilio_media_stream_bridge_profile",
 )
 
 

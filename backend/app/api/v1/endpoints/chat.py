@@ -19,6 +19,8 @@ from app.schemas.chat import (
     TestSessionAppendMessagesResponse,
     TestSessionFinalizeRequest,
     TestSessionFinalizeResponse,
+    TestSessionOperationTurnRequest,
+    TestSessionOperationTurnResponse,
     TestSessionStartRequest,
     TestSessionStartResponse,
 )
@@ -145,6 +147,40 @@ async def finalize_test_session(request: TestSessionFinalizeRequest, db: AsyncSe
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to finalize test session.",
+        ) from e
+
+
+@router.post(
+    "/test/operation-turn",
+    response_model=ResponseBase[TestSessionOperationTurnResponse],
+    status_code=status.HTTP_200_OK,
+)
+async def process_test_session_operation_turn(
+    request: TestSessionOperationTurnRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Advance test session through ChatService operation flow without generic LLM fallback."""
+    try:
+        service = ChatService(db)
+        result = await service.process_test_session_operation_turn(
+            call_id=request.call_id,
+            message=request.message,
+            template_code=request.template_code,
+            provider=request.provider,
+            model=request.model,
+        )
+        return ResponseBase(success=True, data=result)
+    except ValueError as e:
+        logger.warning("Invalid test session operation request: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid test session operation request.",
+        ) from e
+    except Exception as e:
+        logger.exception("Failed to process test session operation turn.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to process test session operation turn.",
         ) from e
 
 

@@ -34,11 +34,14 @@ vi.mock('../../../../components/organisms/TestTabs/voice/VoiceRouteSelector', ()
   VoiceRouteSelector: ({
     onChange,
   }: {
-    onChange: (mode: 'direct' | 'twilio') => void;
+    onChange: (mode: 'direct' | 'twilio_official' | 'twilio_media_stream') => void;
   }) => (
     <div>
-      <button type="button" onClick={() => onChange('twilio')}>
+      <button type="button" onClick={() => onChange('twilio_official')}>
         switch-twilio
+      </button>
+      <button type="button" onClick={() => onChange('twilio_media_stream')}>
+        switch-media-stream
       </button>
       <button type="button" onClick={() => onChange('direct')}>
         switch-direct
@@ -216,6 +219,21 @@ describe('VoiceTestTab', () => {
     await waitFor(() => {
       expect(twilioGateway.refreshCapability).toHaveBeenCalledTimes(1);
       expect(liveWebsocket.disconnectSocket).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('resets the gateway when switching between twilio implementations', async () => {
+    render(<VoiceTestTab />);
+
+    fireEvent.click(screen.getByText('switch-twilio'));
+    await waitFor(() => {
+      expect(twilioGateway.refreshCapability).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.click(screen.getByText('switch-media-stream'));
+
+    await waitFor(() => {
+      expect(twilioGateway.resetGatewaySession).toHaveBeenCalledWith({ clearMessages: true });
     });
   });
 });

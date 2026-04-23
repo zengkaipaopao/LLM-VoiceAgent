@@ -240,6 +240,7 @@ class TwilioMediaAudioCodec:
         repr=False,
     )
     _pending_inbound_pcm16k: bytearray = field(default_factory=bytearray, init=False, repr=False)
+    _pending_outbound_ulaw: bytearray = field(default_factory=bytearray, init=False, repr=False)
     _input_batch_bytes: int = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -319,6 +320,30 @@ class TwilioMediaAudioCodec:
         self._pending_inbound_pcm16k.clear()
         return flushed
 
+    def _drain_outbound_frames(self) -> list[bytes]:
+        frames: list[bytes] = []
+        while len(self._pending_outbound_ulaw) >= self.twilio_frame_bytes:
+            frames.append(bytes(self._pending_outbound_ulaw[: self.twilio_frame_bytes]))
+            del self._pending_outbound_ulaw[: self.twilio_frame_bytes]
+        return frames
+
+    @property
+    def pending_outbound_bytes(self) -> int:
+        return len(self._pending_outbound_ulaw)
+
+    def clear_outbound_audio(self) -> None:
+        self._pending_outbound_ulaw.clear()
+
+    def flush_outbound_audio(self, *, pad_to_frame: bool = False) -> list[bytes]:
+        if not self._pending_outbound_ulaw:
+            return []
+        if pad_to_frame and (len(self._pending_outbound_ulaw) % self.twilio_frame_bytes):
+            pad_bytes = self.twilio_frame_bytes - (
+                len(self._pending_outbound_ulaw) % self.twilio_frame_bytes
+            )
+            self._pending_outbound_ulaw.extend(b"\xff" * pad_bytes)
+        return self._drain_outbound_frames()
+
     def encode_model_audio(self, pcm_bytes: bytes, *, mime_type: str | None) -> list[bytes]:
         if not pcm_bytes:
             return []
@@ -349,4 +374,6 @@ class TwilioMediaAudioCodec:
         else:
             pcm8k_bytes = b""
         ulaw = audioop.lin2ulaw(pcm8k_bytes, 2) if pcm8k_bytes else b""
-        return _chunk_bytes(ulaw, self.twilio_frame_bytes)
+        if ulaw:
+            self._pending_outbound_ulaw.extend(ulaw)
+        return self._drain_outbound_frames()

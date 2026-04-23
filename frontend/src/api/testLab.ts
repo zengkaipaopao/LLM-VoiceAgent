@@ -58,6 +58,23 @@ export interface AppendTestSessionMessagesResponse {
   transcript_length: number;
 }
 
+export interface TestSessionOperationTurnRequest {
+  call_id: string;
+  message: string;
+  template_code?: string;
+  provider?: string;
+  model?: string;
+}
+
+export interface TestSessionOperationTurnResponse {
+  call_id: string;
+  handled: boolean;
+  response?: string | null;
+  operation?: string | null;
+  state_status?: string | null;
+  executed: boolean;
+}
+
 export async function startTestSession(
   payload: StartTestSessionRequest
 ): Promise<StartTestSessionResponse> {
@@ -76,5 +93,12 @@ export async function appendTestSessionMessages(
   payload: AppendTestSessionMessagesRequest
 ): Promise<AppendTestSessionMessagesResponse> {
   const response = await http.post('/chat/test/append-messages', payload);
+  return response.data.data;
+}
+
+export async function processTestSessionOperationTurn(
+  payload: TestSessionOperationTurnRequest
+): Promise<TestSessionOperationTurnResponse> {
+  const response = await http.post('/chat/test/operation-turn', payload);
   return response.data.data;
 }

@@ -12,6 +12,8 @@ interface VoiceSessionSectionProps {
   routeMode: VoiceRouteMode;
   configLocked: boolean;
   selectedPromptCode: string;
+  effectiveVoice: string;
+  selectedPromptModel: string;
   geminiVoiceCatalog: GeminiVoiceCatalog;
   loadingGeminiVoices: boolean;
   directSessionActive: boolean;
@@ -30,6 +32,8 @@ export function VoiceSessionSection({
   routeMode,
   configLocked,
   selectedPromptCode,
+  effectiveVoice,
+  selectedPromptModel,
   geminiVoiceCatalog,
   loadingGeminiVoices,
   directSessionActive,
@@ -43,6 +47,9 @@ export function VoiceSessionSection({
   twilioGateway,
 }: VoiceSessionSectionProps) {
   const directMicActive = liveWebsocket.micStatus === 'on' || liveWebsocket.micStatus === 'starting';
+  const isTwilioMode = routeMode !== 'direct';
+  const isOfficialTwilio = routeMode === 'twilio_official';
+  const isMediaStreamTwilio = routeMode === 'twilio_media_stream';
 
   return (
     <div className={styles.mainTile}>
@@ -54,7 +61,7 @@ export function VoiceSessionSection({
               先确定 Prompt、模型与音色，再进入连接控制。保持配置最少、路径清晰，便于排障。
             </p>
           </div>
-          {routeMode === 'twilio' &&
+          {isTwilioMode &&
             (twilioGateway.loadingCapability ? (
               <InlineLoading description="加载配置中..." />
             ) : (
@@ -116,28 +123,80 @@ export function VoiceSessionSection({
         ) : (
           <>
             <div className={styles.formGrid}>
-              <TextInput
-                id="twilio-official-ca-source"
-                labelText="Agent 配置来源"
-                value="Google CX Agent Studio / CES Deployment"
-                readOnly
-                helperText="电话侧对话逻辑、开场话术、模型与工具能力都由 Google 官方 Conversational Agents 配置管理。"
-              />
-              <TextInput
-                id="twilio-official-ca-mode"
-                labelText="当前电话路由"
-                value="official_conversational_agents"
-                readOnly
-                helperText="旧的 Media Streams -> Gemini Live 自建桥接已从主测试入口移除。当前页面固定走官方 CA 链路。"
-              />
-
-              <TextInput
-                id="twilio-transport"
-                labelText="当前接入方式"
-                value="官方 Conversational Agents（Google CX Agent Studio + Twilio）"
-                readOnly
-                helperText="Twilio 负责电话接入，Google 官方 Conversational Agents 负责会话编排与语音能力。"
-              />
+              {isOfficialTwilio ? (
+                <>
+                  <TextInput
+                    id="twilio-official-ca-source"
+                    labelText="Agent 配置来源"
+                    value="Google CX Agent Studio / CES Deployment"
+                    readOnly
+                    helperText="电话侧对话逻辑、开场话术、模型与工具能力都由 Google 官方 Conversational Agents 配置管理。"
+                  />
+                  <TextInput
+                    id="twilio-official-ca-mode"
+                    labelText="当前电话路由"
+                    value="official_conversational_agents"
+                    readOnly
+                    helperText="Google 官方会话层负责 turn detection、回合编排与工具能力，后端只做电话接入与桥接。"
+                  />
+                  <TextInput
+                    id="twilio-transport"
+                    labelText="当前接入方式"
+                    value="官方 Conversational Agents（Google CX Agent Studio + Twilio）"
+                    readOnly
+                    helperText="Twilio 负责电话接入，Google 官方 Conversational Agents 负责会话编排与语音能力。"
+                  />
+                </>
+              ) : (
+                <>
+                  <PromptTemplateSelect
+                    id="twilio-media-stream-prompt-select"
+                    labelText="Prompt 模板"
+                    value={selectedPromptCode}
+                    prompts={liveWebsocket.prompts}
+                    loading={liveWebsocket.loadingPrompts}
+                    disabled={twilioSessionActive}
+                    onChange={liveWebsocket.setSelectedPromptCode}
+                  />
+                  <TextInput
+                    id="twilio-media-stream-model"
+                    labelText="Gemini Live 模型"
+                    value={selectedPromptModel || '-'}
+                    readOnly
+                    helperText="该模式会直接使用本地 Prompt 配置里解析出的 Gemini Live / Native Audio 模型。"
+                  />
+                  <Select
+                    id="twilio-media-stream-voice"
+                    labelText="Gemini 音色（可选）"
+                    value={liveWebsocket.voice}
+                    onChange={(event) => liveWebsocket.setVoice(event.target.value)}
+                    helperText="留空则优先跟随 Prompt 的默认音色；该值会作为 Twilio Media Streams 自建桥接的 Gemini Live 语音覆盖。"
+                    disabled={twilioSessionActive || loadingGeminiVoices}
+                  >
+                    <SelectItem
+                      value=""
+                      text={loadingGeminiVoices ? '正在加载 Gemini 音色...' : '自动（Prompt/默认）'}
+                    />
+                    {geminiVoiceCatalog.voices.map((voice) => (
+                      <SelectItem key={voice} value={voice} text={voice} />
+                    ))}
+                  </Select>
+                  <TextInput
+                    id="twilio-media-stream-route"
+                    labelText="当前电话路由"
+                    value="media_stream_live"
+                    readOnly
+                    helperText="自建 Twilio Media Streams + 后端主控链路。当前桥接已按“薄传输层”原则重构：以持续转码/转发为主，本地不再切碎输入段。"
+                  />
+                  <TextInput
+                    id="twilio-media-stream-effective-voice"
+                    labelText="当前生效 Gemini 音色"
+                    value={effectiveVoice || '-'}
+                    readOnly
+                    helperText="最终会按“手动覆盖值 -> Prompt 默认音色 -> 系统默认音色”顺序解析。"
+                  />
+                </>
+              )}
 
               <TextInput id="twilio-identity" labelText="Client Identity" value={clientIdentity} readOnly />
               <TextInput
@@ -157,7 +216,11 @@ export function VoiceSessionSection({
                 labelText="已配置入站号码（Twilio）"
                 value={twilioGateway.capability.configuredPhoneNumber || '-'}
                 readOnly
-                helperText="真实手机直接拨打这个号码，也会走同一条官方 CA 电话链路。"
+                helperText={
+                  isOfficialTwilio
+                    ? '真实手机直接拨打这个号码，也会走同一条官方 CA 电话链路。'
+                    : '真实手机直接拨打这个号码，也会走同一条自建 Media Streams 电话桥接链路。'
+                }
               />
             </div>
           </>
@@ -169,11 +232,15 @@ export function VoiceSessionSection({
         <p className={styles.description}>
           {routeMode === 'direct'
             ? '先建立浏览器直连会话，再开启麦克风。浏览器仅负责采音与播放期抑制，实际 turn 判定交给 Gemini Live。'
-            : '页面内可按“准备下一通入呼”→ 真实手机拨打 Twilio 号码，或按 Token → 设备注册 → 开始语音对话 走浏览器外呼。两者都会进入同一条官方 Conversational Agents 电话链路。'}
+            : isOfficialTwilio
+              ? '页面内可按“准备下一通入呼”→ 真实手机拨打 Twilio 号码，或按 Token → 设备注册 → 开始语音对话 走浏览器外呼。两者都会进入同一条官方 Conversational Agents 电话链路。'
+              : '页面内可按“准备下一通入呼”→ 真实手机拨打 Twilio 号码，或按 Token → 设备注册 → 开始语音对话 走浏览器外呼。两者都会进入同一条自建 Media Streams + 自己后端主控链路。'}
         </p>
-        {routeMode === 'twilio' ? (
+        {isTwilioMode ? (
           <p className={styles.description}>
-            浏览器外呼仅用于回归电话网关链路，建议佩戴耳机；若要验证最接近真实电话的效果，请优先使用真实手机拨打上方 Twilio 号码。当前电话路径固定走 Google 官方 Conversational Agents / CX Agent Studio 部署。
+            {isOfficialTwilio
+              ? '浏览器外呼仅用于回归电话网关链路，建议佩戴耳机；若要验证最接近真实电话的效果，请优先使用真实手机拨打上方 Twilio 号码。当前电话路径固定走 Google 官方 Conversational Agents / CX Agent Studio 部署。'
+              : '浏览器外呼仅用于回归电话网关链路，建议佩戴耳机；若要验证最接近真实电话的效果，请优先使用真实手机拨打上方 Twilio 号码。当前电话路径会把 Twilio Media Streams 电话音频直接桥接到 Gemini Live。'}
           </p>
         ) : null}
 
@@ -202,7 +269,12 @@ export function VoiceSessionSection({
             <Button
               kind="secondary"
               size="sm"
-              onClick={() => void twilioGateway.prepareInboundCall({ promptCode: selectedPromptCode })}
+              onClick={() =>
+                void twilioGateway.prepareInboundCall({
+                  promptCode: selectedPromptCode,
+                  voiceName: isMediaStreamTwilio ? liveWebsocket.voice || undefined : undefined,
+                })
+              }
               disabled={twilioSessionActive}
             >
               准备下一通入呼
@@ -230,7 +302,12 @@ export function VoiceSessionSection({
             <Button
               kind="primary"
               size="sm"
-              onClick={() => void twilioGateway.startDial({ promptCode: selectedPromptCode })}
+              onClick={() =>
+                void twilioGateway.startDial({
+                  promptCode: selectedPromptCode,
+                  voiceName: isMediaStreamTwilio ? liveWebsocket.voice || undefined : undefined,
+                })
+              }
               disabled={!canDial}
             >
               开始语音对话

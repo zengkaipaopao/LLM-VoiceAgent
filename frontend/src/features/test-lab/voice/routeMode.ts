@@ -14,5 +14,9 @@ export function resolveVoiceRouteTransition(
     return 'reset_gateway';
   }
 
+  if (previousMode !== 'direct') {
+    return 'reset_gateway';
+  }
+
   return 'disconnect_direct';
 }

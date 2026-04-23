@@ -105,9 +105,12 @@ class TwilioMediaStreamState:
         self.assistant_last_output_at = now
         self.model_turn_sent_audio = False
 
-    def interrupt(self, *, now: float) -> None:
+    def interrupt(self, *, now: float, preserve_pending_mark: bool = False) -> None:
         self.assistant_speaking = False
-        self.assistant_playback_pending = False
-        self.pending_playback_mark = None
+        if preserve_pending_mark:
+            self.assistant_playback_pending = self.pending_playback_mark is not None
+        else:
+            self.assistant_playback_pending = False
+            self.pending_playback_mark = None
         self.assistant_last_output_at = now
         self.model_turn_sent_audio = False

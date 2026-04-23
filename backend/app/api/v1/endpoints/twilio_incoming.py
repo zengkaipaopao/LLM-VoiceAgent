@@ -9,6 +9,10 @@ from app.api.deps import get_db
 from app.core.config import settings
 from app.exceptions import BusinessException
 from app.services.live_gateway import provider_available, resolve_live_provider
+from app.services.twilio.active_inbound_profile import (
+    _get_active_inbound_profile_for_number,
+    _set_active_inbound_profile_for_number,
+)
 from app.services.twilio.incoming_route_runtime import (
     OFFICIAL_DEMO_TEMPLATE_CODE,
     build_official_demo_runtime,
@@ -60,6 +64,13 @@ async def twiml_app_voice_webhook(
 ):
     await _verify_webhook_or_raise(request)
     service = TwilioWebCallService()
+    active_profile = await _set_active_inbound_profile_for_number(
+        number=To,
+        prompt_code=prompt_code,
+        voice_route=voice_route,
+        voice_engine=voice_engine,
+        voice_name=voice_name,
+    )
     queued_override = await _set_pending_inbound_override_for_number(
         number=To,
         prompt_code=prompt_code,
@@ -78,6 +89,18 @@ async def twiml_app_voice_webhook(
             _normalize_twilio_voice_route(voice_route),
             _normalize_voice_engine(voice_engine),
             _normalize_voice_name_token(voice_name),
+        )
+    if active_profile:
+        logger.info(
+            (
+                "Updated active inbound profile from TwiML app webhook. "
+                "to=%s prompt_code=%s voice_route=%s voice_engine=%s voice_name=%s"
+            ),
+            _normalize_e164_number(To),
+            active_profile.get("prompt_code"),
+            active_profile.get("voice_route"),
+            active_profile.get("voice_engine"),
+            active_profile.get("voice_name"),
         )
     xml = service.build_outbound_twiml(To or "")
     logger.info(
@@ -126,18 +149,23 @@ async def incoming_voice_webhook(
     await _verify_webhook_or_raise(request)
     service = TwilioWebCallService()
     pending_override = await _consume_pending_inbound_override_for_number(To)
+    active_profile = await _get_active_inbound_profile_for_number(To)
     pending_prompt = pending_override.get("prompt_code") if pending_override else None
     pending_route = pending_override.get("voice_route") if pending_override else None
     pending_engine = pending_override.get("voice_engine") if pending_override else None
     pending_voice_name = pending_override.get("voice_name") if pending_override else None
+    active_prompt = active_profile.get("prompt_code") if active_profile else None
+    active_route = active_profile.get("voice_route") if active_profile else None
+    active_engine = active_profile.get("voice_engine") if active_profile else None
+    active_voice_name = active_profile.get("voice_name") if active_profile else None
     mode_value = ((mode or settings.twilio_incoming_default_mode or "agent").strip().lower())
-    effective_route = voice_route or pending_route
-    effective_engine = voice_engine or pending_engine
+    effective_route = voice_route or pending_route or active_route
+    effective_engine = voice_engine or pending_engine or active_engine
     route_value = _resolve_twilio_inbound_voice_route(
         voice_route=effective_route,
         voice_engine=effective_engine,
     )
-    effective_prompt = prompt_code or pending_prompt
+    effective_prompt = prompt_code or pending_prompt or active_prompt
     resolved_prompt_code: str | None
     if is_official_demo_route(route_value):
         resolved_prompt_code = OFFICIAL_DEMO_TEMPLATE_CODE
@@ -256,7 +284,9 @@ async def incoming_voice_webhook(
                 )
                 return Response(content=xml, media_type="application/xml")
 
-            selected_voice_override = _normalize_voice_name_token(voice_name or pending_voice_name)
+            selected_voice_override = _normalize_voice_name_token(
+                voice_name or pending_voice_name or active_voice_name
+            )
             requested_live_voice = selected_voice_override or runtime.voice_id
             resolved_live_voice = _normalize_gemini_live_voice_name(
                 requested_live_voice,
@@ -351,6 +381,26 @@ async def incoming_voice_webhook(
             pending_route,
             pending_engine,
             pending_voice_name,
+        )
+    elif active_profile and not any(
+        [
+            (prompt_code or "").strip(),
+            (voice_route or "").strip(),
+            (voice_engine or "").strip(),
+            (voice_name or "").strip(),
+        ]
+    ):
+        logger.info(
+            (
+                "Applied active inbound profile for inbound call. "
+                "CallSid=%s To=%s prompt_code=%s voice_route=%s voice_engine=%s voice_name=%s"
+            ),
+            CallSid,
+            _normalize_e164_number(To),
+            active_prompt,
+            active_route,
+            active_engine,
+            active_voice_name,
         )
     return Response(content=xml, media_type="application/xml")
 

@@ -8,6 +8,7 @@ from app.api.v1.endpoints import (
     calls,
     chat,
     dashboard,
+    dialogflow,
     health,
     llm,
     prompts,
@@ -44,6 +45,7 @@ protected_router.include_router(chat.router, prefix="/chat", tags=["chat"])
 protected_router.include_router(prompts.router, prefix="/prompts", tags=["prompts"])
 protected_router.include_router(llm.router, prefix="/llm", tags=["llm"])
 protected_router.include_router(realtime.router, prefix="/live", tags=["live"])
+protected_router.include_router(dialogflow.router, prefix="/dialogflow", tags=["dialogflow"])
 
 api_router.include_router(twilio.router, prefix="/twilio", tags=["twilio"])
 api_router.include_router(twilio_incoming.router, prefix="/twilio", tags=["twilio"])

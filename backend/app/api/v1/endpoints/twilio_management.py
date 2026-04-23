@@ -7,6 +7,7 @@ from app.api.deps import require_api_key
 from app.core.config import settings
 from app.schemas.base import ResponseBase
 from app.schemas.twilio import TwilioTokenResponse
+from app.services.twilio.active_inbound_profile import _set_active_inbound_profile_for_number
 from app.services.twilio.normalizers import (
     _normalize_e164_number,
     _normalize_prompt_code_token,
@@ -88,6 +89,13 @@ async def prepare_incoming_voice_override(
         voice_engine=payload.voice_engine,
         voice_name=payload.voice_name,
     )
+    active_profile = await _set_active_inbound_profile_for_number(
+        number=normalized_number,
+        prompt_code=payload.prompt_code,
+        voice_route=payload.voice_route,
+        voice_engine=payload.voice_engine,
+        voice_name=payload.voice_name,
+    )
     if not queued:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -119,5 +127,6 @@ async def prepare_incoming_voice_override(
             "voice_engine": resolved_engine,
             "voice_name": normalized_voice,
             "expires_in_seconds": int(_PENDING_PROMPT_TTL_SECONDS),
+            "shared_with_direct_inbound": bool(active_profile),
         },
     )

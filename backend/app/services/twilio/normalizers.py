@@ -13,14 +13,12 @@ _VOICE_ENGINE_ALIASES = {
 _TWILIO_VOICE_ROUTE_ALIASES = {
     "gather": "gather",
     "gather_agent": "gather",
-    # Backward-compatibility aliases now all converge to the official
-    # Conversational Agents production path.
     "conversationrelay": "official_conversational_agents",
     "conversation_relay": "official_conversational_agents",
     "conversationrelay_generate": "official_conversational_agents",
-    "media_stream": "official_conversational_agents",
-    "media_stream_live": "official_conversational_agents",
-    "mediastream": "official_conversational_agents",
+    "media_stream": "media_stream_live",
+    "media_stream_live": "media_stream_live",
+    "mediastream": "media_stream_live",
     "official_demo": "official_conversational_agents",
     "official_demo_live": "official_conversational_agents",
     "officialdemo": "official_conversational_agents",
@@ -32,7 +30,7 @@ _TWILIO_VOICE_ROUTE_ALIASES = {
     "conversational_agents": "official_conversational_agents",
     "cx_agent_studio": "official_conversational_agents",
     "ces_adapter": "official_conversational_agents",
-    "stream": "official_conversational_agents",
+    "stream": "media_stream_live",
 }
 _E164_PATTERN = re.compile(r"^\+[1-9]\d{7,14}$")
 _PROMPT_CODE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")

@@ -40,7 +40,7 @@ async def capability_matrix():
                     "gather",
                     "official_conversational_agents",
                 ],
-                "gemini_activity_mode": "auto_only",
+                "gemini_activity_mode": "auto_or_manual",
                 "gemini_activity_handling": "start_of_activity_interrupts",
                 "runtime_store_backend": settings.twilio_runtime_store_backend,
             },

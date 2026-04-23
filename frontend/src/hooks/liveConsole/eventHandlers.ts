@@ -7,9 +7,9 @@ interface HandleLiveEventOptions {
   startHeartbeat: () => void;
   pushLog: (level: LogLevel, message: string) => void;
   setSessionId: (value: string) => void;
-  appendAssistantText: (value: string) => void;
-  appendInputTranscript: (value: string, isFinal: boolean) => void;
-  appendOutputTranscript: (value: string, isFinal: boolean) => void;
+  appendAssistantText: (value: string) => void | Promise<void>;
+  appendInputTranscript: (value: string, isFinal: boolean) => void | Promise<void>;
+  appendOutputTranscript: (value: string, isFinal: boolean) => void | Promise<void>;
   flushTranscriptTurns: () => void;
   playPcmAudioChunk: (chunk: string, mimeType?: string) => Promise<void>;
   setTotalTokens: (value: number) => void;
@@ -44,17 +44,17 @@ export async function handleLiveEventPayload({
       return;
     case 'text':
       if (event.text) {
-        appendAssistantText(event.text);
+        await appendAssistantText(event.text);
       }
       return;
     case 'input_transcript':
       if (typeof event.text === 'string') {
-        appendInputTranscript(event.text, Boolean(event.final));
+        await appendInputTranscript(event.text, Boolean(event.final));
       }
       return;
     case 'output_transcript':
       if (typeof event.text === 'string') {
-        appendOutputTranscript(event.text, Boolean(event.final));
+        await appendOutputTranscript(event.text, Boolean(event.final));
       }
       return;
     case 'audio_chunk':

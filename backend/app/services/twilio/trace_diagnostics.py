@@ -63,6 +63,28 @@ def build_twilio_trace_diagnostic(
     stalled_events = [
         item for item in reversed_events if _normalized_text(item.get("type")) == "gemini_turn_detection_stalled"
     ]
+    manual_end_overdue_events = [
+        item for item in reversed_events if _normalized_text(item.get("type")) == "manual_activity_end_overdue"
+    ]
+    manual_start_events = [
+        item for item in ordered_events if _normalized_text(item.get("type")) == "manual_activity_start_sent"
+    ]
+    manual_end_events = [
+        item for item in ordered_events if _normalized_text(item.get("type")) == "manual_activity_end_sent"
+    ]
+    playback_complete_events = [
+        item for item in ordered_events if _normalized_text(item.get("type")) == "playback_complete"
+    ]
+    runtime_config_event = next(
+        (
+            item
+            for item in reversed_events
+            if _normalized_text(item.get("type")) == "live_runtime_config"
+        ),
+        None,
+    )
+    runtime_config_text = _lowered_text(runtime_config_event.get("text")) if runtime_config_event else ""
+    manual_boundary_mode = "activity_mode=manual_explicit_boundaries" in runtime_config_text
 
     for event in error_events:
         event_type = _normalized_text(event.get("type"))
@@ -78,7 +100,7 @@ def build_twilio_trace_diagnostic(
                 title="后端配置阻止媒体桥接启动",
                 summary=text or "Twilio Media Streams 配置不符合当前生产桥接要求。",
                 actions=[
-                    "检查后端环境变量，确保 TWILIO_GEMINI_ACTIVITY_MODE=auto。",
+                    "检查后端环境变量，确认 TWILIO_GEMINI_ACTIVITY_MODE 使用受支持的值（auto 或 manual）。",
                     "重新启动后端后再发起通话，确认不再出现 configuration_error。",
                 ],
                 evidence_events=[event],
@@ -203,7 +225,75 @@ def build_twilio_trace_diagnostic(
 
     if stalled_events:
         event = stalled_events[0]
+        if manual_boundary_mode and manual_end_overdue_events:
+            latest_manual_start = manual_start_events[-1] if manual_start_events else None
+            latest_playback_complete = (
+                playback_complete_events[-1] if playback_complete_events else None
+            )
+            return _build_diagnostic(
+                call_sid=call_sid,
+                status="warning",
+                category="manual_activity_end_missing",
+                owner="client_activity_boundaries",
+                title="手动活动边界已经开启，但结束边界迟迟没有收口",
+                summary="Trace 已明确记录 manual_activity_start_sent 之后，当前活动窗口持续了一段时间仍未发出 manual_activity_end_sent。此时 follow-up 调试音频也已经落盘，说明问题不是 Twilio 没收到第二轮语音，而是本地结束边界没有稳定闭合。",
+                actions=[
+                    "优先查看证据里的 manual_activity_end_overdue，确认 silence_ms 是否长期达不到 silence_target_ms，以及 last_conditioned_rms 是否一直高于 end_rms。",
+                    "继续对照 live_runtime_config 里的 input_gate、manual_end_rms 和 silence_duration_ms；如果 conditioned_rms 被电话噪声长期抬高，就继续调结束阈值或输入门控，而不是先怀疑 Twilio 解码。",
+                ],
+                evidence_events=[
+                    manual_end_overdue_events[0],
+                    *(item for item in [latest_manual_start, latest_playback_complete] if item),
+                ],
+            )
         if overlap_events:
+            if manual_boundary_mode:
+                latest_manual_start = manual_start_events[-1] if manual_start_events else None
+                latest_playback_complete = (
+                    playback_complete_events[-1] if playback_complete_events else None
+                )
+                latest_start_seq = int(latest_manual_start.get("seq", 0)) if latest_manual_start else 0
+                stalled_seq = int(event.get("seq", 0) or 0)
+                end_after_latest_start = next(
+                    (
+                        item
+                        for item in reversed(manual_end_events)
+                        if latest_start_seq < int(item.get("seq", 0) or 0) < stalled_seq
+                    ),
+                    None,
+                )
+                if (
+                    latest_manual_start
+                    and latest_playback_complete
+                    and latest_start_seq >= int(latest_playback_complete.get("seq", 0) or 0)
+                    and end_after_latest_start is None
+                ):
+                    return _build_diagnostic(
+                        call_sid=call_sid,
+                        status="warning",
+                        category="manual_activity_end_missing",
+                        owner="client_activity_boundaries",
+                        title="手动活动边界已开启，但结束边界没有及时发出",
+                        summary="Trace 显示最新一次 manual_activity_start_sent 发生在 playback_complete 之后，说明播放窗口开门条件已经基本正确；但在 gemini_turn_detection_stalled 之前没有对应的 manual_activity_end_sent，导致 Gemini Live 一直没有拿到完整的后续回合结束信号。",
+                        actions=[
+                            "优先查看 live_runtime_config 里的 manual_end_rms；如果它明显低于电话噪声底，就继续上调结束阈值。",
+                            "回放 followup PCM16k 调试音频，确认用户说完后是否存在超过 silence_duration_ms 的静音窗口；如果存在但仍无 manual_activity_end_sent，说明结束边界条件仍然过严。",
+                        ],
+                        evidence_events=[event, latest_manual_start, latest_playback_complete],
+                    )
+                return _build_diagnostic(
+                    call_sid=call_sid,
+                    status="warning",
+                    category="duplex_overlap_vad_conflict",
+                    owner="duplex_audio_path",
+                    title="播放窗口内的重叠音频干扰了手动活动边界",
+                    summary="Trace 同时出现了 duplex_overlap_detected 和 gemini_turn_detection_stalled，且 live_runtime_config 显示当前使用的是手动 activityStart/activityEnd 边界。这说明本地活动边界仍在助手播放窗口里被误触发，后续轮次没有被稳定提交。",
+                    actions=[
+                        "优先检查 manual_activity_start_sent 是否发生在 playback_complete 之前；如果是，就继续收紧播放窗口内的开门条件。",
+                        "对照 duplex_overlap_detected 的 RMS，确认当前播放窗口强打断阈值是否仍然过低。",
+                    ],
+                    evidence_events=[event, *overlap_events[:2]],
+                )
             return _build_diagnostic(
                 call_sid=call_sid,
                 status="warning",
@@ -223,10 +313,21 @@ def build_twilio_trace_diagnostic(
             category="gemini_turn_detection_stalled",
             owner="gemini_live_turn_detection",
             title="Gemini 未将后续电话语音提交成新回合",
-            summary="后端已经检测到后续轮次的人声，并保存了 5 秒调试音频，但在这段窗口内始终没有收到新的 input_transcript，说明 Gemini Live 的自动 turn detection 在这一轮没有完成提交。",
+            summary=(
+                "后端已经检测到后续轮次的人声，并保存了 5 秒调试音频，但在这段窗口内始终没有收到新的 input_transcript。"
+                + (
+                    "当前链路使用的是手动 activityStart/activityEnd 边界，说明问题更可能在本地边界节奏或 Gemini Live 对该边界的提交行为。"
+                    if manual_boundary_mode
+                    else "说明 Gemini Live 的自动 turn detection 在这一轮没有完成提交。"
+                )
+            ),
             actions=[
                 "优先核对本次 trace 是否为 pure_realtime 会话，确认没有再混用显式 client content。",
-                "回放 followup PCM8k/PCM16k 调试音频；如果内容清晰但仍无 input_transcript，继续调 Gemini Live 的自动 activity 参数，而不是先怀疑 Twilio 解码。",
+                (
+                    "回放 followup PCM8k/PCM16k 调试音频；如果内容清晰但仍无 input_transcript，继续检查 manual_activity_start_sent / manual_activity_end_sent 的节奏。"
+                    if manual_boundary_mode
+                    else "回放 followup PCM8k/PCM16k 调试音频；如果内容清晰但仍无 input_transcript，继续调 Gemini Live 的自动 activity 参数，而不是先怀疑 Twilio 解码。"
+                ),
             ],
             evidence_events=[event],
         )
@@ -246,6 +347,21 @@ def build_twilio_trace_diagnostic(
                 actions=[
                     "检查当前 Prompt 是否明确要求模型用语音回复，并避免只返回元文本。",
                     "检查所选模型与音色是否支持 Native Audio 输出。",
+                ],
+                evidence_events=[event],
+            )
+
+        if event_type == "manual_activity_end_overdue":
+            return _build_diagnostic(
+                call_sid=call_sid,
+                status="warning",
+                category="manual_activity_end_missing",
+                owner="client_activity_boundaries",
+                title="手动活动边界已进入活动态，但结束边界没有完成",
+                summary="当前链路使用手动 activityStart/activityEnd，Trace 已明确记录这段活动窗口已经超时仍未等到结束边界，因此 Gemini Live 还拿不到完整的 follow-up turn。",
+                actions=[
+                    "先看证据里的 silence_ms、silence_target_ms、last_conditioned_rms 和 end_rms，确认是否是电话噪声让静音计数一直被打断。",
+                    "再对照 manual_activity_progress / manual_activity_silence_reset，判断是用户没有停顿，还是结束阈值和输入门控配置不匹配当前号码的噪声底。",
                 ],
                 evidence_events=[event],
             )
