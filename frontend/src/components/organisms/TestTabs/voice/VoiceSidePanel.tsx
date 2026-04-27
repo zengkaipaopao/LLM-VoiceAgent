@@ -6,6 +6,7 @@ import type { UseLiveWebSocketConsoleResult } from '../../../../hooks/useLiveWeb
 import type { UseTwilioVoiceGatewayResult } from '../../../../hooks/testTabs/useTwilioVoiceGateway';
 import styles from '../TwilioTabContent.module.scss';
 import type { DialogueHistoryItem, VoiceRouteMode } from './types';
+import { VoiceAudioLabTile } from './VoiceAudioLabTile';
 import { VoiceDiagnosticsTile } from './VoiceDiagnosticsTile';
 
 interface VoiceSidePanelProps {
@@ -14,6 +15,8 @@ interface VoiceSidePanelProps {
   twilioGateway: UseTwilioVoiceGatewayResult;
   directDiagnostic: VoiceDiagnostic | null;
   twilioDiagnostic: VoiceDiagnostic | null;
+  selectedPromptCode: string;
+  effectiveVoice: string;
 }
 
 function resolveTraceSpeaker(type: string): 'AI' | '用户' | '事件' {
@@ -68,6 +71,8 @@ export function VoiceSidePanel({
   twilioGateway,
   directDiagnostic,
   twilioDiagnostic,
+  selectedPromptCode,
+  effectiveVoice,
 }: VoiceSidePanelProps) {
   const isMediaStreamRoute = routeMode === 'twilio_media_stream';
   const voiceSourceLabel = isMediaStreamRoute
@@ -415,6 +420,9 @@ export function VoiceSidePanel({
           </ul>
         )}
       </Tile>
+      {isMediaStreamRoute ? (
+        <VoiceAudioLabTile promptCode={selectedPromptCode} voiceName={effectiveVoice} />
+      ) : null}
     </Stack>
   );
 }

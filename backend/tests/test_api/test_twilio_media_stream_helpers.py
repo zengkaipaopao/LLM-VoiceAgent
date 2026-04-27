@@ -34,10 +34,7 @@ from app.services.twilio.audio_codec import (
 )
 from app.services.twilio.debug_audio_capture import RollingPcmCapture
 from app.services.twilio.media_stream_bootstrap import receive_twilio_media_stream_start
-from app.services.twilio.media_stream_state import (
-    AssistantPlaybackOverlapBuffer,
-    TwilioMediaStreamState,
-)
+from app.services.twilio.media_stream_state import TwilioMediaStreamState
 from app.services.twilio.normalizers import _normalize_gemini_live_voice_name
 
 
@@ -164,39 +161,6 @@ def test_rolling_pcm_capture_can_reset_and_report_full():
 
     assert capture.current_bytes == 0
     assert capture.is_full is False
-
-
-def test_assistant_playback_overlap_buffer_only_triggers_after_sustained_hits():
-    buffer = AssistantPlaybackOverlapBuffer(
-        sample_rate=16000,
-        max_buffer_ms=100,
-        trigger_rms=120,
-        min_hits=3,
-    )
-    frame = b"\x01\x02" * 320
-
-    assert buffer.observe(pcm16k=frame, conditioned_rms=130) is False
-    assert buffer.observe(pcm16k=frame, conditioned_rms=140) is False
-    assert buffer.observe(pcm16k=frame, conditioned_rms=150) is True
-
-    drained = buffer.drain()
-    assert drained.endswith(frame)
-    assert len(drained) <= buffer.max_buffer_bytes
-
-
-def test_assistant_playback_overlap_buffer_resets_when_energy_drops():
-    buffer = AssistantPlaybackOverlapBuffer(
-        sample_rate=16000,
-        max_buffer_ms=100,
-        trigger_rms=120,
-        min_hits=2,
-    )
-    frame = b"\x01\x02" * 320
-
-    assert buffer.observe(pcm16k=frame, conditioned_rms=140) is False
-    assert buffer.observe(pcm16k=frame, conditioned_rms=0) is False
-    assert buffer.observe(pcm16k=frame, conditioned_rms=140) is False
-    assert buffer.observe(pcm16k=frame, conditioned_rms=140) is True
 
 
 def test_candidate_websocket_signature_urls_prefers_wss_and_trailing_slash():
@@ -352,14 +316,10 @@ def test_build_gemini_live_config_uses_cx_agent_studio_profile_overrides(monkeyp
     )
 
     aad = config.realtime_input_config.automatic_activity_detection
-    assert aad.disabled is False
-    assert str(aad.start_of_speech_sensitivity.value) == "START_SENSITIVITY_LOW"
-    assert str(aad.end_of_speech_sensitivity.value) == "END_SENSITIVITY_LOW"
-    assert aad.prefix_padding_ms == 20
-    assert aad.silence_duration_ms == 100
+    assert aad.disabled is True
     assert (
         str(config.realtime_input_config.activity_handling.value)
-        == "START_OF_ACTIVITY_INTERRUPTS"
+        == "NO_INTERRUPTION"
     )
     assert str(config.realtime_input_config.turn_coverage.value) == "TURN_INCLUDES_ALL_INPUT"
 

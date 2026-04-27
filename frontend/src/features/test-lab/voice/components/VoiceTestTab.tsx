@@ -328,6 +328,8 @@ export function VoiceTestTab() {
           twilioGateway={twilioGateway}
           directDiagnostic={directDiagnostic}
           twilioDiagnostic={twilioDiagnostic}
+          selectedPromptCode={selectedPromptCode}
+          effectiveVoice={effectiveVoice}
         />
       }
     />

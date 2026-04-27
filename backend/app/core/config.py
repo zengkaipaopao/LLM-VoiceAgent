@@ -85,9 +85,6 @@ class Settings(BaseSettings):
     twilio_media_stream_input_noise_gate_open_rms: int = 140
     twilio_media_stream_input_noise_gate_close_rms: int = 90
     twilio_media_stream_input_noise_gate_hold_ms: int = 240
-    twilio_media_stream_playback_clear_rms: int = 120
-    twilio_media_stream_playback_clear_min_hits: int = 3
-    twilio_media_stream_playback_overlap_buffer_ms: int = 800
     twilio_media_stream_upstream_activity_rms: int = 48
     twilio_media_stream_pause_flush_seconds: float = 1.0
     twilio_media_stream_debug_inbound_wav_enabled: bool = True

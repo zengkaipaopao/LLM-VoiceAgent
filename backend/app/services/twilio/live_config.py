@@ -1,22 +1,15 @@
 from google.genai import types
 
 from app.core.config import settings
+from app.services.twilio.media_stream_profiles import (
+    normalize_media_stream_bridge_profile,
+    resolve_media_stream_bridge_profile_contract,
+    validate_media_stream_bridge_profile,
+)
 
 
 def _resolve_media_stream_bridge_profile() -> str:
-    token = (settings.twilio_media_stream_bridge_profile or "cx_agent_studio").strip().lower()
-    aliases = {
-        "cx": "cx_agent_studio",
-        "cx_agent_studio": "cx_agent_studio",
-        "cx-agent-studio": "cx_agent_studio",
-        "official_like": "cx_agent_studio",
-        "official": "cx_agent_studio",
-        "thin_bridge": "cx_agent_studio",
-        "legacy": "legacy_manual",
-        "legacy_manual": "legacy_manual",
-        "manual": "legacy_manual",
-    }
-    return aliases.get(token, token)
+    return normalize_media_stream_bridge_profile(settings.twilio_media_stream_bridge_profile)
 
 
 def _use_manual_vad_control() -> bool:
@@ -35,13 +28,7 @@ def _validate_twilio_activity_mode() -> None:
 
 
 def _validate_twilio_media_stream_bridge_profile() -> None:
-    profile = _resolve_media_stream_bridge_profile()
-    if profile in {"cx_agent_studio", "legacy_manual"}:
-        return
-    raise ValueError(
-        "Unsupported TWILIO_MEDIA_STREAM_BRIDGE_PROFILE. "
-        "Supported values: cx_agent_studio, legacy_manual."
-    )
+    validate_media_stream_bridge_profile(_resolve_media_stream_bridge_profile())
 
 
 def _resolve_activity_handling() -> types.ActivityHandling | None:
@@ -122,9 +109,17 @@ def _build_gemini_live_config(
     if system_instruction:
         payload["system_instruction"] = system_instruction
 
-    auto_detection = types.AutomaticActivityDetection(disabled=manual_vad)
-    if not manual_vad:
-        bridge_profile = (media_stream_bridge_profile or "").strip().lower()
+    profile_contract = (
+        resolve_media_stream_bridge_profile_contract(media_stream_bridge_profile)
+        if (media_stream_bridge_profile or "").strip()
+        else None
+    )
+    bridge_profile = profile_contract.name if profile_contract is not None else ""
+    auto_detection_disabled = manual_vad or (
+        profile_contract is not None and profile_contract.turn_owner == "backend_manual_boundaries"
+    )
+    auto_detection = types.AutomaticActivityDetection(disabled=auto_detection_disabled)
+    if not auto_detection_disabled:
         if bridge_profile == "cx_agent_studio":
             # Keep this profile aligned with the hosted CX-style bridge:
             # upstream owns turn detection, while the backend stays a thin transport.
@@ -149,15 +144,23 @@ def _build_gemini_live_config(
     realtime_input_config = types.RealtimeInputConfig(
         automatic_activity_detection=auto_detection,
     )
-    if not manual_vad:
-        bridge_profile = (media_stream_bridge_profile or "").strip().lower()
-        if bridge_profile == "cx_agent_studio":
-            # Do not reintroduce local activity ownership for the CX-style bridge.
-            activity_handling = types.ActivityHandling.START_OF_ACTIVITY_INTERRUPTS
-            turn_coverage = types.TurnCoverage.TURN_INCLUDES_ALL_INPUT
-        else:
-            activity_handling = _resolve_activity_handling()
-            turn_coverage = _resolve_turn_coverage()
+    if profile_contract is not None and profile_contract.turn_owner == "backend_manual_boundaries":
+        # The profile contract owns turn boundaries inside the backend. Gemini Live
+        # only receives explicit activityStart/activityEnd and must not interrupt
+        # the current assistant playback unexpectedly.
+        activity_handling = types.ActivityHandling.NO_INTERRUPTION
+        turn_coverage = types.TurnCoverage.TURN_INCLUDES_ALL_INPUT
+    elif not auto_detection_disabled:
+        activity_handling = _resolve_activity_handling()
+        turn_coverage = _resolve_turn_coverage()
+        if activity_handling is not None:
+            realtime_input_config.activity_handling = activity_handling
+        if turn_coverage is not None:
+            realtime_input_config.turn_coverage = turn_coverage
+    else:
+        activity_handling = None
+        turn_coverage = None
+    if profile_contract is not None and profile_contract.turn_owner == "backend_manual_boundaries":
         if activity_handling is not None:
             realtime_input_config.activity_handling = activity_handling
         if turn_coverage is not None:

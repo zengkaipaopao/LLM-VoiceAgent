@@ -3,10 +3,17 @@ import base64
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import require_api_key
+from app.api.deps import get_db, require_api_key
 from app.core.config import settings
+from app.exceptions import BusinessException
 from app.schemas.base import ResponseBase
+from app.services.twilio.audio_lab import (
+    decode_audio_base64_payload,
+    evaluate_audio_with_gemini_live,
+    prepare_audio_lab_variants,
+)
 from app.services.twilio.debug_audio_runtime import (
     _build_twilio_inbound_debug_capture,
     _PCM16K_RESAMPLED_DEBUG_VARIANT,
@@ -34,6 +41,26 @@ class TwilioManualAudioInjectRequest(BaseModel):
         description="PCM16 mono audio (16kHz) base64 payload.",
     )
     mime_type: str = Field(default="audio/pcm;rate=16000")
+
+
+class TwilioAudioLabPrepareRequest(BaseModel):
+    audio_base64: str = Field(
+        min_length=1,
+        description="PCM16 mono audio payload encoded as base64.",
+    )
+    sample_rate: int = Field(default=16000, ge=4000, le=48000)
+
+
+class TwilioAudioLabEvaluateRequest(BaseModel):
+    audio_base64: str = Field(
+        min_length=1,
+        description="PCM16 mono audio payload encoded as base64.",
+    )
+    sample_rate: int = Field(default=16000, ge=4000, le=48000)
+    prompt_code: str | None = Field(default=None, min_length=1)
+    voice_name: str | None = Field(default=None, min_length=1)
+    opening_already_played: bool = Field(default=True)
+    variant_id: str | None = Field(default=None, min_length=1)
 
 
 @router.get("/voice/trace", response_model=ResponseBase[dict])
@@ -85,6 +112,73 @@ async def get_voice_trace_diagnostics(
             **diagnostic,
             "last_seq": last_seq,
             "stream_active": stream_active,
+        },
+    )
+
+
+@router.post("/voice/trace/audio-lab/prepare", response_model=ResponseBase[dict])
+async def prepare_voice_trace_audio_lab(
+    payload: TwilioAudioLabPrepareRequest,
+    _auth: None = Depends(require_api_key),
+):
+    try:
+        audio_bytes = decode_audio_base64_payload(payload.audio_base64)
+        variants = prepare_audio_lab_variants(
+            audio_bytes=audio_bytes,
+            sample_rate=payload.sample_rate,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    return ResponseBase(
+        success=True,
+        data={
+            "sample_rate": payload.sample_rate,
+            "variants": [variant.to_payload() for variant in variants],
+        },
+    )
+
+
+@router.post("/voice/trace/audio-lab/evaluate", response_model=ResponseBase[dict])
+async def evaluate_voice_trace_audio_lab(
+    payload: TwilioAudioLabEvaluateRequest,
+    _auth: None = Depends(require_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        audio_bytes = decode_audio_base64_payload(payload.audio_base64)
+        result = await evaluate_audio_with_gemini_live(
+            db=db,
+            audio_bytes=audio_bytes,
+            sample_rate=payload.sample_rate,
+            prompt_code=payload.prompt_code,
+            voice_name=payload.voice_name,
+            opening_already_played=payload.opening_already_played,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except BusinessException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=exc.message,
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Gemini Live evaluation failed: {exc}",
+        ) from exc
+
+    return ResponseBase(
+        success=True,
+        data={
+            "variant_id": payload.variant_id,
+            **result,
         },
     )
 

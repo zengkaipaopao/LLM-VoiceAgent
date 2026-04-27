@@ -1,58 +1,9 @@
 """
-Mutable runtime state and transport-side guards for a single Twilio Media Streams bridge session.
+Mutable runtime state for a single Twilio Media Streams bridge session.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-
-
-@dataclass
-class AssistantPlaybackOverlapBuffer:
-    """
-    Hold inbound audio while assistant audio is still being played to Twilio.
-
-    This does not replace Gemini turn detection. It only prevents residual echo /
-    overlap frames from being forwarded upstream until we have enough sustained
-    activity to treat the overlap as an intentional barge-in.
-    """
-
-    sample_rate: int = 16000
-    sample_width_bytes: int = 2
-    max_buffer_ms: int = 800
-    trigger_rms: int = 120
-    min_hits: int = 3
-    _buffer: bytearray = field(default_factory=bytearray, init=False, repr=False)
-    _trigger_hits: int = field(default=0, init=False, repr=False)
-
-    @property
-    def max_buffer_bytes(self) -> int:
-        return max(
-            self.sample_width_bytes,
-            int((self.sample_rate * self.sample_width_bytes * max(1, self.max_buffer_ms)) / 1000),
-        )
-
-    def reset(self) -> None:
-        self._buffer.clear()
-        self._trigger_hits = 0
-
-    def observe(self, *, pcm16k: bytes, conditioned_rms: int) -> bool:
-        if pcm16k:
-            self._buffer.extend(pcm16k)
-            overflow = len(self._buffer) - self.max_buffer_bytes
-            if overflow > 0:
-                del self._buffer[:overflow]
-
-        if conditioned_rms >= self.trigger_rms:
-            self._trigger_hits += 1
-        else:
-            self._trigger_hits = 0
-
-        return self._trigger_hits >= self.min_hits
-
-    def drain(self) -> bytes:
-        payload = bytes(self._buffer)
-        self.reset()
-        return payload
+from dataclasses import dataclass
 
 
 @dataclass

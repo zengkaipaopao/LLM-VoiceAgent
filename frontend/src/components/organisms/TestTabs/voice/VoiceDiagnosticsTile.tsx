@@ -89,7 +89,6 @@ function formatEvidenceLabel(label: string): string {
     audio_stream_resumed: '上行恢复',
     duplex_overlap_detected: '双工重叠',
     gemini_turn_detection_stalled: '回合未提交',
-    local_barge_in_clear_sent: '本地插话清缓冲',
     manual_activity_end_overdue: '结束边界超时',
     manual_activity_end_sent: '结束边界发出',
     manual_activity_progress: '活动窗口进度',

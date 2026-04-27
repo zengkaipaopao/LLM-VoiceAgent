@@ -301,6 +301,45 @@
   overflow-wrap: anywhere;
 }
 
+.audioLabGrid {
+  display: grid;
+  gap: spacing.$spacing-04;
+}
+
+.audioLabActionRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: spacing.$spacing-03;
+}
+
+.audioLabVariantHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: spacing.$spacing-03;
+}
+
+.audioLabResultBlock {
+  display: grid;
+  gap: spacing.$spacing-03;
+  padding: spacing.$spacing-03;
+  border: 1px solid var(--cds-border-subtle);
+  background: var(--cds-layer-accent);
+}
+
+.audioLabError {
+  margin: 0;
+  color: var(--cds-support-error);
+  font-size: var(--cds-body-compact-01-font-size);
+}
+
+.audioLabInfo {
+  margin: 0;
+  color: var(--cds-support-success);
+  font-size: var(--cds-body-compact-01-font-size);
+}
+
 .dialogueHistoryList {
   margin: 0;
   padding: 0;
