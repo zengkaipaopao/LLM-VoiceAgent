@@ -23,8 +23,6 @@ import {
 } from '../diagnostics';
 
 const DEFAULT_IDENTITY = 'webcall-tester';
-const OFFICIAL_CA_TRANSPORT_LABEL = '官方 Conversational Agents（Google CX Agent Studio + Twilio）';
-const MEDIA_STREAM_TRANSPORT_LABEL = '自建 Media Streams（Twilio + 自己后端主控 + Gemini Live）';
 
 function isTwilioRouteMode(mode: VoiceRouteMode): boolean {
   return mode !== 'direct';
@@ -52,8 +50,16 @@ export function VoiceTestTab() {
   const twilioConfigBootstrappedRef = useRef(false);
   const twilioTransportMode =
     routeMode === 'twilio_media_stream' ? 'media_stream_live' : 'official_conversational_agents';
+  const officialTransportLabel = t(
+    'pages:test.voiceLab.transport.official',
+    'Official Conversational Agents (Google CX Agent Studio + Twilio)'
+  );
+  const mediaStreamTransportLabel = t(
+    'pages:test.voiceLab.transport.mediaStream',
+    'Self-hosted Media Streams (Twilio + backend controller + Gemini Live)'
+  );
   const twilioTransportLabel =
-    routeMode === 'twilio_media_stream' ? MEDIA_STREAM_TRANSPORT_LABEL : OFFICIAL_CA_TRANSPORT_LABEL;
+    routeMode === 'twilio_media_stream' ? mediaStreamTransportLabel : officialTransportLabel;
   const twilioGateway = useTwilioVoiceGateway({
     identity: DEFAULT_IDENTITY,
     transportMode: twilioTransportMode,
@@ -162,8 +168,14 @@ export function VoiceTestTab() {
         routeMode === 'direct'
           ? t('pages:test.voiceLab.summary.routeDirect', 'Browser direct to Gemini')
           : isOfficialTwilio
-            ? '电话网关（官方 Conversational Agents）'
-            : '电话网关（自建 Media Streams + 后端主控）',
+            ? t(
+                'pages:test.voiceLab.summary.routeOfficial',
+                'Phone gateway (official Conversational Agents)'
+              )
+            : t(
+                'pages:test.voiceLab.summary.routeMediaStream',
+                'Phone gateway (self-hosted Media Streams + backend controller)'
+              ),
       tone: 'teal',
     },
     {
@@ -187,7 +199,7 @@ export function VoiceTestTab() {
         routeMode === 'direct'
           ? selectedPromptCode || '-'
           : isOfficialTwilio
-            ? 'Google CA managed'
+            ? t('pages:test.voiceLab.summary.promptManaged', 'Managed in Google CA')
             : selectedPromptCode || '-',
       mono: true,
     },
@@ -198,7 +210,7 @@ export function VoiceTestTab() {
         routeMode === 'direct'
           ? effectiveVoice || '-'
           : isOfficialTwilio
-            ? 'Google CA managed'
+            ? t('pages:test.voiceLab.summary.voiceManaged', 'Managed in Google CA')
             : effectiveVoice || '-',
       mono: true,
       tone: routeMode !== 'direct' ? 'teal' : 'cool-gray',

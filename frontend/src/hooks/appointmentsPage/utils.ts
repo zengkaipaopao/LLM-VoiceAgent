@@ -275,6 +275,7 @@ export function mapAppointmentsToTableRows(appointments: Appointment[]): Appoint
         ? (appointment.extra_data as Record<string, unknown>)
         : {};
     const latestOperationType = String(appointmentExtraData.latest_operation_type || '').toLowerCase();
+    const lifecycleStatus = String(appointmentExtraData.lifecycle_status || '').toLowerCase();
     const linkedStateFromMap = linkedOperationMap.get(appointment.id);
     const derivedLinkedState =
       linkedStateFromMap ||
@@ -282,6 +283,8 @@ export function mapAppointmentsToTableRows(appointments: Appointment[]): Appoint
         ? 'cancel'
         : latestOperationType === 'update'
           ? 'update'
+          : lifecycleStatus === 'cancelled'
+            ? 'cancel'
           : undefined);
     const resolvedAmount = resolveAppointmentAmount({
       amount: appointment.amount,

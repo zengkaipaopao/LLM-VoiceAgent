@@ -405,15 +405,326 @@
         "route": "接入方式",
         "routeDirect": "浏览器直连 Gemini",
         "routeTwilio": "电话网关（官方 Conversational Agents）",
+        "routeOfficial": "电话网关（官方 Conversational Agents）",
+        "routeMediaStream": "电话网关（自建 Media Streams + 后端主控）",
         "connection": "连接状态",
         "audio": "音频采集",
         "prompt": "Prompt",
-        "voice": "Gemini 音色"
+        "voice": "Gemini 音色",
+        "promptManaged": "由 Google CA 管理",
+        "voiceManaged": "由 Google CA 管理"
       },
       "notifications": {
         "errorTitle": "请求失败",
         "successTitle": "执行成功",
         "warningTitle": "配置提示"
+      },
+      "transport": {
+        "official": "官方 Conversational Agents（Google CX Agent Studio + Twilio）",
+        "mediaStream": "自建 Media Streams（Twilio + 自己后端主控 + Gemini Live）"
+      },
+      "promptSelect": {
+        "loading": "加载中...",
+        "empty": "暂无可用 Prompt"
+      },
+      "routeSelector": {
+        "title": "测试方式",
+        "description": "该页面只关注语音链路是否稳定可对话。Twilio 仅作为电话接入网关，不是业务主流程。",
+        "label": "语音接入方式",
+        "options": {
+          "direct": "浏览器直连 Gemini（不经过 Twilio）",
+          "twilioOfficial": "通过电话网关（Twilio，官方 Conversational Agents）",
+          "twilioMediaStream": "通过电话网关（Twilio，自建 Media Streams + 后端主控）"
+        },
+        "badges": {
+          "regression": "连通性回归",
+          "direct": "直连模式",
+          "twilioOfficial": "官方电话模式",
+          "twilioMediaStream": "自建电话模式"
+        },
+        "sessionLocked": "会话进行中，接入方式已锁定。请先断开会话后再切换。",
+        "hints": {
+          "direct": "浏览器麦克风会直接送到 Gemini Live，最适合先做模型对话连通验证。",
+          "twilioOfficial": "通过 Google 官方 Conversational Agents + Twilio 电话网关进行端到端验证。可在页面内发起浏览器外呼，也可先在页面准备下一通入呼，再用真实手机拨打 Twilio 号码。",
+          "twilioMediaStream": "通过 Twilio Media Streams + 你自己的后端主控链路进行端到端验证。该模式会把电话原始音频桥接到 Gemini Live，适合验证薄传输层实现。"
+        }
+      },
+      "session": {
+        "configTitle": "会话配置",
+        "configDescription": "先确定 Prompt、模型与音色，再进入连接控制。保持配置最少、路径清晰，便于排障。",
+        "loadingConfig": "加载配置中...",
+        "refreshConfig": "刷新配置",
+        "configLocked": "会话进行中，配置已锁定。请先断开当前会话后再修改配置。",
+        "promptLabel": "Prompt 模板",
+        "modelLabel": "Gemini Live 模型",
+        "voiceLabel": "Gemini 音色（可选）",
+        "voiceLoading": "正在加载 Gemini 音色...",
+        "voiceAuto": "自动（Prompt/默认）",
+        "directModelHelper": "默认跟随 Prompt 的 llm_model，可在这里手动覆盖；语音测试必须使用 Gemini Live 或 Native Audio 模型。",
+        "directVoiceHelper": "留空则优先跟随 Prompt 的默认音色，否则使用系统默认音色。",
+        "currentAccessMode": "当前接入方式",
+        "agentConfigSource": "Agent 配置来源",
+        "agentConfigSourceValue": "Google CX Agent Studio / CES Deployment",
+        "agentConfigSourceHelper": "电话侧对话逻辑、开场话术、模型与工具能力都由 Google 官方 Conversational Agents 配置管理。",
+        "currentPhoneRoute": "当前电话路由",
+        "officialPhoneRouteValue": "official_conversational_agents",
+        "officialPhoneRouteHelper": "Google 官方会话层负责 turn detection、回合编排与工具能力，后端只做电话接入与桥接。",
+        "officialTransportHelper": "Twilio 负责电话接入，Google 官方 Conversational Agents 负责会话编排与语音能力。",
+        "mediaStreamModelHelper": "该模式会直接使用本地 Prompt 配置里解析出的 Gemini Live / Native Audio 模型。",
+        "mediaStreamVoiceHelper": "留空则优先跟随 Prompt 的默认音色；该值会作为 Twilio Media Streams 自建桥接的 Gemini Live 语音覆盖。",
+        "mediaStreamPhoneRouteValue": "media_stream_live",
+        "mediaStreamPhoneRouteHelper": "自建 Twilio Media Streams + 后端主控链路。当前桥接已按“薄传输层”原则重构：以持续转码/转发为主，本地不再切碎输入段。",
+        "effectiveVoiceLabel": "当前生效 Gemini 音色",
+        "effectiveVoiceHelper": "最终会按“手动覆盖值 -> Prompt 默认音色 -> 系统默认音色”顺序解析。",
+        "clientIdentity": "Client Identity",
+        "targetNumberLabel": "目标号码（E.164）",
+        "targetNumberLockedHelper": "已锁定为后端 TWILIO_PHONE_NUMBER。页面内“开始语音对话”会由浏览器先外呼到这个 Twilio 号码。",
+        "targetNumberEditableHelper": "请输入可拨打号码，例如 +8150xxxxxxx。浏览器 Twilio 测试会先拨到这里，再进入电话网关链路。",
+        "inboundNumberLabel": "已配置入站号码（Twilio）",
+        "inboundNumberOfficialHelper": "真实手机直接拨打这个号码，也会走同一条官方 CA 电话链路。",
+        "inboundNumberMediaHelper": "真实手机直接拨打这个号码，也会走同一条自建 Media Streams 电话桥接链路。",
+        "controlsTitle": "连接控制",
+        "controlsDirectDescription": "先建立浏览器直连会话，再开启麦克风。浏览器仅负责采音与播放期抑制，实际 turn 判定交给 Gemini Live。",
+        "controlsOfficialDescription": "页面内可按“准备下一通入呼”→ 真实手机拨打 Twilio 号码，或按 Token → 设备注册 → 开始语音对话 走浏览器外呼。两者都会进入同一条官方 Conversational Agents 电话链路。",
+        "controlsMediaDescription": "页面内可按“准备下一通入呼”→ 真实手机拨打 Twilio 号码，或按 Token → 设备注册 → 开始语音对话 走浏览器外呼。两者都会进入同一条自建 Media Streams + 自己后端主控链路。",
+        "controlsOfficialNote": "浏览器外呼仅用于回归电话网关链路，建议佩戴耳机；若要验证最接近真实电话的效果，请优先使用真实手机拨打上方 Twilio 号码。当前电话路径固定走 Google 官方 Conversational Agents / CX Agent Studio 部署。",
+        "controlsMediaNote": "浏览器外呼仅用于回归电话网关链路，建议佩戴耳机；若要验证最接近真实电话的效果，请优先使用真实手机拨打上方 Twilio 号码。当前电话路径会把 Twilio Media Streams 电话音频直接桥接到 Gemini Live。",
+        "actions": {
+          "connectVoiceSession": "连接语音会话",
+          "disconnectAndExtract": "断开并提取",
+          "startMicrophone": "开启麦克风",
+          "stopMicrophone": "关闭麦克风",
+          "clearSession": "清空会话记录",
+          "prepareInbound": "准备下一通入呼",
+          "fetchToken": "获取 Token",
+          "initializeDevice": "初始化设备",
+          "startVoiceConversation": "开始语音对话",
+          "hangup": "挂断",
+          "unregisterDevice": "注销设备"
+        }
+      },
+      "logs": {
+        "directTitle": "会话事件日志",
+        "twilioTitle": "拨号与链路日志",
+        "empty": "暂无日志。"
+      },
+      "audioLab": {
+        "title": "离线音频实验",
+        "description": "这块专门用于复现“同一段音频经过电话链路前后是什么样，以及直接送 Gemini Live 会返回什么”。",
+        "summary": {
+          "recording": "录音中",
+          "preparing": "处理中",
+          "ready": "已生成 {{count}} 个版本",
+          "idle": "待录音"
+        },
+        "actions": {
+          "startRecording": "开始录音",
+          "stopRecording": "停止录音",
+          "clear": "清空",
+          "sendToGemini": "发送到 Gemini"
+        },
+        "toggle": {
+          "openingNotPlayed": "欢迎语未播",
+          "openingPlayed": "欢迎语已播",
+          "label": "评估时是否视为 Twilio 已经播过欢迎语"
+        },
+        "loading": {
+          "prepare": "正在生成三种离线音频版本...",
+          "evaluate": "Gemini Live 评估中..."
+        },
+        "empty": "先录一段用户语音。建议控制在 3-8 秒，这样最适合对比“原始录音 / 电话版 / Gemini 上送版”。",
+        "metrics": "时长 {{duration}} · {{bytes}} · RMS {{rms}} · Peak {{peak}}",
+        "evaluation": {
+          "meta": "模型 {{model}} · Prompt {{prompt}} · 上送采样率 {{sampleRate}} Hz",
+          "inputTitle": "Gemini 听到的输入",
+          "inputEmpty": "暂无 input transcript",
+          "outputTitle": "Gemini 的返回",
+          "outputEmpty": "暂无 output transcript",
+          "flags": "turn_complete={{turnComplete}} · timed_out={{timedOut}} · events={{events}}"
+        },
+        "variants": {
+          "original": {
+            "label": "原始录音",
+            "description": "浏览器录下的原始单声道 PCM 录音，未经过电话链路退化。"
+          },
+          "twilio": {
+            "label": "送给 Twilio 的电话版",
+            "description": "模拟 16k/PCM 进入电话链路后，经过 8k 降采样与 μ-law 编解码后的听感。"
+          },
+          "gemini": {
+            "label": "送给 Gemini 的上送版",
+            "description": "模拟电话入站经 μ-law 解码、输入门控与 8k→16k 升采样后，真正上送给 Gemini Live 的版本。"
+          }
+        },
+        "info": {
+          "variantsPrepared": "三种离线音频版本已生成，可以分别回放并送 Gemini Live 验证。",
+          "evaluationReady": "Gemini Live 已返回 {{variant}} 的离线验证结果。"
+        },
+        "errors": {
+          "emptyRecording": "录音为空，请重新录一段后再试。",
+          "prepareFailed": "生成离线音频版本失败: {{message}}",
+          "webAudioUnsupported": "当前浏览器不支持 Web Audio API。",
+          "recordStartFailed": "开始录音失败: {{message}}",
+          "promptMissing": "当前没有可用 Prompt，无法发送到 Gemini Live。",
+          "evaluationFailed": "Gemini Live 验证失败: {{message}}"
+        }
+      },
+      "sidePanel": {
+        "transcriptTitle": "实时对话转写",
+        "totalTokens": "总 Tokens",
+        "currentPrompt": "当前 Prompt",
+        "currentModel": "当前模型",
+        "appointmentRecord": "预约记录",
+        "latestUser": "用户最近一句",
+        "latestAssistant": "AI 最近一句",
+        "waitingUser": "等待用户讲话...",
+        "waitingAssistant": "等待模型回复...",
+        "history": "完整对话履历",
+        "historyEmpty": "暂无对话履历。",
+        "userRole": "用户",
+        "assistantRole": "AI",
+        "eventRole": "事件",
+        "partialLabel": "partial",
+        "voiceSource": "音色来源",
+        "voiceSourceMedia": "由本地 Prompt / Media Streams 桥接配置决定",
+        "voiceSourceOfficial": "由 Google CX Agent Studio / CES Deployment 决定",
+        "phoneTransport": "电话链路模式",
+        "transportMedia": "自建 Media Streams + Twilio",
+        "transportOfficial": "Official CA + Twilio",
+        "speechEngine": "语音引擎",
+        "engineMedia": "Gemini Live",
+        "engineOfficial": "Conversational Agents",
+        "capabilities": "系统能力",
+        "twilioCapability": "电话网关（Twilio）",
+        "capabilityOk": " OK",
+        "capabilityUnavailable": " Unavailable",
+        "bridgeStatus": "媒体桥状态",
+        "activeStreams": "活跃媒体流",
+        "lastBackendEvent": "最后一条后端事件",
+        "transcriptStats": "转写统计",
+        "transcriptStatsValue": "用户完成 {{userTurns}} / AI 完成 {{assistantTurns}} / partial {{partialTurns}} / 事件 {{totalEvents}}",
+        "activeTraceCandidates": "活跃流候选",
+        "activeTraceEmptyMedia": "暂无活跃自建电话流。",
+        "activeTraceEmptyOfficial": "暂无活跃官方电话流。",
+        "browserLegSid": "浏览器外呼 Leg SID",
+        "followupAudioTitle": "后续轮次候选音频对比",
+        "tailAudioTitle": "最近 5 秒入站音频对比",
+        "followupAudioSummary": "已保存上一轮 AI 播放完成后检测到的第一段可疑用户语音，可直接比较 8k 原始样本与 16k 上送样本。",
+        "tailAudioSummary": "已保存最近 5 秒入站调试音频，可直接比较 8k 原始样本与 16k 上送样本。",
+        "followupAudioLoading": "正在加载后续轮次候选双路调试音频...",
+        "tailAudioLoading": "正在加载最近 5 秒双路调试音频...",
+        "audioEmpty": "通话结束或链路异常后，会自动保存最近 5 秒尾部样本；如果检测到上一轮 AI 播放完成后的疑似用户新一轮讲话，也会优先保存那段候选音频。",
+        "pcm8kTitle": "原始 PCM8k",
+        "pcm8kEmpty": "当前通话未保存原始 PCM8k 样本。",
+        "pcm8kDescription": "Twilio `μ-law/8kHz` 解码后的原始电话音频，不经过本地 8k→16k 升采样。",
+        "pcm16kTitle": "上送前 PCM16k",
+        "pcm16kEmpty": "当前通话未保存 PCM16k 样本。",
+        "pcm16kDescription": "后端本地升采样后、真正送给 Gemini Live 的 16k PCM 音频。",
+        "traceEmpty": "接通后会在这里显示用户/AI 转写与事件。"
+      },
+      "diagnostics": {
+        "title": "链路诊断",
+        "loadingShort": "加载中",
+        "loading": "正在生成当前链路诊断...",
+        "empty": "当前还没有可用诊断。接通或报错后，这里会显示责任面、证据和处理建议。",
+        "currentAssessment": "当前判断",
+        "suggestedActions": "建议先做",
+        "actionsEmpty": "暂无建议动作。",
+        "evidenceTitle": "关键证据",
+        "evidenceCount": "最近 {{count}} 条",
+        "evidenceEmpty": "暂无证据项。",
+        "fallbackTitle": "未提供诊断标题",
+        "status": {
+          "ok": "正常",
+          "error": "错误",
+          "warning": "警告",
+          "unknown": "未判定"
+        }
+      },
+      "direct": {
+        "operation": {
+          "cancel": "取消",
+          "update": "变更"
+        },
+        "info": {
+          "sessionFinalizedWithExtraction": "语音测试会话已结束，预约提取已完成。",
+          "sessionFinalized": "语音测试会话已结束。",
+          "operationCompleted": "已通过业务状态机完成预约{{operation}}。",
+          "operationEntered": "已进入预约{{operation}}业务流程。",
+          "autoFinalizedByClosingPhrase": "检测到结束语，已自动断开语音会话并完成提取。"
+        },
+        "errors": {
+          "incompatibleModel": "当前模型不是 Gemini Live / Native Audio 模型。请在 Prompt 中选择语音模型，或在此处显式覆盖。",
+          "connectionErrorFallback": "Gemini Live 直连连接错误。",
+          "notConnected": "Gemini Live 尚未连接。"
+        },
+        "logs": {
+          "persistTranscriptFailed": "保存语音测试转写失败: {{message}}",
+          "finalizeFailed": "结束语音测试会话失败: {{message}}",
+          "promptLoadFailed": "加载 Prompt 失败: {{message}}",
+          "operationAssistantTurn": "AI(业务流): {{text}}",
+          "operationFlowHandled": "ChatService 业务流已处理该轮: operation={{operation}} state={{state}} executed={{executed}}",
+          "operationFlowAdvanceFailed": "推进 ChatService 业务流失败: {{message}}",
+          "closingPhraseDetected": "检测到结束语，正在自动结束语音测试会话。",
+          "directSessionAutoClosed": "Gemini Live 直连会话在检测到结束语后已自动关闭。",
+          "directSessionClosed": "Gemini Live 直连会话已关闭。",
+          "incompatibleModel": "语音测试模型不兼容: {{model}}",
+          "sessionCreated": "语音测试会话已创建: {{callId}}",
+          "requestingEphemeralToken": "正在请求 Gemini Live 临时令牌...",
+          "connected": "Gemini Live 直连会话已连接。",
+          "connectionClosedWithReason": "Gemini Live 连接已关闭 (code: {{code}}, reason: {{reason}})。",
+          "connectionClosed": "Gemini Live 连接已关闭 (code: {{code}})。",
+          "connectFailed": "直连 Gemini Live 失败: {{message}}",
+          "voiceOnlyMode": "当前标签页启用了纯语音模式，文本输入已禁用。",
+          "duplicateTextIgnored": "已忽略重复文本输入。",
+          "textInput": "文本输入: {{text}}",
+          "promptLoaded": "已加载 Prompt 模板: {{name}} ({{code}})"
+        }
+      },
+      "gateway": {
+        "info": {
+          "callStarted": "已发起通话，当前链路为 {{transport}}。",
+          "inboundPrepared": "已为 {{number}} 准备下一通入呼，{{expiresIn}} 秒内拨入该 Twilio 号码会使用 {{promptSource}}，并走 {{transport}}{{voiceSegment}}。",
+          "googleCaManaged": "Google 官方 Conversational Agents 配置"
+        },
+        "errors": {
+          "unknownError": "未知错误",
+          "loadCapabilitiesFailed": "加载能力矩阵失败: {{message}}",
+          "noTokenReturned": "后端未返回可用 Token。",
+          "fetchTokenFailed": "获取 Token 失败: {{message}}",
+          "twilioDeviceError": "Twilio Device 错误",
+          "registerDeviceFailed": "注册设备失败",
+          "callError": "通话错误",
+          "targetNumberMissing": "请先配置有效的目标号码（E.164）。",
+          "promptMissing": "请先选择 Prompt 模板。",
+          "deviceUnavailable": "Twilio 设备不可用，请先初始化。",
+          "dialFailed": "拨号失败",
+          "inboundNumberMissing": "当前没有可用的 Twilio 入站号码。请先检查后端 TWILIO_PHONE_NUMBER 配置。",
+          "prepareInboundFailed": "准备入呼失败: {{message}}",
+          "hangupFailed": "挂断失败: {{message}}",
+          "unregisterFailed": "注销设备失败: {{message}}"
+        },
+        "logs": {
+          "tokenFetched": "Twilio Token 获取成功。",
+          "fetchTokenFailed": "获取 Token 失败: {{message}}",
+          "deviceRegistered": "Twilio 设备已注册。",
+          "deviceUnregistered": "Twilio 设备已注销。",
+          "incomingRejected": "收到入站 client 通话事件，当前测试台仅用于浏览器外呼回归，已自动拒绝。",
+          "ringing": "对方振铃中...",
+          "callAccepted": "通话已接通。",
+          "callDisconnected": "通话已结束。",
+          "callCanceled": "通话被取消。",
+          "callRejected": "通话被拒绝。",
+          "dialing": "正在拨号 {{target}} ...",
+          "inboundPrepared": "已准备下一通入呼：{{number}}{{promptSegment}}{{routeSegment}}{{voiceSegment}}。",
+          "prepareInboundFailed": "准备入呼失败: {{message}}",
+          "hangupRequested": "已请求挂断。",
+          "hangupFailed": "挂断失败: {{message}}",
+          "deviceReset": "设备已注销并重置状态。",
+          "unregisterFailed": "注销设备失败: {{message}}",
+          "tracePollingFailed": "转写轮询失败: {{message}}",
+          "debugAudioLoadFailed": "入站调试音频加载失败，两个调试样本都未能成功获取。"
+        }
       }
     },
     "websocket": {

@@ -1,4 +1,5 @@
 import { Select, SelectItem } from '@carbon/react';
+import { useTranslation } from 'react-i18next';
 
 import { PromptTemplate } from '../../../../types/shared';
 
@@ -21,6 +22,8 @@ export function PromptTemplateSelect({
   disabled = false,
   onChange,
 }: PromptTemplateSelectProps) {
+  const { t } = useTranslation(['pages']);
+
   return (
     <Select
       id={id}
@@ -29,11 +32,19 @@ export function PromptTemplateSelect({
       onChange={(event) => onChange(event.target.value)}
       disabled={disabled || loading || prompts.length === 0}
     >
-      {prompts.length === 0 && <SelectItem value="" text={loading ? '加载中...' : '暂无可用 Prompt'} />}
+      {prompts.length === 0 && (
+        <SelectItem
+          value=""
+          text={
+            loading
+              ? t('pages:test.voiceLab.promptSelect.loading', 'Loading...')
+              : t('pages:test.voiceLab.promptSelect.empty', 'No prompts available')
+          }
+        />
+      )}
       {prompts.map((prompt) => (
         <SelectItem key={prompt.id} value={prompt.code} text={`${prompt.name} (${prompt.code})`} />
       ))}
     </Select>
   );
 }
-

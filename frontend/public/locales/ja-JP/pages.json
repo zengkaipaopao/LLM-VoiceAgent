@@ -405,15 +405,326 @@
         "route": "接続方式",
         "routeDirect": "ブラウザから Gemini へ直接接続",
         "routeTwilio": "電話ゲートウェイ（公式 Conversational Agents）",
+        "routeOfficial": "電話ゲートウェイ（公式 Conversational Agents）",
+        "routeMediaStream": "電話ゲートウェイ（自前 Media Streams + バックエンド制御）",
         "connection": "接続状態",
         "audio": "音声入力",
         "prompt": "Prompt",
-        "voice": "Gemini 音色"
+        "voice": "Gemini 音色",
+        "promptManaged": "Google CA 側で管理",
+        "voiceManaged": "Google CA 側で管理"
       },
       "notifications": {
         "errorTitle": "リクエスト失敗",
         "successTitle": "成功",
         "warningTitle": "設定上の注意"
+      },
+      "transport": {
+        "official": "公式 Conversational Agents（Google CX Agent Studio + Twilio）",
+        "mediaStream": "自前 Media Streams（Twilio + バックエンド主制御 + Gemini Live）"
+      },
+      "promptSelect": {
+        "loading": "読み込み中...",
+        "empty": "利用可能な Prompt がありません"
+      },
+      "routeSelector": {
+        "title": "テスト方式",
+        "description": "このページは音声経路が安定して会話できるかだけを確認します。Twilio は電話の入口ゲートウェイであり、業務フロー本体ではありません。",
+        "label": "音声接続方式",
+        "options": {
+          "direct": "ブラウザから Gemini へ直接接続（Twilio なし）",
+          "twilioOfficial": "電話ゲートウェイ経由（Twilio、公式 Conversational Agents）",
+          "twilioMediaStream": "電話ゲートウェイ経由（Twilio、自前 Media Streams + バックエンド主制御）"
+        },
+        "badges": {
+          "regression": "接続性リグレッション",
+          "direct": "直結モード",
+          "twilioOfficial": "公式電話モード",
+          "twilioMediaStream": "自前電話モード"
+        },
+        "sessionLocked": "セッション進行中のため接続方式は固定されています。切り替えるには先にセッションを切断してください。",
+        "hints": {
+          "direct": "ブラウザのマイク音声を Gemini Live に直接送るため、まずモデル対話の接続性確認に最適です。",
+          "twilioOfficial": "Google 公式 Conversational Agents と Twilio 電話ゲートウェイでエンドツーエンド検証を行います。ページ内からブラウザ外線発信もできますし、次の着信を準備して実機の携帯電話から Twilio 番号へ発信することもできます。",
+          "twilioMediaStream": "Twilio Media Streams と自前バックエンド主制御でエンドツーエンド検証を行います。このモードでは電話の生音声を Gemini Live に橋渡しし、薄いトランスポート実装の検証に向いています。"
+        }
+      },
+      "session": {
+        "configTitle": "セッション設定",
+        "configDescription": "まず Prompt・モデル・音色を決めてから接続制御へ進みます。設定を最小限に保ち、経路を明確にすると原因切り分けがしやすくなります。",
+        "loadingConfig": "設定を読み込み中...",
+        "refreshConfig": "設定を再読み込み",
+        "configLocked": "セッション進行中のため設定は固定されています。変更するには現在のセッションを切断してください。",
+        "promptLabel": "Prompt テンプレート",
+        "modelLabel": "Gemini Live モデル",
+        "voiceLabel": "Gemini 音色（任意）",
+        "voiceLoading": "Gemini 音色を読み込み中...",
+        "voiceAuto": "自動（Prompt/既定）",
+        "directModelHelper": "通常は Prompt の llm_model に従いますが、ここで手動上書きもできます。音声テストでは Gemini Live または Native Audio モデルを使用してください。",
+        "directVoiceHelper": "空欄の場合は Prompt の既定音色を優先し、それもなければシステム既定音色を使います。",
+        "currentAccessMode": "現在の接続方式",
+        "agentConfigSource": "Agent 設定ソース",
+        "agentConfigSourceValue": "Google CX Agent Studio / CES Deployment",
+        "agentConfigSourceHelper": "電話側の対話ロジック、冒頭話法、モデル、ツール能力は Google 公式 Conversational Agents 側で管理されます。",
+        "currentPhoneRoute": "現在の電話ルート",
+        "officialPhoneRouteValue": "official_conversational_agents",
+        "officialPhoneRouteHelper": "Google 側の会話レイヤーが turn detection・回合制御・ツール能力を担当し、バックエンドは電話接続と橋渡しのみ行います。",
+        "officialTransportHelper": "Twilio が電話入口を担当し、Google 公式 Conversational Agents が会話制御と音声能力を担当します。",
+        "mediaStreamModelHelper": "このモードではローカル Prompt 設定から解決された Gemini Live / Native Audio モデルをそのまま利用します。",
+        "mediaStreamVoiceHelper": "空欄なら Prompt 既定音色を優先します。この値は自前 Twilio Media Streams ブリッジの Gemini Live 音色上書きとして使われます。",
+        "mediaStreamPhoneRouteValue": "media_stream_live",
+        "mediaStreamPhoneRouteHelper": "自前 Twilio Media Streams + バックエンド主制御ルートです。現在のブリッジは「薄いトランスポート」原則で再構成されており、継続的な変換と転送を中心にし、ローカルでは入力ターンを切り刻みません。",
+        "effectiveVoiceLabel": "最終的に有効な Gemini 音色",
+        "effectiveVoiceHelper": "手動上書き -> Prompt 既定音色 -> システム既定音色 の順で解決されます。",
+        "clientIdentity": "Client Identity",
+        "targetNumberLabel": "発信先番号（E.164）",
+        "targetNumberLockedHelper": "バックエンドの TWILIO_PHONE_NUMBER に固定されています。このページの「音声会話を開始」はまずブラウザからこの Twilio 番号へ発信します。",
+        "targetNumberEditableHelper": "発信可能な番号を入力してください。例: +8150xxxxxxx。ブラウザ Twilio テストはまずここへ発信し、その後電話ゲートウェイルートに入ります。",
+        "inboundNumberLabel": "設定済み着信用番号（Twilio）",
+        "inboundNumberOfficialHelper": "実機の携帯電話からこの番号へ発信しても、同じ公式 CA 電話ルートを通ります。",
+        "inboundNumberMediaHelper": "実機の携帯電話からこの番号へ発信しても、同じ自前 Media Streams 電話ブリッジを通ります。",
+        "controlsTitle": "接続制御",
+        "controlsDirectDescription": "まずブラウザ直結セッションを確立し、その後マイクを有効にしてください。ブラウザは録音と再生時抑制のみを担当し、実際の turn 判定は Gemini Live が行います。",
+        "controlsOfficialDescription": "このページで次の着信を準備してから実機携帯で Twilio 番号に発信するか、Token -> デバイス登録 -> 音声会話開始 でブラウザ外線発信するかのどちらでも、同じ公式 Conversational Agents 電話ルートに入ります。",
+        "controlsMediaDescription": "このページで次の着信を準備してから実機携帯で Twilio 番号に発信するか、Token -> デバイス登録 -> 音声会話開始 でブラウザ外線発信するかのどちらでも、同じ自前 Media Streams + バックエンド主制御ルートに入ります。",
+        "controlsOfficialNote": "ブラウザ外線発信は電話ゲートウェイルートの回帰確認用です。ヘッドセットの利用を推奨します。実際の電話に最も近い挙動を確認したい場合は、上の Twilio 番号へ実機携帯から発信してください。現在の電話経路は Google 公式 Conversational Agents / CX Agent Studio デプロイ固定です。",
+        "controlsMediaNote": "ブラウザ外線発信は電話ゲートウェイルートの回帰確認用です。ヘッドセットの利用を推奨します。実際の電話に最も近い挙動を確認したい場合は、上の Twilio 番号へ実機携帯から発信してください。現在の電話経路は Twilio Media Streams の電話音声を Gemini Live に直接ブリッジします。",
+        "actions": {
+          "connectVoiceSession": "音声セッション接続",
+          "disconnectAndExtract": "切断して抽出",
+          "startMicrophone": "マイク開始",
+          "stopMicrophone": "マイク停止",
+          "clearSession": "セッション履歴を消去",
+          "prepareInbound": "次の着信を準備",
+          "fetchToken": "Token 取得",
+          "initializeDevice": "デバイス初期化",
+          "startVoiceConversation": "音声会話を開始",
+          "hangup": "切断",
+          "unregisterDevice": "デバイス登録解除"
+        }
+      },
+      "logs": {
+        "directTitle": "セッションイベントログ",
+        "twilioTitle": "発信とブリッジのログ",
+        "empty": "ログはまだありません。"
+      },
+      "audioLab": {
+        "title": "オフライン音声ラボ",
+        "description": "同じ音声片が電話経路の前後でどう聞こえるか、また各バージョンを Gemini Live に直接送ると何が返るかを再現するためのエリアです。",
+        "summary": {
+          "recording": "録音中",
+          "preparing": "準備中",
+          "ready": "{{count}} 個のバージョンを生成済み",
+          "idle": "録音待ち"
+        },
+        "actions": {
+          "startRecording": "録音開始",
+          "stopRecording": "録音停止",
+          "clear": "クリア",
+          "sendToGemini": "Gemini へ送信"
+        },
+        "toggle": {
+          "openingNotPlayed": "冒頭案内未再生",
+          "openingPlayed": "冒頭案内再生済み",
+          "label": "評価時に Twilio 側で冒頭案内がすでに再生済みとみなすか"
+        },
+        "loading": {
+          "prepare": "3 種類のオフライン音声バージョンを生成中...",
+          "evaluate": "Gemini Live で評価中..."
+        },
+        "empty": "まずユーザー音声を録音してください。3〜8 秒程度のクリップが「元音声 / 電話版 / Gemini 上送版」の比較に最適です。",
+        "metrics": "長さ {{duration}} · {{bytes}} · RMS {{rms}} · Peak {{peak}}",
+        "evaluation": {
+          "meta": "モデル {{model}} · Prompt {{prompt}} · 送信サンプルレート {{sampleRate}} Hz",
+          "inputTitle": "Gemini が聞き取った入力",
+          "inputEmpty": "input transcript はまだありません",
+          "outputTitle": "Gemini の応答",
+          "outputEmpty": "output transcript はまだありません",
+          "flags": "turn_complete={{turnComplete}} · timed_out={{timedOut}} · events={{events}}"
+        },
+        "variants": {
+          "original": {
+            "label": "元の録音",
+            "description": "ブラウザで録音した生のモノラル PCM 音声で、電話経路による劣化は入っていません。"
+          },
+          "twilio": {
+            "label": "Twilio に送る電話版",
+            "description": "16 kHz PCM が電話経路に入り、8 kHz ダウンサンプリングと μ-law エンコード/デコードを通った後の聞こえ方を模擬します。"
+          },
+          "gemini": {
+            "label": "Gemini へ送る上送版",
+            "description": "電話着信で μ-law デコード、入力ゲート、8 kHz -> 16 kHz アップサンプリングを経た後、Gemini Live に実際に送られる版を模擬します。"
+          }
+        },
+        "info": {
+          "variantsPrepared": "3 種類のオフライン音声バージョンを生成しました。個別に再生し、Gemini Live に送って検証できます。",
+          "evaluationReady": "{{variant}} のオフライン検証結果が Gemini Live から返りました。"
+        },
+        "errors": {
+          "emptyRecording": "録音が空です。もう一度録音してから試してください。",
+          "prepareFailed": "オフライン音声バージョンの生成に失敗しました: {{message}}",
+          "webAudioUnsupported": "このブラウザは Web Audio API をサポートしていません。",
+          "recordStartFailed": "録音開始に失敗しました: {{message}}",
+          "promptMissing": "利用可能な Prompt がないため、Gemini Live に送信できません。",
+          "evaluationFailed": "Gemini Live 検証に失敗しました: {{message}}"
+        }
+      },
+      "sidePanel": {
+        "transcriptTitle": "リアルタイム対話転写",
+        "totalTokens": "総 Tokens",
+        "currentPrompt": "現在の Prompt",
+        "currentModel": "現在のモデル",
+        "appointmentRecord": "予約レコード",
+        "latestUser": "ユーザー最新発話",
+        "latestAssistant": "AI 最新発話",
+        "waitingUser": "ユーザーの発話待ち...",
+        "waitingAssistant": "モデルの応答待ち...",
+        "history": "完全な対話履歴",
+        "historyEmpty": "対話履歴はまだありません。",
+        "userRole": "ユーザー",
+        "assistantRole": "AI",
+        "eventRole": "イベント",
+        "partialLabel": "partial",
+        "voiceSource": "音色ソース",
+        "voiceSourceMedia": "ローカル Prompt / Media Streams ブリッジ設定で決定",
+        "voiceSourceOfficial": "Google CX Agent Studio / CES Deployment で決定",
+        "phoneTransport": "電話経路モード",
+        "transportMedia": "自前 Media Streams + Twilio",
+        "transportOfficial": "Official CA + Twilio",
+        "speechEngine": "音声エンジン",
+        "engineMedia": "Gemini Live",
+        "engineOfficial": "Conversational Agents",
+        "capabilities": "システム能力",
+        "twilioCapability": "電話ゲートウェイ（Twilio）",
+        "capabilityOk": " OK",
+        "capabilityUnavailable": " Unavailable",
+        "bridgeStatus": "ブリッジ状態",
+        "activeStreams": "アクティブストリーム数",
+        "lastBackendEvent": "最新バックエンドイベント",
+        "transcriptStats": "転写統計",
+        "transcriptStatsValue": "ユーザー final {{userTurns}} / AI final {{assistantTurns}} / partial {{partialTurns}} / イベント {{totalEvents}}",
+        "activeTraceCandidates": "アクティブ候補ストリーム",
+        "activeTraceEmptyMedia": "アクティブな自前電話ストリームはありません。",
+        "activeTraceEmptyOfficial": "アクティブな公式電話ストリームはありません。",
+        "browserLegSid": "ブラウザ外線 Leg SID",
+        "followupAudioTitle": "後続ターン候補音声の比較",
+        "tailAudioTitle": "直近 5 秒の入站音声比較",
+        "followupAudioSummary": "前回の AI 再生完了後に検知した最初の疑わしいユーザー発話を保存してあり、生の 8 kHz サンプルと 16 kHz 上送サンプルを直接比較できます。",
+        "tailAudioSummary": "直近 5 秒の入站デバッグ音声を保存してあり、生の 8 kHz サンプルと 16 kHz 上送サンプルを直接比較できます。",
+        "followupAudioLoading": "後続ターン候補の 2 系統デバッグ音声を読み込み中...",
+        "tailAudioLoading": "直近 5 秒の 2 系統デバッグ音声を読み込み中...",
+        "audioEmpty": "通話終了またはブリッジ異常後に、直近 5 秒の末尾サンプルが自動保存されます。前回の AI 再生完了後に新しいユーザー発話らしきものを検知した場合は、その候補音声を優先保存します。",
+        "pcm8kTitle": "生 PCM8k",
+        "pcm8kEmpty": "この通話では生 PCM8k サンプルは保存されていません。",
+        "pcm8kDescription": "Twilio `μ-law/8kHz` デコード後の生電話音声で、ローカル 8 kHz -> 16 kHz アップサンプリングは行っていません。",
+        "pcm16kTitle": "上送前 PCM16k",
+        "pcm16kEmpty": "この通話では PCM16k サンプルは保存されていません。",
+        "pcm16kDescription": "バックエンドでローカルにアップサンプリングした後、Gemini Live に実際に送る 16 kHz PCM 音声です。",
+        "traceEmpty": "接続後、ここにユーザー / AI 転写とイベントが表示されます。"
+      },
+      "diagnostics": {
+        "title": "経路診断",
+        "loadingShort": "読み込み中",
+        "loading": "現在の経路診断を生成中...",
+        "empty": "まだ利用可能な診断はありません。接続またはエラー発生後、ここに責任範囲・証拠・推奨アクションが表示されます。",
+        "currentAssessment": "現在の判断",
+        "suggestedActions": "まず行うこと",
+        "actionsEmpty": "推奨アクションはまだありません。",
+        "evidenceTitle": "主要な証拠",
+        "evidenceCount": "最新 {{count}} 件",
+        "evidenceEmpty": "証拠項目はまだありません。",
+        "fallbackTitle": "診断タイトルがありません",
+        "status": {
+          "ok": "正常",
+          "error": "エラー",
+          "warning": "警告",
+          "unknown": "未判定"
+        }
+      },
+      "direct": {
+        "operation": {
+          "cancel": "キャンセル",
+          "update": "変更"
+        },
+        "info": {
+          "sessionFinalizedWithExtraction": "音声テストセッションが終了し、予約抽出も完了しました。",
+          "sessionFinalized": "音声テストセッションが終了しました。",
+          "operationCompleted": "業務ステートマシン経由で予約{{operation}}を完了しました。",
+          "operationEntered": "予約{{operation}}の業務フローに入りました。",
+          "autoFinalizedByClosingPhrase": "終了フレーズを検知し、音声セッションを自動切断して抽出を完了しました。"
+        },
+        "errors": {
+          "incompatibleModel": "現在のモデルは Gemini Live / Native Audio モデルではありません。Prompt 側で音声モデルを選ぶか、ここで明示的に上書きしてください。",
+          "connectionErrorFallback": "Gemini Live 直結接続エラー。",
+          "notConnected": "Gemini Live はまだ接続されていません。"
+        },
+        "logs": {
+          "persistTranscriptFailed": "音声テスト転写の保存に失敗しました: {{message}}",
+          "finalizeFailed": "音声テストセッションの終了に失敗しました: {{message}}",
+          "promptLoadFailed": "Prompt の読み込みに失敗しました: {{message}}",
+          "operationAssistantTurn": "AI(業務フロー): {{text}}",
+          "operationFlowHandled": "ChatService 業務フローがこのターンを処理しました: operation={{operation}} state={{state}} executed={{executed}}",
+          "operationFlowAdvanceFailed": "ChatService 業務フローの進行に失敗しました: {{message}}",
+          "closingPhraseDetected": "終了フレーズを検知したため、音声テストセッションを自動終了します。",
+          "directSessionAutoClosed": "Gemini Live 直結セッションは終了フレーズ検知後に自動で閉じられました。",
+          "directSessionClosed": "Gemini Live 直結セッションを閉じました。",
+          "incompatibleModel": "音声テストモデルに互換性がありません: {{model}}",
+          "sessionCreated": "音声テストセッションを作成しました: {{callId}}",
+          "requestingEphemeralToken": "Gemini Live の一時トークンを要求中...",
+          "connected": "Gemini Live 直結セッションが接続されました。",
+          "connectionClosedWithReason": "Gemini Live 接続が閉じられました (code: {{code}}, reason: {{reason}})。",
+          "connectionClosed": "Gemini Live 接続が閉じられました (code: {{code}})。",
+          "connectFailed": "Gemini Live 直結接続に失敗しました: {{message}}",
+          "voiceOnlyMode": "このタブは音声専用モードのため、テキスト入力は無効です。",
+          "duplicateTextIgnored": "重複するテキスト入力を無視しました。",
+          "textInput": "テキスト入力: {{text}}",
+          "promptLoaded": "Prompt テンプレートを読み込みました: {{name}} ({{code}})"
+        }
+      },
+      "gateway": {
+        "info": {
+          "callStarted": "通話を開始しました。現在のルート: {{transport}}。",
+          "inboundPrepared": "{{number}} 宛の次回着信を準備しました。{{expiresIn}} 秒以内にこの Twilio 番号へ発信すると、{{promptSource}} を使用し、{{transport}}{{voiceSegment}} を通ります。",
+          "googleCaManaged": "Google 公式 Conversational Agents 設定"
+        },
+        "errors": {
+          "unknownError": "不明なエラー",
+          "loadCapabilitiesFailed": "能力マトリクスの読み込みに失敗しました: {{message}}",
+          "noTokenReturned": "バックエンドが利用可能な Token を返しませんでした。",
+          "fetchTokenFailed": "Token 取得に失敗しました: {{message}}",
+          "twilioDeviceError": "Twilio Device エラー",
+          "registerDeviceFailed": "デバイス登録に失敗しました",
+          "callError": "通話エラー",
+          "targetNumberMissing": "先に有効な発信先番号（E.164）を設定してください。",
+          "promptMissing": "先に Prompt テンプレートを選択してください。",
+          "deviceUnavailable": "Twilio デバイスが利用できません。先に初期化してください。",
+          "dialFailed": "発信に失敗しました",
+          "inboundNumberMissing": "利用可能な Twilio 着信番号がありません。先にバックエンド TWILIO_PHONE_NUMBER 設定を確認してください。",
+          "prepareInboundFailed": "着信準備に失敗しました: {{message}}",
+          "hangupFailed": "切断に失敗しました: {{message}}",
+          "unregisterFailed": "デバイス登録解除に失敗しました: {{message}}"
+        },
+        "logs": {
+          "tokenFetched": "Twilio Token を取得しました。",
+          "fetchTokenFailed": "Token 取得に失敗しました: {{message}}",
+          "deviceRegistered": "Twilio デバイスを登録しました。",
+          "deviceUnregistered": "Twilio デバイスの登録を解除しました。",
+          "incomingRejected": "着信 client 通話イベントを受信しましたが、このコンソールはブラウザ外線発信の回帰確認専用のため自動拒否しました。",
+          "ringing": "相手先で呼び出し中...",
+          "callAccepted": "通話が接続されました。",
+          "callDisconnected": "通話が終了しました。",
+          "callCanceled": "通話がキャンセルされました。",
+          "callRejected": "通話が拒否されました。",
+          "dialing": "{{target}} に発信中 ...",
+          "inboundPrepared": "次回着信を準備しました: {{number}}{{promptSegment}}{{routeSegment}}{{voiceSegment}}。",
+          "prepareInboundFailed": "着信準備に失敗しました: {{message}}",
+          "hangupRequested": "切断を要求しました。",
+          "hangupFailed": "切断に失敗しました: {{message}}",
+          "deviceReset": "デバイス登録を解除し、状態をリセットしました。",
+          "unregisterFailed": "デバイス登録解除に失敗しました: {{message}}",
+          "tracePollingFailed": "転写ポーリングに失敗しました: {{message}}",
+          "debugAudioLoadFailed": "入站デバッグ音声の読み込みに失敗し、2 つのサンプルとも取得できませんでした。"
+        }
       }
     },
     "websocket": {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, InlineLoading, Tag, Tile, Toggle } from '@carbon/react';
+import { useTranslation } from 'react-i18next';
 
 import {
   evaluateVoiceAudioLab,
@@ -59,6 +60,7 @@ function resolveEvaluationTranscript(finalText: string, partials: string[]): str
 }
 
 export function VoiceAudioLabTile({ promptCode, voiceName }: VoiceAudioLabTileProps) {
+  const { t } = useTranslation(['pages']);
   const [recordStatus, setRecordStatus] = useState<AudioLabRecordStatus>('idle');
   const [recordedDurationMs, setRecordedDurationMs] = useState(0);
   const [variants, setVariants] = useState<VoiceAudioLabVariant[]>([]);
@@ -78,6 +80,43 @@ export function VoiceAudioLabTile({ promptCode, voiceName }: VoiceAudioLabTilePr
   const durationUpdateAtRef = useRef(0);
 
   const hasRecording = variants.length > 0;
+
+  const describeVariant = useCallback(
+    (variant: VoiceAudioLabVariant) => {
+      if (variant.id === 'original_recording') {
+        return {
+          label: t('pages:test.voiceLab.audioLab.variants.original.label', 'Original recording'),
+          description: t(
+            'pages:test.voiceLab.audioLab.variants.original.description',
+            'The raw mono PCM recording captured in the browser, without phone-path degradation.'
+          ),
+        };
+      }
+      if (variant.id === 'twilio_preview') {
+        return {
+          label: t('pages:test.voiceLab.audioLab.variants.twilio.label', 'Twilio phone preview'),
+          description: t(
+            'pages:test.voiceLab.audioLab.variants.twilio.description',
+            'Simulates how 16 kHz PCM sounds after entering the phone path, being downsampled to 8 kHz and encoded/decoded through μ-law.'
+          ),
+        };
+      }
+      if (variant.id === 'gemini_preview') {
+        return {
+          label: t('pages:test.voiceLab.audioLab.variants.gemini.label', 'Gemini uplink preview'),
+          description: t(
+            'pages:test.voiceLab.audioLab.variants.gemini.description',
+            'Simulates the version actually sent to Gemini Live after μ-law decode, input gating, and 8 kHz to 16 kHz upsampling on phone ingress.'
+          ),
+        };
+      }
+      return {
+        label: variant.label,
+        description: variant.description,
+      };
+    },
+    [t]
+  );
 
   const releaseRecordingResources = useCallback(() => {
     if (processorRef.current) {
@@ -121,7 +160,7 @@ export function VoiceAudioLabTile({ promptCode, voiceName }: VoiceAudioLabTilePr
     if (!mergedPcm.byteLength) {
       setRecordStatus('idle');
       setRecordedDurationMs(0);
-      setError('录音为空，请重新录一段后再试。');
+      setError(t('pages:test.voiceLab.audioLab.errors.emptyRecording', 'The recording is empty. Record another sample and try again.'));
       return;
     }
 
@@ -137,15 +176,24 @@ export function VoiceAudioLabTile({ promptCode, voiceName }: VoiceAudioLabTilePr
       });
       setVariants(prepared.variants);
       setRecordedDurationMs(prepared.variants[0]?.durationMs ?? 0);
-      setInfo('三种离线音频版本已生成，可以分别回放并送 Gemini Live 验证。');
+      setInfo(
+        t(
+          'pages:test.voiceLab.audioLab.info.variantsPrepared',
+          'Three offline audio variants have been generated. You can replay them individually and send them to Gemini Live for validation.'
+        )
+      );
     } catch (prepareError) {
       const message = prepareError instanceof Error ? prepareError.message : String(prepareError);
-      setError(`生成离线音频版本失败: ${message}`);
+      setError(
+        t('pages:test.voiceLab.audioLab.errors.prepareFailed', 'Failed to prepare offline audio variants: {{message}}', {
+          message,
+        })
+      );
       setVariants([]);
     } finally {
       setRecordStatus('idle');
     }
-  }, [recordStatus, releaseRecordingResources]);
+  }, [recordStatus, releaseRecordingResources, t]);
 
   const startRecording = useCallback(async () => {
     if (recordStatus !== 'idle') {
@@ -154,7 +202,7 @@ export function VoiceAudioLabTile({ promptCode, voiceName }: VoiceAudioLabTilePr
 
     const AudioContextCtor = getAudioContextCtor();
     if (!AudioContextCtor) {
-      setError('当前浏览器不支持 Web Audio API。');
+      setError(t('pages:test.voiceLab.audioLab.errors.webAudioUnsupported', 'This browser does not support the Web Audio API.'));
       return;
     }
 
@@ -222,10 +270,14 @@ export function VoiceAudioLabTile({ promptCode, voiceName }: VoiceAudioLabTilePr
     } catch (recordError) {
       releaseRecordingResources();
       const message = recordError instanceof Error ? recordError.message : String(recordError);
-      setError(`开始录音失败: ${message}`);
+      setError(
+        t('pages:test.voiceLab.audioLab.errors.recordStartFailed', 'Failed to start recording: {{message}}', {
+          message,
+        })
+      );
       setRecordStatus('idle');
     }
-  }, [recordStatus, releaseRecordingResources]);
+  }, [recordStatus, releaseRecordingResources, t]);
 
   const resetLab = useCallback(() => {
     releaseRecordingResources();
@@ -242,7 +294,12 @@ export function VoiceAudioLabTile({ promptCode, voiceName }: VoiceAudioLabTilePr
   const evaluateVariant = useCallback(
     async (variant: VoiceAudioLabVariant) => {
       if (!promptCode.trim()) {
-        setError('当前没有可用 Prompt，无法发送到 Gemini Live。');
+        setError(
+          t(
+            'pages:test.voiceLab.audioLab.errors.promptMissing',
+            'There is no available Prompt, so the clip cannot be sent to Gemini Live.'
+          )
+        );
         return;
       }
 
@@ -262,37 +319,60 @@ export function VoiceAudioLabTile({ promptCode, voiceName }: VoiceAudioLabTilePr
           ...previous,
           [variant.id]: result,
         }));
-        setInfo(`Gemini Live 已返回 ${variant.label} 的离线验证结果。`);
+        setInfo(
+          t(
+            'pages:test.voiceLab.audioLab.info.evaluationReady',
+            'Gemini Live has returned the offline validation result for {{variant}}.',
+            { variant: describeVariant(variant).label }
+          )
+        );
       } catch (evaluationError) {
         const message = evaluationError instanceof Error ? evaluationError.message : String(evaluationError);
-        setError(`Gemini Live 验证失败: ${message}`);
+        setError(
+          t('pages:test.voiceLab.audioLab.errors.evaluationFailed', 'Gemini Live validation failed: {{message}}', {
+            message,
+          })
+        );
       } finally {
         setEvaluatingVariantId(null);
       }
     },
-    [openingAlreadyPlayed, promptCode, voiceName]
+    [describeVariant, openingAlreadyPlayed, promptCode, t, voiceName]
   );
 
   const summaryTag = useMemo(() => {
     if (recordStatus === 'recording') {
-      return <Tag type="green">录音中 {formatDuration(recordedDurationMs)}</Tag>;
+      return (
+        <Tag type="green">
+          {t('pages:test.voiceLab.audioLab.summary.recording', 'Recording')} {formatDuration(recordedDurationMs)}
+        </Tag>
+      );
     }
     if (recordStatus === 'preparing') {
-      return <Tag type="blue">处理中</Tag>;
+      return <Tag type="blue">{t('pages:test.voiceLab.audioLab.summary.preparing', 'Preparing')}</Tag>;
     }
     if (hasRecording) {
-      return <Tag type="teal">已生成 {variants.length} 个版本</Tag>;
+      return (
+        <Tag type="teal">
+          {t('pages:test.voiceLab.audioLab.summary.ready', 'Prepared {{count}} variants', {
+            count: variants.length,
+          })}
+        </Tag>
+      );
     }
-    return <Tag type="cool-gray">待录音</Tag>;
-  }, [hasRecording, recordStatus, recordedDurationMs, variants.length]);
+    return <Tag type="cool-gray">{t('pages:test.voiceLab.audioLab.summary.idle', 'Ready to record')}</Tag>;
+  }, [hasRecording, recordStatus, recordedDurationMs, t, variants.length]);
 
   return (
     <Tile className={styles.sideTile}>
       <div className={styles.diagnosticHeader}>
         <div>
-          <h4 className="cds--heading-02">离线音频实验</h4>
+          <h4 className="cds--heading-02">{t('pages:test.voiceLab.audioLab.title', 'Offline audio lab')}</h4>
           <p className={styles.audioCaption}>
-            这块专门用于复现“同一段音频经过电话链路前后是什么样，以及直接送 Gemini Live 会返回什么”。
+            {t(
+              'pages:test.voiceLab.audioLab.description',
+              'Use this section to reproduce how the same clip sounds before and after the phone path, and what Gemini Live returns when each version is sent directly.'
+            )}
           </p>
         </div>
         {summaryTag}
@@ -305,7 +385,7 @@ export function VoiceAudioLabTile({ promptCode, voiceName }: VoiceAudioLabTilePr
           onClick={() => void startRecording()}
           disabled={recordStatus !== 'idle'}
         >
-          开始录音
+          {t('pages:test.voiceLab.audioLab.actions.startRecording', 'Start recording')}
         </Button>
         <Button
           kind="secondary"
@@ -313,7 +393,7 @@ export function VoiceAudioLabTile({ promptCode, voiceName }: VoiceAudioLabTilePr
           onClick={() => void stopRecording()}
           disabled={recordStatus !== 'recording' && recordStatus !== 'requesting'}
         >
-          停止录音
+          {t('pages:test.voiceLab.audioLab.actions.stopRecording', 'Stop recording')}
         </Button>
         <Button
           kind="ghost"
@@ -321,34 +401,46 @@ export function VoiceAudioLabTile({ promptCode, voiceName }: VoiceAudioLabTilePr
           onClick={resetLab}
           disabled={recordStatus === 'requesting' || recordStatus === 'preparing'}
         >
-          清空
+          {t('pages:test.voiceLab.audioLab.actions.clear', 'Clear')}
         </Button>
       </div>
 
       <Toggle
         id="voice-audio-lab-opening-toggle"
-        labelA="欢迎语未播"
-        labelB="欢迎语已播"
-        labelText="评估时是否视为 Twilio 已经播过欢迎语"
+        labelA={t('pages:test.voiceLab.audioLab.toggle.openingNotPlayed', 'Opening not played')}
+        labelB={t('pages:test.voiceLab.audioLab.toggle.openingPlayed', 'Opening already played')}
+        labelText={t(
+          'pages:test.voiceLab.audioLab.toggle.label',
+          'Whether to evaluate this as if Twilio has already played the opening message'
+        )}
         toggled={openingAlreadyPlayed}
         onToggle={(value) => setOpeningAlreadyPlayed(Boolean(value))}
       />
 
       {recordStatus === 'preparing' ? (
-        <InlineLoading description="正在生成三种离线音频版本..." />
+        <InlineLoading
+          description={t(
+            'pages:test.voiceLab.audioLab.loading.prepare',
+            'Preparing the three offline audio variants...'
+          )}
+        />
       ) : null}
       {error ? <p className={styles.audioLabError}>{error}</p> : null}
       {info ? <p className={styles.audioLabInfo}>{info}</p> : null}
 
       {!hasRecording && recordStatus === 'idle' ? (
         <p className={styles.emptyText}>
-          先录一段用户语音。建议控制在 3-8 秒，这样最适合对比“原始录音 / 电话版 / Gemini 上送版”。
+          {t(
+            'pages:test.voiceLab.audioLab.empty',
+            'Record a user utterance first. A 3-8 second clip is best for comparing the original recording, the phone preview, and the Gemini uplink preview.'
+          )}
         </p>
       ) : null}
 
       {variants.length > 0 ? (
         <div className={styles.audioLabGrid}>
           {variants.map((variant) => {
+            const variantCopy = describeVariant(variant);
             const evaluation = evaluations[variant.id];
             const outputText = evaluation
               ? resolveEvaluationTranscript(evaluation.outputFinal, evaluation.outputPartials) ||
@@ -363,8 +455,8 @@ export function VoiceAudioLabTile({ promptCode, voiceName }: VoiceAudioLabTilePr
               <div key={variant.id} className={styles.audioDebugBlock}>
                 <div className={styles.audioLabVariantHeader}>
                   <div>
-                    <h5 className={styles.audioDebugHeading}>{variant.label}</h5>
-                    <p className={styles.audioCaption}>{variant.description}</p>
+                    <h5 className={styles.audioDebugHeading}>{variantCopy.label}</h5>
+                    <p className={styles.audioCaption}>{variantCopy.description}</p>
                   </div>
                   <Tag type="cool-gray">{variant.sampleRate} Hz</Tag>
                 </div>
@@ -377,8 +469,16 @@ export function VoiceAudioLabTile({ promptCode, voiceName }: VoiceAudioLabTilePr
                 />
 
                 <p className={styles.audioCaption}>
-                  时长 {formatDuration(variant.durationMs)} · {formatBytes(variant.bytes)} · RMS {variant.rms} · Peak{' '}
-                  {variant.peak}
+                  {t(
+                    'pages:test.voiceLab.audioLab.metrics',
+                    'Duration {{duration}} · {{bytes}} · RMS {{rms}} · Peak {{peak}}',
+                    {
+                      duration: formatDuration(variant.durationMs),
+                      bytes: formatBytes(variant.bytes),
+                      rms: variant.rms,
+                      peak: variant.peak,
+                    }
+                  )}
                 </p>
 
                 <div className={styles.audioLabActionRow}>
@@ -388,30 +488,56 @@ export function VoiceAudioLabTile({ promptCode, voiceName }: VoiceAudioLabTilePr
                     onClick={() => void evaluateVariant(variant)}
                     disabled={Boolean(evaluatingVariantId)}
                   >
-                    发送到 Gemini
+                    {t('pages:test.voiceLab.audioLab.actions.sendToGemini', 'Send to Gemini')}
                   </Button>
-                  {evaluating ? <InlineLoading description="Gemini Live 评估中..." /> : null}
+                  {evaluating ? (
+                    <InlineLoading
+                      description={t('pages:test.voiceLab.audioLab.loading.evaluate', 'Evaluating with Gemini Live...')}
+                    />
+                  ) : null}
                 </div>
 
                 {evaluation ? (
                   <div className={styles.audioLabResultBlock}>
                     <p className={styles.audioCaption}>
-                      模型 {evaluation.model} · Prompt {evaluation.promptCode} · 上送采样率{' '}
-                      {evaluation.effectiveSendSampleRate} Hz
+                      {t(
+                        'pages:test.voiceLab.audioLab.evaluation.meta',
+                        'Model {{model}} · Prompt {{prompt}} · Send sample rate {{sampleRate}} Hz',
+                        {
+                          model: evaluation.model,
+                          prompt: evaluation.promptCode,
+                          sampleRate: evaluation.effectiveSendSampleRate,
+                        }
+                      )}
                     </p>
                     <div className={styles.transcriptGrid}>
                       <div className={styles.transcriptCard}>
-                        <h6 className={styles.transcriptHeading}>Gemini 听到的输入</h6>
-                        <pre className={styles.transcriptBody}>{inputText || '暂无 input transcript'}</pre>
+                        <h6 className={styles.transcriptHeading}>
+                          {t('pages:test.voiceLab.audioLab.evaluation.inputTitle', 'Gemini heard')}
+                        </h6>
+                        <pre className={styles.transcriptBody}>
+                          {inputText || t('pages:test.voiceLab.audioLab.evaluation.inputEmpty', 'No input transcript')}
+                        </pre>
                       </div>
                       <div className={styles.transcriptCard}>
-                        <h6 className={styles.transcriptHeading}>Gemini 的返回</h6>
-                        <pre className={styles.transcriptBody}>{outputText || '暂无 output transcript'}</pre>
+                        <h6 className={styles.transcriptHeading}>
+                          {t('pages:test.voiceLab.audioLab.evaluation.outputTitle', 'Gemini response')}
+                        </h6>
+                        <pre className={styles.transcriptBody}>
+                          {outputText || t('pages:test.voiceLab.audioLab.evaluation.outputEmpty', 'No output transcript')}
+                        </pre>
                       </div>
                     </div>
                     <p className={styles.audioCaption}>
-                      turn_complete={String(evaluation.turnComplete)} · timed_out={String(evaluation.timedOut)} ·
-                      events={evaluation.eventTypes.join(', ') || '-'}
+                      {t(
+                        'pages:test.voiceLab.audioLab.evaluation.flags',
+                        'turn_complete={{turnComplete}} · timed_out={{timedOut}} · events={{events}}',
+                        {
+                          turnComplete: String(evaluation.turnComplete),
+                          timedOut: String(evaluation.timedOut),
+                          events: evaluation.eventTypes.join(', ') || '-',
+                        }
+                      )}
                     </p>
                   </div>
                 ) : null}

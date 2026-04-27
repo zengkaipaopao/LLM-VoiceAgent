@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { http } from '../../../../../api/http';
 import type { BackendTraceDiagnosticResponse } from '../../diagnostics';
@@ -27,11 +28,11 @@ export type {
   TwilioTransportMode,
 } from './twilioGatewayTypes';
 
-function formatTwilioSdkError(prefix: string, rawError: unknown): string {
+function formatTwilioSdkError(prefix: string, rawError: unknown, unknownErrorLabel: string): string {
   const candidate = rawError && typeof rawError === 'object' ? (rawError as Record<string, unknown>) : {};
   const code = String(candidate.code ?? '').trim();
   const name = String(candidate.name ?? '').trim();
-  const message = String(candidate.message ?? 'Unknown error').trim();
+  const message = String(candidate.message ?? unknownErrorLabel).trim();
   const parts = [prefix];
   if (name) {
     parts.push(name);
@@ -97,8 +98,8 @@ export interface UseTwilioVoiceGatewayResult {
   resetGatewaySession: (options?: { clearMessages?: boolean }) => void;
 }
 
-function formatLogTime(date = new Date()): string {
-  return date.toLocaleTimeString('zh-CN', { hour12: false });
+function formatLogTime(locale?: string, date = new Date()): string {
+  return date.toLocaleTimeString(locale || undefined, { hour12: false });
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -111,6 +112,8 @@ export function useTwilioVoiceGateway({
   requirePrompt = true,
   transportLabel = '官方 Conversational Agents（Google CX Agent Studio + Twilio）',
 }: UseTwilioVoiceGatewayOptions): UseTwilioVoiceGatewayResult {
+  const { t, i18n } = useTranslation(['pages']);
+  const locale = i18n.resolvedLanguage || i18n.language || undefined;
   const [capability, setCapability] = useState<TwilioCapabilitySnapshot>({
     configuredPhoneNumber: '',
     geminiGenerateImplemented: false,
@@ -143,12 +146,12 @@ export function useTwilioVoiceGateway({
       {
         id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
         level,
-        time: formatLogTime(),
+        time: formatLogTime(locale),
         message,
       },
       ...prev,
     ]);
-  }, []);
+  }, [locale]);
 
   const traceMonitor = useTwilioTraceMonitor({
     callStatus,
@@ -198,7 +201,11 @@ export function useTwilioVoiceGateway({
         return;
       }
       const message = loadError instanceof Error ? loadError.message : String(loadError);
-      setError(`加载能力矩阵失败: ${message}`);
+      setError(
+        t('pages:test.voiceLab.gateway.errors.loadCapabilitiesFailed', 'Failed to load capability matrix: {{message}}', {
+          message,
+        })
+      );
     } finally {
       if (!controller.signal.aborted) {
         setLoadingCapability(false);
@@ -207,7 +214,7 @@ export function useTwilioVoiceGateway({
         capabilityRequestRef.current = null;
       }
     }
-  }, []);
+  }, [t]);
 
   const resetGatewaySession = useCallback(
     (options?: { clearMessages?: boolean }) => {
@@ -245,20 +252,31 @@ export function useTwilioVoiceGateway({
       });
       const tokenValue = String(asRecord(asRecord(response.data).data).token ?? '').trim();
       if (!tokenValue) {
-        throw new Error('后端未返回可用 Token。');
+        throw new Error(
+          t('pages:test.voiceLab.gateway.errors.noTokenReturned', 'The backend did not return a usable token.')
+        );
       }
       setToken(tokenValue);
-      appendLog('success', 'Twilio Token 获取成功。');
+      appendLog('success', t('pages:test.voiceLab.gateway.logs.tokenFetched', 'Twilio token fetched.'));
       setDialerStatus(previousStatus === 'registered' ? 'registered' : 'idle');
       return tokenValue;
     } catch (tokenError) {
       const message = tokenError instanceof Error ? tokenError.message : String(tokenError);
       setDialerStatus('error');
-      setError(`获取 Token 失败: ${message}`);
-      appendLog('error', `获取 Token 失败: ${message}`);
+      setError(
+        t('pages:test.voiceLab.gateway.errors.fetchTokenFailed', 'Failed to fetch token: {{message}}', {
+          message,
+        })
+      );
+      appendLog(
+        'error',
+        t('pages:test.voiceLab.gateway.logs.fetchTokenFailed', 'Failed to fetch token: {{message}}', {
+          message,
+        })
+      );
       throw tokenError;
     }
-  }, [appendLog, identity]);
+  }, [appendLog, identity, t]);
 
   const registerDevice = useCallback(async () => {
     try {
@@ -326,20 +344,30 @@ export function useTwilioVoiceGateway({
 
       device.on('registered', () => {
         setDialerStatus('registered');
-        appendLog('success', 'Twilio 设备已注册。');
+        appendLog('success', t('pages:test.voiceLab.gateway.logs.deviceRegistered', 'Twilio device registered.'));
       });
       device.on('unregistered', () => {
         setDialerStatus((previous) => (previous === 'error' ? previous : 'idle'));
-        appendLog('info', 'Twilio 设备已注销。');
+        appendLog('info', t('pages:test.voiceLab.gateway.logs.deviceUnregistered', 'Twilio device unregistered.'));
       });
       device.on('error', (deviceError: any) => {
-        const message = formatTwilioSdkError('Twilio Device 错误', deviceError);
+        const message = formatTwilioSdkError(
+          t('pages:test.voiceLab.gateway.errors.twilioDeviceError', 'Twilio Device error'),
+          deviceError,
+          t('pages:test.voiceLab.gateway.errors.unknownError', 'Unknown error')
+        );
         setDialerStatus('error');
         setError(message);
         appendLog('error', message);
       });
       device.on('incoming', (incomingCall: any) => {
-        appendLog('warning', '收到入站 client 通话事件，当前测试台仅用于浏览器外呼回归，已自动拒绝。');
+        appendLog(
+          'warning',
+          t(
+            'pages:test.voiceLab.gateway.logs.incomingRejected',
+            'An inbound client call event was received. This console is only for browser outbound regression, so it was rejected automatically.'
+          )
+        );
         try {
           incomingCall.reject();
         } catch {
@@ -349,43 +377,51 @@ export function useTwilioVoiceGateway({
 
       await device.register();
     } catch (registerError) {
-      const message = formatTwilioSdkError('注册设备失败', registerError);
+      const message = formatTwilioSdkError(
+        t('pages:test.voiceLab.gateway.errors.registerDeviceFailed', 'Failed to register device'),
+        registerError,
+        t('pages:test.voiceLab.gateway.errors.unknownError', 'Unknown error')
+      );
       setDialerStatus('error');
       setError(message);
       appendLog('error', message);
     }
-  }, [appendLog, fetchToken, token]);
+  }, [appendLog, fetchToken, t, token]);
 
   const bindCallEvents = useCallback(
     (call: any) => {
       call.on('ringing', () => {
         setCallStatus('dialing');
-        appendLog('info', '对方振铃中...');
+        appendLog('info', t('pages:test.voiceLab.gateway.logs.ringing', 'Remote party is ringing...'));
       });
       call.on('accept', () => {
         setCallStatus('in-call');
-        appendLog('success', '通话已接通。');
+        appendLog('success', t('pages:test.voiceLab.gateway.logs.callAccepted', 'Call connected.'));
       });
       call.on('disconnect', () => {
         setCallStatus('ended');
-        appendLog('info', '通话已结束。');
+        appendLog('info', t('pages:test.voiceLab.gateway.logs.callDisconnected', 'Call ended.'));
       });
       call.on('cancel', () => {
         setCallStatus('ended');
-        appendLog('warning', '通话被取消。');
+        appendLog('warning', t('pages:test.voiceLab.gateway.logs.callCanceled', 'Call canceled.'));
       });
       call.on('reject', () => {
         setCallStatus('ended');
-        appendLog('warning', '通话被拒绝。');
+        appendLog('warning', t('pages:test.voiceLab.gateway.logs.callRejected', 'Call rejected.'));
       });
       call.on('error', (callError: any) => {
-        const message = formatTwilioSdkError('通话错误', callError);
+        const message = formatTwilioSdkError(
+          t('pages:test.voiceLab.gateway.errors.callError', 'Call error'),
+          callError,
+          t('pages:test.voiceLab.gateway.errors.unknownError', 'Unknown error')
+        );
         setCallStatus('error');
         setError(message);
         appendLog('error', message);
       });
     },
-    [appendLog]
+    [appendLog, t]
   );
 
   const startDial = useCallback(
@@ -395,12 +431,17 @@ export function useTwilioVoiceGateway({
         setInfo(null);
         const target = targetNumber.trim();
         if (!target) {
-          setError('请先配置有效的目标号码（E.164）。');
+          setError(
+            t(
+              'pages:test.voiceLab.gateway.errors.targetNumberMissing',
+              'Configure a valid target number (E.164) first.'
+            )
+          );
           return;
         }
         const normalizedPromptCode = (promptCode || '').trim();
         if (requirePrompt && !normalizedPromptCode) {
-          setError('请先选择 Prompt 模板。');
+          setError(t('pages:test.voiceLab.gateway.errors.promptMissing', 'Select a Prompt template first.'));
           return;
         }
 
@@ -410,7 +451,7 @@ export function useTwilioVoiceGateway({
 
         const device = deviceRef.current;
         if (!device) {
-          setError('Twilio 设备不可用，请先初始化。');
+          setError(t('pages:test.voiceLab.gateway.errors.deviceUnavailable', 'Twilio device is unavailable. Initialize it first.'));
           return;
         }
 
@@ -418,7 +459,10 @@ export function useTwilioVoiceGateway({
         resetTraceMonitor();
 
         setCallStatus('dialing');
-        appendLog('info', `正在拨号 ${target} ...`);
+        appendLog(
+          'info',
+          t('pages:test.voiceLab.gateway.logs.dialing', 'Dialing {{target}} ...', { target })
+        );
 
         const params: Record<string, string> = {
           To: target,
@@ -441,9 +485,17 @@ export function useTwilioVoiceGateway({
           setSdkCallSid(callSid);
         }
 
-        setInfo(`已发起通话，当前链路为 ${transportLabel}。`);
+        setInfo(
+          t('pages:test.voiceLab.gateway.info.callStarted', 'Call started. Current route: {{transport}}.', {
+            transport: transportLabel,
+          })
+        );
       } catch (dialError) {
-        const message = formatTwilioSdkError('拨号失败', dialError);
+        const message = formatTwilioSdkError(
+          t('pages:test.voiceLab.gateway.errors.dialFailed', 'Failed to place call'),
+          dialError,
+          t('pages:test.voiceLab.gateway.errors.unknownError', 'Unknown error')
+        );
         setCallStatus('error');
         setError(message);
         appendLog('error', message);
@@ -458,6 +510,7 @@ export function useTwilioVoiceGateway({
       resetTraceMonitor,
       transportLabel,
       transportMode,
+      t,
     ]
   );
 
@@ -468,12 +521,17 @@ export function useTwilioVoiceGateway({
         setInfo(null);
         const inboundNumber = (capability.configuredPhoneNumber || targetNumber).trim();
         if (!inboundNumber) {
-          setError('当前没有可用的 Twilio 入站号码。请先检查后端 TWILIO_PHONE_NUMBER 配置。');
+          setError(
+            t(
+              'pages:test.voiceLab.gateway.errors.inboundNumberMissing',
+              'No Twilio inbound number is currently available. Check the backend TWILIO_PHONE_NUMBER configuration first.'
+            )
+          );
           return;
         }
         const normalizedPromptCode = (promptCode || '').trim();
         if (requirePrompt && !normalizedPromptCode) {
-          setError('请先选择 Prompt 模板。');
+          setError(t('pages:test.voiceLab.gateway.errors.promptMissing', 'Select a Prompt template first.'));
           return;
         }
 
@@ -492,22 +550,51 @@ export function useTwilioVoiceGateway({
 
         appendLog(
           'success',
-          `已准备下一通入呼：${resolvedNumber}${resolvedPrompt ? `，Prompt=${resolvedPrompt}` : ''}${
-            resolvedRoute ? `，Route=${resolvedRoute}` : ''
-          }${resolvedVoice ? `，Voice=${resolvedVoice}` : ''}。`
+          t(
+            'pages:test.voiceLab.gateway.logs.inboundPrepared',
+            'Prepared the next inbound call: {{number}}{{promptSegment}}{{routeSegment}}{{voiceSegment}}.',
+            {
+              number: resolvedNumber,
+              promptSegment: resolvedPrompt ? `, Prompt=${resolvedPrompt}` : '',
+              routeSegment: resolvedRoute ? `, Route=${resolvedRoute}` : '',
+              voiceSegment: resolvedVoice ? `, Voice=${resolvedVoice}` : '',
+            }
+          )
         );
         setInfo(
-          `已为 ${resolvedNumber} 准备下一通入呼，${expiresIn || 180} 秒内拨入该 Twilio 号码会使用${
-            resolvedPrompt ? ` Prompt ${resolvedPrompt}` : ' Google 官方 Conversational Agents 配置'
-          }，并走 ${transportLabel}${resolvedVoice ? `，音色 ${resolvedVoice}` : ''}。`
+          t(
+            'pages:test.voiceLab.gateway.info.inboundPrepared',
+            'Prepared the next inbound call for {{number}}. Dialing this Twilio number within {{expiresIn}} seconds will use {{promptSource}} and route through {{transport}}{{voiceSegment}}.',
+            {
+              number: resolvedNumber,
+              expiresIn: expiresIn || 180,
+              promptSource: resolvedPrompt
+                ? `Prompt ${resolvedPrompt}`
+                : t(
+                    'pages:test.voiceLab.gateway.info.googleCaManaged',
+                    'Google official Conversational Agents configuration'
+                  ),
+              transport: transportLabel,
+              voiceSegment: resolvedVoice ? `, voice ${resolvedVoice}` : '',
+            }
+          )
         );
       } catch (prepareError) {
         const message = prepareError instanceof Error ? prepareError.message : String(prepareError);
-        setError(`准备入呼失败: ${message}`);
-        appendLog('error', `准备入呼失败: ${message}`);
+        setError(
+          t('pages:test.voiceLab.gateway.errors.prepareInboundFailed', 'Failed to prepare inbound call: {{message}}', {
+            message,
+          })
+        );
+        appendLog(
+          'error',
+          t('pages:test.voiceLab.gateway.logs.prepareInboundFailed', 'Failed to prepare inbound call: {{message}}', {
+            message,
+          })
+        );
       }
     },
-    [appendLog, capability.configuredPhoneNumber, requirePrompt, targetNumber, transportLabel, transportMode]
+    [appendLog, capability.configuredPhoneNumber, requirePrompt, t, targetNumber, transportLabel, transportMode]
   );
 
   const hangupCall = useCallback(() => {
@@ -517,25 +604,34 @@ export function useTwilioVoiceGateway({
         callRef.current = null;
       }
       setCallStatus('ended');
-      appendLog('info', '已请求挂断。');
+      appendLog('info', t('pages:test.voiceLab.gateway.logs.hangupRequested', 'Hangup requested.'));
     } catch (hangupError) {
       const message = hangupError instanceof Error ? hangupError.message : String(hangupError);
-      setError(`挂断失败: ${message}`);
-      appendLog('error', `挂断失败: ${message}`);
+      setError(t('pages:test.voiceLab.gateway.errors.hangupFailed', 'Failed to hang up: {{message}}', { message }));
+      appendLog('error', t('pages:test.voiceLab.gateway.logs.hangupFailed', 'Failed to hang up: {{message}}', { message }));
     }
-  }, [appendLog]);
+  }, [appendLog, t]);
 
   const unregisterDevice = useCallback(() => {
     try {
       resetGatewaySession();
-      appendLog('info', '设备已注销并重置状态。');
+      appendLog('info', t('pages:test.voiceLab.gateway.logs.deviceReset', 'Device unregistered and state reset.'));
     } catch (unregisterError) {
       const message = unregisterError instanceof Error ? unregisterError.message : String(unregisterError);
       setDialerStatus('error');
-      setError(`注销设备失败: ${message}`);
-      appendLog('error', `注销设备失败: ${message}`);
+      setError(
+        t('pages:test.voiceLab.gateway.errors.unregisterFailed', 'Failed to unregister device: {{message}}', {
+          message,
+        })
+      );
+      appendLog(
+        'error',
+        t('pages:test.voiceLab.gateway.logs.unregisterFailed', 'Failed to unregister device: {{message}}', {
+          message,
+        })
+      );
     }
-  }, [appendLog, resetGatewaySession]);
+  }, [appendLog, resetGatewaySession, t]);
 
   const setTargetNumber = useCallback(
     (value: string) => {

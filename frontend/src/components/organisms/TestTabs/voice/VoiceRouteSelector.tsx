@@ -1,4 +1,5 @@
 import { Select, SelectItem, Tag, Tile } from '@carbon/react';
+import { useTranslation } from 'react-i18next';
 
 import styles from '../TwilioTabContent.module.scss';
 import type { VoiceRouteMode } from './types';
@@ -10,41 +11,80 @@ interface VoiceRouteSelectorProps {
 }
 
 export function VoiceRouteSelector({ routeMode, isAnySessionActive, onChange }: VoiceRouteSelectorProps) {
+  const { t } = useTranslation(['pages']);
   const isDirect = routeMode === 'direct';
   const isOfficialTwilio = routeMode === 'twilio_official';
 
   return (
     <Tile className={styles.routeTile}>
       <div className={styles.sectionHeader}>
-        <h4 className="cds--heading-03">测试方式</h4>
+        <h4 className="cds--heading-03">{t('pages:test.voiceLab.routeSelector.title', 'Test mode')}</h4>
         <p className={styles.description}>
-          该页面只关注语音链路是否稳定可对话。Twilio 仅作为电话接入网关，不是业务主流程。
+          {t(
+            'pages:test.voiceLab.routeSelector.description',
+            'This page focuses only on whether the voice path is stable enough for conversation. Twilio is only used as the phone ingress gateway, not the business flow itself.'
+          )}
         </p>
       </div>
       <Select
         id="voice-route-mode"
-        labelText="语音接入方式"
+        labelText={t('pages:test.voiceLab.routeSelector.label', 'Voice route')}
         value={routeMode}
         onChange={(event) => onChange(event.target.value as VoiceRouteMode)}
         disabled={isAnySessionActive}
       >
-        <SelectItem value="direct" text="浏览器直连 Gemini（不经过 Twilio）" />
-        <SelectItem value="twilio_official" text="通过电话网关（Twilio，官方 Conversational Agents）" />
-        <SelectItem value="twilio_media_stream" text="通过电话网关（Twilio，自建 Media Streams + 后端主控）" />
+        <SelectItem
+          value="direct"
+          text={t('pages:test.voiceLab.routeSelector.options.direct', 'Browser direct to Gemini (without Twilio)')}
+        />
+        <SelectItem
+          value="twilio_official"
+          text={t(
+            'pages:test.voiceLab.routeSelector.options.twilioOfficial',
+            'Phone gateway (Twilio, official Conversational Agents)'
+          )}
+        />
+        <SelectItem
+          value="twilio_media_stream"
+          text={t(
+            'pages:test.voiceLab.routeSelector.options.twilioMediaStream',
+            'Phone gateway (Twilio, self-hosted Media Streams + backend controller)'
+          )}
+        />
       </Select>
       <div className={styles.badgeRow}>
-        <Tag type="teal">连通性回归</Tag>
+        <Tag type="teal">{t('pages:test.voiceLab.routeSelector.badges.regression', 'Connectivity regression')}</Tag>
         <Tag type={isDirect ? 'green' : isOfficialTwilio ? 'blue' : 'purple'}>
-          {isDirect ? '直连模式' : isOfficialTwilio ? '官方电话模式' : '自建电话模式'}
+          {isDirect
+            ? t('pages:test.voiceLab.routeSelector.badges.direct', 'Direct mode')
+            : isOfficialTwilio
+              ? t('pages:test.voiceLab.routeSelector.badges.twilioOfficial', 'Official phone mode')
+              : t('pages:test.voiceLab.routeSelector.badges.twilioMediaStream', 'Self-hosted phone mode')}
         </Tag>
       </div>
-      {isAnySessionActive && <p className={styles.description}>会话进行中，接入方式已锁定。请先断开会话后再切换。</p>}
+      {isAnySessionActive && (
+        <p className={styles.description}>
+          {t(
+            'pages:test.voiceLab.routeSelector.sessionLocked',
+            'A session is in progress, so the route is locked. Disconnect first before switching.'
+          )}
+        </p>
+      )}
       <p className={styles.routeHint}>
         {isDirect
-          ? '浏览器麦克风会直接送到 Gemini Live，最适合先做模型对话连通验证。'
+          ? t(
+              'pages:test.voiceLab.routeSelector.hints.direct',
+              'The browser microphone is sent directly to Gemini Live, which is the best way to validate model conversation connectivity first.'
+            )
           : isOfficialTwilio
-            ? '通过 Google 官方 Conversational Agents + Twilio 电话网关进行端到端验证。可在页面内发起浏览器外呼，也可先在页面准备下一通入呼，再用真实手机拨打 Twilio 号码。'
-            : '通过 Twilio Media Streams + 你自己的后端主控链路进行端到端验证。该模式会把电话原始音频桥接到 Gemini Live，适合验证薄传输层实现。'}
+            ? t(
+                'pages:test.voiceLab.routeSelector.hints.twilioOfficial',
+                'Run end-to-end verification through Google official Conversational Agents plus the Twilio phone gateway. You can place a browser outbound call here, or prepare the next inbound call and then dial the Twilio number from a real phone.'
+              )
+            : t(
+                'pages:test.voiceLab.routeSelector.hints.twilioMediaStream',
+                'Run end-to-end verification through Twilio Media Streams plus your own backend controller. This mode bridges raw phone audio into Gemini Live and is suited to validating a thin transport implementation.'
+              )}
       </p>
     </Tile>
   );

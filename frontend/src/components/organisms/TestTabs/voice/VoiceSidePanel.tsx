@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { Stack, Tag, Tile } from '@carbon/react';
+import { useTranslation } from 'react-i18next';
 
 import type { VoiceDiagnostic } from '../../../../features/test-lab/voice/diagnostics';
 import type { UseLiveWebSocketConsoleResult } from '../../../../hooks/useLiveWebSocketConsole';
@@ -19,21 +20,21 @@ interface VoiceSidePanelProps {
   effectiveVoice: string;
 }
 
-function resolveTraceSpeaker(type: string): 'AI' | '用户' | '事件' {
+function resolveTraceSpeaker(type: string): 'assistant' | 'user' | 'event' {
   const normalizedType = type.toLowerCase();
-  if (normalizedType === 'input_transcript') return '用户';
-  if (normalizedType === 'output_transcript' || normalizedType === 'assistant_text') return 'AI';
-  return '事件';
+  if (normalizedType === 'input_transcript') return 'user';
+  if (normalizedType === 'output_transcript' || normalizedType === 'assistant_text') return 'assistant';
+  return 'event';
 }
 
-function resolveTraceText(type: string, text: string, isFinal?: boolean): string {
+function resolveTraceText(type: string, text: string, isFinal?: boolean, partialLabel = 'partial'): string {
   const baseText = text.trim();
   const normalizedType = type.trim();
   if (!baseText) {
     return normalizedType || '-';
   }
   if ((type === 'input_transcript' || type === 'output_transcript') && isFinal === false) {
-    return `${baseText} (partial)`;
+    return `${baseText} (${partialLabel})`;
   }
   if (normalizedType !== 'input_transcript' && normalizedType !== 'output_transcript') {
     return `${normalizedType}: ${baseText}`;
@@ -41,23 +42,24 @@ function resolveTraceText(type: string, text: string, isFinal?: boolean): string
   return baseText;
 }
 
-function resolveTraceTime(timestampMs: number): string {
+function resolveTraceTime(timestampMs: number, locale?: string): string {
   if (!Number.isFinite(timestampMs) || timestampMs <= 0) {
-    return new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    return new Date().toLocaleTimeString(locale || undefined, { hour12: false });
   }
-  return new Date(timestampMs).toLocaleTimeString('zh-CN', { hour12: false });
+  return new Date(timestampMs).toLocaleTimeString(locale || undefined, { hour12: false });
 }
 
 function findLatestTraceTurn(
   events: UseTwilioVoiceGatewayResult['traceEvents'],
-  types: string[]
+  types: string[],
+  partialLabel?: string
 ): string {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
     if (!types.includes(event.type)) {
       continue;
     }
-    const text = resolveTraceText(event.type || '', event.text || '', event.final).trim();
+    const text = resolveTraceText(event.type || '', event.text || '', event.final, partialLabel).trim();
     if (text) {
       return text;
     }
@@ -74,26 +76,40 @@ export function VoiceSidePanel({
   selectedPromptCode,
   effectiveVoice,
 }: VoiceSidePanelProps) {
+  const { t, i18n } = useTranslation(['pages']);
+  const locale = i18n.resolvedLanguage || i18n.language || undefined;
   const isMediaStreamRoute = routeMode === 'twilio_media_stream';
   const voiceSourceLabel = isMediaStreamRoute
-    ? '由本地 Prompt / Media Streams 桥接配置决定'
-    : '由 Google CX Agent Studio / CES Deployment 决定';
-  const phoneTransportLabel = isMediaStreamRoute ? '自建 Media Streams + Twilio' : 'Official CA + Twilio';
-  const speechEngineLabel = isMediaStreamRoute ? 'Gemini Live' : 'Conversational Agents';
-  const activeTraceEmptyLabel = isMediaStreamRoute ? '暂无活跃自建电话流。' : '暂无活跃官方电话流。';
+    ? t(
+        'pages:test.voiceLab.sidePanel.voiceSourceMedia',
+        'Determined by the local Prompt / Media Streams bridge configuration'
+      )
+    : t(
+        'pages:test.voiceLab.sidePanel.voiceSourceOfficial',
+        'Determined by Google CX Agent Studio / CES Deployment'
+      );
+  const phoneTransportLabel = isMediaStreamRoute
+    ? t('pages:test.voiceLab.sidePanel.transportMedia', 'Self-hosted Media Streams + Twilio')
+    : t('pages:test.voiceLab.sidePanel.transportOfficial', 'Official CA + Twilio');
+  const speechEngineLabel = isMediaStreamRoute
+    ? t('pages:test.voiceLab.sidePanel.engineMedia', 'Gemini Live')
+    : t('pages:test.voiceLab.sidePanel.engineOfficial', 'Conversational Agents');
+  const activeTraceEmptyLabel = isMediaStreamRoute
+    ? t('pages:test.voiceLab.sidePanel.activeTraceEmptyMedia', 'No active self-hosted phone streams.')
+    : t('pages:test.voiceLab.sidePanel.activeTraceEmptyOfficial', 'No active official phone streams.');
 
   const directDialogueHistory = useMemo<DialogueHistoryItem[]>(() => {
     const items: DialogueHistoryItem[] = [];
     for (const log of liveWebsocket.logs) {
       const message = (log.message || '').trim();
-      let role: '用户' | 'AI' | null = null;
+      let role: 'user' | 'assistant' | null = null;
       let text = '';
 
       if (message.startsWith('用户:')) {
-        role = '用户';
+        role = 'user';
         text = message.replace(/^用户:\s*/, '').trim();
       } else if (message.startsWith('AI:')) {
-        role = 'AI';
+        role = 'assistant';
         text = message.replace(/^AI:\s*/, '').trim();
       }
 
@@ -102,16 +118,16 @@ export function VoiceSidePanel({
         id: log.id,
         role,
         text,
-        timeLabel: log.time.toLocaleTimeString('zh-CN', { hour12: false }),
+        timeLabel: log.time.toLocaleTimeString(locale, { hour12: false }),
         ts: log.time.getTime(),
       });
     }
     return items.slice(-240);
-  }, [liveWebsocket.logs]);
+  }, [liveWebsocket.logs, locale]);
 
   const latestUserTurn = useMemo(() => {
     for (let index = directDialogueHistory.length - 1; index >= 0; index -= 1) {
-      if (directDialogueHistory[index].role === '用户') {
+      if (directDialogueHistory[index].role === 'user') {
         return directDialogueHistory[index].text;
       }
     }
@@ -120,7 +136,7 @@ export function VoiceSidePanel({
 
   const latestAssistantTurn = useMemo(() => {
     for (let index = directDialogueHistory.length - 1; index >= 0; index -= 1) {
-      if (directDialogueHistory[index].role === 'AI') {
+      if (directDialogueHistory[index].role === 'assistant') {
         return directDialogueHistory[index].text;
       }
     }
@@ -128,8 +144,13 @@ export function VoiceSidePanel({
   }, [directDialogueHistory]);
 
   const latestTwilioUserTurn = useMemo(
-    () => findLatestTraceTurn(twilioGateway.traceEvents, ['input_transcript']),
-    [twilioGateway.traceEvents]
+    () =>
+      findLatestTraceTurn(
+        twilioGateway.traceEvents,
+        ['input_transcript'],
+        t('pages:test.voiceLab.sidePanel.partialLabel', 'partial')
+      ),
+    [t, twilioGateway.traceEvents]
   );
 
   const latestTwilioAssistantTurn = useMemo(
@@ -138,22 +159,39 @@ export function VoiceSidePanel({
         'output_transcript',
         'assistant_text',
         'assistant_meta_text',
-      ]),
-    [twilioGateway.traceEvents]
+      ], t('pages:test.voiceLab.sidePanel.partialLabel', 'partial')),
+    [t, twilioGateway.traceEvents]
   );
 
   const inboundDebugAudioTitle =
-    twilioGateway.inboundDebugAudioKind === 'followup' ? '后续轮次候选音频对比' : '最近 5 秒入站音频对比';
+    twilioGateway.inboundDebugAudioKind === 'followup'
+      ? t('pages:test.voiceLab.sidePanel.followupAudioTitle', 'Follow-up turn candidate audio comparison')
+      : t('pages:test.voiceLab.sidePanel.tailAudioTitle', 'Latest 5-second inbound audio comparison');
   const inboundDebugAudioSummaryFallback =
     twilioGateway.inboundDebugAudioKind === 'followup'
-      ? '已保存上一轮 AI 播放完成后检测到的第一段可疑用户语音，可直接比较 8k 原始样本与 16k 上送样本。'
-      : '已保存最近 5 秒入站调试音频，可直接比较 8k 原始样本与 16k 上送样本。';
+      ? t(
+          'pages:test.voiceLab.sidePanel.followupAudioSummary',
+          'The first suspicious user utterance detected after the previous AI playback completed has been saved, so you can compare the raw 8 kHz sample with the 16 kHz uplink sample directly.'
+        )
+      : t(
+          'pages:test.voiceLab.sidePanel.tailAudioSummary',
+          'The most recent 5 seconds of inbound debug audio have been saved, so you can compare the raw 8 kHz sample with the 16 kHz uplink sample directly.'
+        );
   const inboundDebugAudioLoadingText =
     twilioGateway.inboundDebugAudioKind === 'followup'
-      ? '正在加载后续轮次候选双路调试音频...'
-      : '正在加载最近 5 秒双路调试音频...';
+      ? t(
+          'pages:test.voiceLab.sidePanel.followupAudioLoading',
+          'Loading both debug audio samples for the follow-up turn candidate...'
+        )
+      : t(
+          'pages:test.voiceLab.sidePanel.tailAudioLoading',
+          'Loading both debug audio samples for the latest 5 seconds...'
+        );
   const inboundDebugAudioEmptyText =
-    '通话结束或链路异常后，会自动保存最近 5 秒尾部样本；如果检测到上一轮 AI 播放完成后的疑似用户新一轮讲话，也会优先保存那段候选音频。';
+    t(
+      'pages:test.voiceLab.sidePanel.audioEmpty',
+      'After the call ends or the bridge fails, the latest 5-second tail sample is saved automatically. If a suspected new user utterance is detected after the previous AI playback completes, that candidate clip is saved with higher priority.'
+    );
 
   const twilioTraceStats = useMemo(() => {
     let finalUserTurns = 0;
@@ -191,7 +229,7 @@ export function VoiceSidePanel({
       <Stack gap={5}>
         <VoiceDiagnosticsTile diagnostic={directDiagnostic} />
         <Tile className={styles.sideTile}>
-          <h4 className="cds--heading-02">实时对话转写</h4>
+          <h4 className="cds--heading-02">{t('pages:test.voiceLab.sidePanel.transcriptTitle', 'Live conversation transcript')}</h4>
           <dl className={styles.metaList}>
             <div className={styles.metaRow}>
               <dt>Session ID</dt>
@@ -202,41 +240,50 @@ export function VoiceSidePanel({
               <dd>{liveWebsocket.testCallId || '-'}</dd>
             </div>
             <div className={styles.metaRow}>
-              <dt>总 Tokens</dt>
+              <dt>{t('pages:test.voiceLab.sidePanel.totalTokens', 'Total tokens')}</dt>
               <dd>{liveWebsocket.totalTokens}</dd>
             </div>
             <div className={styles.metaRow}>
-              <dt>当前 Prompt</dt>
+              <dt>{t('pages:test.voiceLab.sidePanel.currentPrompt', 'Current Prompt')}</dt>
               <dd>{liveWebsocket.selectedPromptCode || '-'}</dd>
             </div>
             <div className={styles.metaRow}>
-              <dt>当前模型</dt>
+              <dt>{t('pages:test.voiceLab.sidePanel.currentModel', 'Current model')}</dt>
               <dd>{liveWebsocket.model || '-'}</dd>
             </div>
             <div className={styles.metaRow}>
-              <dt>预约记录</dt>
+              <dt>{t('pages:test.voiceLab.sidePanel.appointmentRecord', 'Appointment record')}</dt>
               <dd>{liveWebsocket.finalizeResult?.appointment_id || '-'}</dd>
             </div>
           </dl>
           <div className={styles.transcriptGrid}>
             <div className={styles.transcriptCard}>
-              <h5 className={styles.transcriptHeading}>用户最近一句</h5>
-              <pre className={styles.transcriptBody}>{latestUserTurn || '等待用户讲话...'}</pre>
+              <h5 className={styles.transcriptHeading}>{t('pages:test.voiceLab.sidePanel.latestUser', 'Latest user utterance')}</h5>
+              <pre className={styles.transcriptBody}>
+                {latestUserTurn || t('pages:test.voiceLab.sidePanel.waitingUser', 'Waiting for the user to speak...')}
+              </pre>
             </div>
             <div className={styles.transcriptCard}>
-              <h5 className={styles.transcriptHeading}>AI 最近一句</h5>
-              <pre className={styles.transcriptBody}>{latestAssistantTurn || '等待模型回复...'}</pre>
+              <h5 className={styles.transcriptHeading}>{t('pages:test.voiceLab.sidePanel.latestAssistant', 'Latest AI utterance')}</h5>
+              <pre className={styles.transcriptBody}>
+                {latestAssistantTurn ||
+                  t('pages:test.voiceLab.sidePanel.waitingAssistant', 'Waiting for the model to reply...')}
+              </pre>
             </div>
             <div className={styles.transcriptCard}>
-              <h5 className={styles.transcriptHeading}>完整对话履历</h5>
+              <h5 className={styles.transcriptHeading}>{t('pages:test.voiceLab.sidePanel.history', 'Full dialogue history')}</h5>
               {directDialogueHistory.length === 0 ? (
-                <p className={styles.emptyText}>暂无对话履历。</p>
+                <p className={styles.emptyText}>{t('pages:test.voiceLab.sidePanel.historyEmpty', 'No dialogue history yet.')}</p>
               ) : (
                 <ul className={styles.dialogueHistoryList}>
                   {directDialogueHistory.map((item) => (
                     <li key={`${item.id}-${item.ts}`} className={styles.dialogueHistoryItem}>
                       <span className={styles.dialogueHistoryTime}>{item.timeLabel}</span>
-                      <span className={styles.dialogueHistoryRole}>{item.role}</span>
+                      <span className={styles.dialogueHistoryRole}>
+                        {item.role === 'user'
+                          ? t('pages:test.voiceLab.sidePanel.userRole', 'User')
+                          : t('pages:test.voiceLab.sidePanel.assistantRole', 'AI')}
+                      </span>
                       <span className={styles.dialogueHistoryText}>{item.text}</span>
                     </li>
                   ))}
@@ -256,10 +303,10 @@ export function VoiceSidePanel({
         loading={twilioGateway.loadingTraceDiagnostic}
       />
       <Tile className={styles.sideTile}>
-        <h4 className="cds--heading-02">实时对话转写</h4>
+        <h4 className="cds--heading-02">{t('pages:test.voiceLab.sidePanel.transcriptTitle', 'Live conversation transcript')}</h4>
         <dl className={styles.metaList}>
           <div className={styles.metaRow}>
-            <dt>浏览器外呼 Leg SID</dt>
+            <dt>{t('pages:test.voiceLab.sidePanel.browserLegSid', 'Browser outbound Leg SID')}</dt>
             <dd>{twilioGateway.sdkCallSid || '-'}</dd>
           </div>
           <div className={styles.metaRow}>
@@ -271,33 +318,38 @@ export function VoiceSidePanel({
             <dd>{twilioGateway.traceSeq}</dd>
           </div>
           <div className={styles.metaRow}>
-            <dt>音色来源</dt>
+            <dt>{t('pages:test.voiceLab.sidePanel.voiceSource', 'Voice source')}</dt>
             <dd>{voiceSourceLabel}</dd>
           </div>
           <div className={styles.metaRow}>
-            <dt>电话链路模式</dt>
+            <dt>{t('pages:test.voiceLab.sidePanel.phoneTransport', 'Phone transport mode')}</dt>
             <dd>{phoneTransportLabel}</dd>
           </div>
           <div className={styles.metaRow}>
-            <dt>语音引擎</dt>
+            <dt>{t('pages:test.voiceLab.sidePanel.speechEngine', 'Speech engine')}</dt>
             <dd>{speechEngineLabel}</dd>
           </div>
           <div className={styles.metaRow}>
-            <dt>系统能力</dt>
+            <dt>{t('pages:test.voiceLab.sidePanel.capabilities', 'System capabilities')}</dt>
             <dd>
               <Tag type={twilioGateway.capability.twilioWebcallImplemented ? 'green' : 'red'}>
-                电话网关（Twilio）{twilioGateway.capability.twilioWebcallImplemented ? ' OK' : ' Unavailable'}
+                {t('pages:test.voiceLab.sidePanel.twilioCapability', 'Phone gateway (Twilio)')}
+                {twilioGateway.capability.twilioWebcallImplemented
+                  ? t('pages:test.voiceLab.sidePanel.capabilityOk', ' OK')
+                  : t('pages:test.voiceLab.sidePanel.capabilityUnavailable', ' Unavailable')}
               </Tag>
               &nbsp;
               <Tag type={twilioGateway.capability.conversationalAgentsImplemented ? 'green' : 'red'}>
-                {`Conversational Agents ${
-                  twilioGateway.capability.conversationalAgentsImplemented ? 'OK' : 'Unavailable'
+                {`Conversational Agents${
+                  twilioGateway.capability.conversationalAgentsImplemented
+                    ? t('pages:test.voiceLab.sidePanel.capabilityOk', ' OK')
+                    : t('pages:test.voiceLab.sidePanel.capabilityUnavailable', ' Unavailable')
                 }`}
               </Tag>
             </dd>
           </div>
           <div className={styles.metaRow}>
-            <dt>媒体桥状态</dt>
+            <dt>{t('pages:test.voiceLab.sidePanel.bridgeStatus', 'Bridge status')}</dt>
             <dd>
               <Tag type={twilioGateway.traceDiagnostic?.stream_active ? 'green' : 'cool-gray'}>
                 {twilioGateway.traceDiagnostic?.stream_active ? 'stream_active' : 'stream_idle'}
@@ -305,26 +357,34 @@ export function VoiceSidePanel({
             </dd>
           </div>
           <div className={styles.metaRow}>
-            <dt>活跃媒体流</dt>
+            <dt>{t('pages:test.voiceLab.sidePanel.activeStreams', 'Active streams')}</dt>
             <dd>{twilioGateway.activeTraceCalls.length}</dd>
           </div>
           <div className={styles.metaRow}>
-            <dt>最后一条后端事件</dt>
+            <dt>{t('pages:test.voiceLab.sidePanel.lastBackendEvent', 'Latest backend event')}</dt>
             <dd>
               {latestTwilioTraceEvent
-                ? `${latestTwilioTraceEvent.type || '-'} @ ${resolveTraceTime(latestTwilioTraceEvent.ts)}`
+                ? `${latestTwilioTraceEvent.type || '-'} @ ${resolveTraceTime(latestTwilioTraceEvent.ts, locale)}`
                 : '-'}
             </dd>
           </div>
           <div className={styles.metaRow}>
-            <dt>转写统计</dt>
+            <dt>{t('pages:test.voiceLab.sidePanel.transcriptStats', 'Transcript stats')}</dt>
             <dd>
-              用户完成 {twilioTraceStats.finalUserTurns} / AI 完成 {twilioTraceStats.finalAssistantTurns} / partial{' '}
-              {twilioTraceStats.partialTurns} / 事件 {twilioTraceStats.totalEvents}
+              {t(
+                'pages:test.voiceLab.sidePanel.transcriptStatsValue',
+                'User final {{userTurns}} / AI final {{assistantTurns}} / partial {{partialTurns}} / events {{totalEvents}}',
+                {
+                  userTurns: twilioTraceStats.finalUserTurns,
+                  assistantTurns: twilioTraceStats.finalAssistantTurns,
+                  partialTurns: twilioTraceStats.partialTurns,
+                  totalEvents: twilioTraceStats.totalEvents,
+                }
+              )}
             </dd>
           </div>
           <div className={styles.metaRow}>
-            <dt>活跃流候选</dt>
+            <dt>{t('pages:test.voiceLab.sidePanel.activeTraceCandidates', 'Active stream candidates')}</dt>
             <dd>
               {twilioGateway.activeTraceCalls.length === 0 ? (
                 activeTraceEmptyLabel
@@ -334,7 +394,7 @@ export function VoiceSidePanel({
                     <li key={item.callSid} className={styles.diagnosticListItem}>
                       {item.callSid}
                       {item.lastEventType ? ` · ${item.lastEventType}` : ''}
-                      {item.lastEventTs > 0 ? ` · ${resolveTraceTime(item.lastEventTs)}` : ''}
+                      {item.lastEventTs > 0 ? ` · ${resolveTraceTime(item.lastEventTs, locale)}` : ''}
                       {item.eventCount > 0 ? ` · events=${item.eventCount}` : ''}
                     </li>
                   ))}
@@ -346,12 +406,17 @@ export function VoiceSidePanel({
 
         <div className={styles.transcriptGrid}>
           <div className={styles.transcriptCard}>
-            <h5 className={styles.transcriptHeading}>用户最近一句</h5>
-            <pre className={styles.transcriptBody}>{latestTwilioUserTurn || '等待用户讲话...'}</pre>
+            <h5 className={styles.transcriptHeading}>{t('pages:test.voiceLab.sidePanel.latestUser', 'Latest user utterance')}</h5>
+            <pre className={styles.transcriptBody}>
+              {latestTwilioUserTurn || t('pages:test.voiceLab.sidePanel.waitingUser', 'Waiting for the user to speak...')}
+            </pre>
           </div>
           <div className={styles.transcriptCard}>
-            <h5 className={styles.transcriptHeading}>AI 最近一句</h5>
-            <pre className={styles.transcriptBody}>{latestTwilioAssistantTurn || '等待模型回复...'}</pre>
+            <h5 className={styles.transcriptHeading}>{t('pages:test.voiceLab.sidePanel.latestAssistant', 'Latest AI utterance')}</h5>
+            <pre className={styles.transcriptBody}>
+              {latestTwilioAssistantTurn ||
+                t('pages:test.voiceLab.sidePanel.waitingAssistant', 'Waiting for the model to reply...')}
+            </pre>
           </div>
           <div className={styles.transcriptCard}>
             <h5 className={styles.transcriptHeading}>{inboundDebugAudioTitle}</h5>
@@ -359,7 +424,7 @@ export function VoiceSidePanel({
               <>
                 <div className={styles.audioDebugGroup}>
                   <div className={styles.audioDebugBlock}>
-                    <h6 className={styles.audioDebugHeading}>原始 PCM8k</h6>
+                    <h6 className={styles.audioDebugHeading}>{t('pages:test.voiceLab.sidePanel.pcm8kTitle', 'Raw PCM8k')}</h6>
                     {twilioGateway.inboundDebugAudioPcm8kUrl ? (
                       <audio
                         className={styles.audioPlayer}
@@ -368,14 +433,21 @@ export function VoiceSidePanel({
                         src={twilioGateway.inboundDebugAudioPcm8kUrl}
                       />
                     ) : (
-                      <p className={styles.emptyText}>当前通话未保存原始 PCM8k 样本。</p>
+                      <p className={styles.emptyText}>
+                        {t('pages:test.voiceLab.sidePanel.pcm8kEmpty', 'No raw PCM8k sample was saved for this call.')}
+                      </p>
                     )}
                     <p className={styles.audioCaption}>
-                      Twilio `μ-law/8kHz` 解码后的原始电话音频，不经过本地 8k→16k 升采样。
+                      {t(
+                        'pages:test.voiceLab.sidePanel.pcm8kDescription',
+                        'The raw phone audio after Twilio `μ-law/8kHz` decode, without local 8 kHz to 16 kHz upsampling.'
+                      )}
                     </p>
                   </div>
                   <div className={styles.audioDebugBlock}>
-                    <h6 className={styles.audioDebugHeading}>上送前 PCM16k</h6>
+                    <h6 className={styles.audioDebugHeading}>
+                      {t('pages:test.voiceLab.sidePanel.pcm16kTitle', 'PCM16k before uplink')}
+                    </h6>
                     {twilioGateway.inboundDebugAudioPcm16kUrl ? (
                       <audio
                         className={styles.audioPlayer}
@@ -384,10 +456,15 @@ export function VoiceSidePanel({
                         src={twilioGateway.inboundDebugAudioPcm16kUrl}
                       />
                     ) : (
-                      <p className={styles.emptyText}>当前通话未保存 PCM16k 样本。</p>
+                      <p className={styles.emptyText}>
+                        {t('pages:test.voiceLab.sidePanel.pcm16kEmpty', 'No PCM16k sample was saved for this call.')}
+                      </p>
                     )}
                     <p className={styles.audioCaption}>
-                      后端本地升采样后、真正送给 Gemini Live 的 16k PCM 音频。
+                      {t(
+                        'pages:test.voiceLab.sidePanel.pcm16kDescription',
+                        'The 16 kHz PCM audio that is actually sent to Gemini Live after backend-local upsampling.'
+                      )}
                     </p>
                   </div>
                 </div>
@@ -405,15 +482,28 @@ export function VoiceSidePanel({
         </div>
 
         {twilioGateway.traceEvents.length === 0 ? (
-          <p className={styles.emptyText}>接通后会在这里显示用户/AI 转写与事件。</p>
+          <p className={styles.emptyText}>
+            {t('pages:test.voiceLab.sidePanel.traceEmpty', 'User / AI transcripts and events will appear here after the call connects.')}
+          </p>
         ) : (
           <ul className={styles.traceList}>
             {twilioGateway.traceEvents.map((event) => (
               <li key={`${event.seq}-${event.ts}`} className={styles.traceItem}>
-                <span className={styles.traceTime}>{resolveTraceTime(event.ts)}</span>
-                <span className={styles.traceSpeaker}>{resolveTraceSpeaker(event.type || '')}</span>
+                <span className={styles.traceTime}>{resolveTraceTime(event.ts, locale)}</span>
+                <span className={styles.traceSpeaker}>
+                  {resolveTraceSpeaker(event.type || '') === 'user'
+                    ? t('pages:test.voiceLab.sidePanel.userRole', 'User')
+                    : resolveTraceSpeaker(event.type || '') === 'assistant'
+                      ? t('pages:test.voiceLab.sidePanel.assistantRole', 'AI')
+                      : t('pages:test.voiceLab.sidePanel.eventRole', 'Event')}
+                </span>
                 <span className={styles.traceText}>
-                  {resolveTraceText(event.type || '', event.text || '', event.final)}
+                  {resolveTraceText(
+                    event.type || '',
+                    event.text || '',
+                    event.final,
+                    t('pages:test.voiceLab.sidePanel.partialLabel', 'partial')
+                  )}
                 </span>
               </li>
             ))}

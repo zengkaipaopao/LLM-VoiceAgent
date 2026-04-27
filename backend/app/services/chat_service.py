@@ -380,6 +380,230 @@ class ChatService:
         return None
 
     @staticmethod
+    def _normalize_datetime_text(text: str) -> str:
+        return re.sub(r"[\s　]+", "", text or "")
+
+    @classmethod
+    def _parse_optional_appointment_time(cls, value: Any) -> Optional[datetime]:
+        raw_value = str(value or "").strip()
+        if not raw_value:
+            return None
+
+        try:
+            parsed = datetime.fromisoformat(raw_value.replace("Z", "+00:00"))
+            return to_tokyo_naive(parsed) or parsed
+        except ValueError:
+            return cls._extract_datetime_from_text(raw_value)
+
+    @staticmethod
+    def _extract_operation_type_from_raw_data(raw_data: dict[str, Any]) -> Optional[str]:
+        request_type = str(raw_data.get("request_type") or "").strip().lower()
+        if request_type in {"cancel", "update"}:
+            return request_type
+        return None
+
+    @staticmethod
+    def _is_cancelled_appointment(appointment: Appointment) -> bool:
+        extra_data = appointment.extra_data if isinstance(appointment.extra_data, dict) else {}
+        lifecycle_status = str(extra_data.get("lifecycle_status") or "").strip().lower()
+        return lifecycle_status == "cancelled"
+
+    @classmethod
+    def _build_update_changes_from_extraction(cls, raw_data: dict[str, Any]) -> dict[str, str]:
+        change_set = raw_data.get("change_set")
+        source = change_set if isinstance(change_set, dict) else raw_data
+        changes: dict[str, str] = {}
+
+        appointment_time = cls._first_non_empty(source.get("appointment_time"))
+        if appointment_time:
+            changes["appointment"] = appointment_time
+
+        pickup_address = cls._first_non_empty(source.get("pickup_address"))
+        if pickup_address:
+            changes["address"] = pickup_address
+
+        amount = cls._first_non_empty(source.get("amount"))
+        if not amount and source.get("estimated_volume_m3") is not None:
+            amount = f"{source.get('estimated_volume_m3')}m3"
+        if amount:
+            changes["amount"] = amount
+
+        category = cls._resolve_category(cls._first_non_empty(source.get("category")), source)
+        if category:
+            changes["category"] = category
+
+        return changes
+
+    @classmethod
+    def _score_extracted_operation_candidate(
+        cls,
+        appointment: Appointment,
+        related_call: Optional[Call],
+        *,
+        raw_data: dict[str, Any],
+        target_time: Optional[datetime],
+    ) -> int:
+        score = 0
+
+        if target_time and isinstance(appointment.appointment, datetime):
+            if appointment.appointment.date() != target_time.date():
+                return 0
+            score += 2
+            if (
+                appointment.appointment.hour == target_time.hour
+                and appointment.appointment.minute == target_time.minute
+            ):
+                score += 2
+
+        caller_name = cls._first_non_empty(raw_data.get("caller_name"))
+        if caller_name and (
+            cls._loosely_matches(caller_name, appointment.caller_name)
+            or cls._loosely_matches(caller_name, getattr(related_call, "caller_name", None))
+        ):
+            score += 2
+
+        company = cls._first_non_empty(raw_data.get("company"))
+        if company and cls._loosely_matches(company, appointment.company):
+            score += 1
+
+        pickup_address = cls._first_non_empty(raw_data.get("pickup_address"))
+        if pickup_address and cls._loosely_matches(pickup_address, appointment.address):
+            score += 1
+
+        contact_phone = cls._normalize_phone_number(cls._first_non_empty(raw_data.get("contact_phone")))
+        candidate_phone = cls._normalize_phone_number(getattr(related_call, "counterpart", None))
+        if contact_phone and candidate_phone:
+            shorter, longer = sorted([contact_phone, candidate_phone], key=len)
+            if contact_phone == candidate_phone or (len(shorter) >= 8 and longer.endswith(shorter)):
+                score += 1
+
+        return score
+
+    async def _resolve_extracted_operation_target(
+        self,
+        *,
+        call: Call,
+        raw_data: dict[str, Any],
+    ) -> Optional[Appointment]:
+        target_id_raw = str(raw_data.get("target_appointment_id") or "").strip()
+        if target_id_raw:
+            try:
+                target = await self.appointment_repo.get(UUID(target_id_raw))
+            except (TypeError, ValueError):
+                target = None
+            if target and not self._is_cancelled_appointment(target):
+                return target
+
+        target_time = self._parse_optional_appointment_time(
+            raw_data.get("original_appointment_time") or raw_data.get("appointment_time")
+        )
+        caller_name = self._first_non_empty(raw_data.get("caller_name"))
+        company = self._first_non_empty(raw_data.get("company"))
+        contact_phone = self._first_non_empty(raw_data.get("contact_phone"))
+        query_counterpart = contact_phone if contact_phone and contact_phone.startswith("+") else None
+
+        candidate_rows = await self.appointment_repo.search_operation_candidates_with_call(
+            caller_name=caller_name,
+            company=company,
+            counterpart=query_counterpart,
+            appointment_date=target_time.date() if target_time else None,
+            limit=50,
+        )
+
+        scored_candidates: list[tuple[int, datetime, Appointment]] = []
+        for appointment, related_call in candidate_rows:
+            if appointment.call_id == call.id or self._is_cancelled_appointment(appointment):
+                continue
+            score = self._score_extracted_operation_candidate(
+                appointment,
+                related_call,
+                raw_data=raw_data,
+                target_time=target_time,
+            )
+            threshold = 4 if target_time else 3
+            if score >= threshold:
+                scored_candidates.append((score, appointment.timestamp or datetime.min, appointment))
+
+        scored_candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        return scored_candidates[0][2] if scored_candidates else None
+
+    async def _try_apply_extracted_operation_request(
+        self,
+        *,
+        call: Call,
+        raw_data: dict[str, Any],
+        extraction_summary: str,
+        extraction_confidence: float,
+        extra_data: dict[str, Any],
+    ) -> Optional[ExtractionResponse]:
+        operation = self._extract_operation_type_from_raw_data(raw_data)
+        if operation not in {"cancel", "update"}:
+            return None
+
+        target = await self._resolve_extracted_operation_target(call=call, raw_data=raw_data)
+        if not target:
+            return ExtractionResponse(
+                success=False,
+                appointment_id=None,
+                extracted_data={
+                    "operation": operation,
+                    "resolution_status": "target_not_found",
+                    "extracted_data": raw_data,
+                },
+                confidence=extraction_confidence,
+                message="检测到预约变更/取消请求，但未能匹配目标预约，已跳过新预约创建",
+            )
+
+        pending_changes = self._build_update_changes_from_extraction(raw_data) if operation == "update" else {}
+        if operation == "update" and not pending_changes:
+            return ExtractionResponse(
+                success=False,
+                appointment_id=None,
+                extracted_data={
+                    "operation": operation,
+                    "target_appointment_id": str(target.id),
+                    "resolution_status": "missing_update_changes",
+                    "extracted_data": raw_data,
+                },
+                confidence=extraction_confidence,
+                message="检测到预约变更请求并找到目标预约，但未抽取到变更内容，已跳过新预约创建",
+            )
+
+        await self._execute_operation_flow_action(
+            call=call,
+            appointment=target,
+            operation=operation,
+            pending_changes=pending_changes,
+            flow={"operation": operation, "pending_note": extraction_summary},
+            extra_data=dict(extra_data),
+            user_message=extraction_summary,
+        )
+        await self.db.commit()
+
+        operation_execution = dict(call.extra_data or {}).get("operation_execution")
+        operation_event_id: Optional[UUID] = None
+        if isinstance(operation_execution, dict):
+            try:
+                operation_event_id = UUID(str(operation_execution.get("appointment_id")))
+            except (TypeError, ValueError):
+                operation_event_id = None
+
+        return ExtractionResponse(
+            success=True,
+            appointment_id=operation_event_id,
+            extracted_data={
+                "operation": operation,
+                "target_appointment_id": str(target.id),
+                "operation_event_id": str(operation_event_id) if operation_event_id else None,
+                "changes": pending_changes,
+                "resolution_status": "executed_from_llm_extraction",
+                "extracted_data": raw_data,
+            },
+            confidence=extraction_confidence,
+            message="检测到预约变更/取消请求，已更新目标预约并创建操作事件",
+        )
+
+    @staticmethod
     def _detect_operation_intent(text: str) -> Optional[str]:
         normalized = text.strip().lower()
         if not normalized:
@@ -491,13 +715,14 @@ class ChatService:
         if not text:
             return None
 
+        normalized_text = ChatService._normalize_datetime_text(text)
         patterns = [
-            r"(\d{4})(?:[/-]|年)(\d{1,2})(?:[/-]|月)(\d{1,2})(?:日)?",
+            r"(\d{4})(?:[/-]|年(?:の)?)(\d{1,2})(?:[/-]|月(?:の)?)(\d{1,2})(?:日)?",
             r"(\d{4})\.(\d{1,2})\.(\d{1,2})",
         ]
 
         for pattern in patterns:
-            match = re.search(pattern, text)
+            match = re.search(pattern, normalized_text)
             if not match:
                 continue
             try:
@@ -512,9 +737,10 @@ class ChatService:
         if not text:
             return None, False
 
+        normalized_text = cls._normalize_datetime_text(text)
         match = re.search(
-            r"(\d{4})(?:[/-]|年)(\d{1,2})(?:[/-]|月)(\d{1,2})(?:日)?(?:\s*(\d{1,2})[:時](\d{1,2}))?",
-            text,
+            r"(\d{4})(?:[/-]|年(?:の)?)(\d{1,2})(?:[/-]|月(?:の)?)(\d{1,2})(?:日)?(?:[^\d]{0,8}(\d{1,2})(?::|時)(\d{1,2})?(?:分)?)?",
+            normalized_text,
         )
         if not match:
             return None, False
@@ -522,7 +748,7 @@ class ChatService:
         year = int(match.group(1))
         month = int(match.group(2))
         day = int(match.group(3))
-        has_time = bool(match.group(4) and match.group(5))
+        has_time = bool(match.group(4))
         hour = int(match.group(4)) if match.group(4) else 0
         minute = int(match.group(5)) if match.group(5) else 0
         try:
@@ -1021,6 +1247,7 @@ class ChatService:
         if not text:
             return None
 
+        compact_text = re.sub(r"[\s　]+", "", text)
         patterns = [
             r"(?:お名前|名前|氏名|担当者(?:名)?|依頼者)\s*(?:は|:|：)?\s*([^\n、。]{1,60})",
             r"([^\s、。]{1,40})と申します",
@@ -1035,6 +1262,33 @@ class ChatService:
                 and not cls._is_generic_caller_name(candidate)
                 and "会社" not in candidate
                 and "会社の" not in candidate
+            ):
+                return candidate
+
+        trailing_intro = re.search(
+            r"(?:^|[、,。])([^、,。]{1,32})(?:です|と申します|でございます)(?:[。.]|$)",
+            compact_text,
+        )
+        if trailing_intro:
+            candidate = trailing_intro.group(1).strip(" 　。")
+            invalid_fragments = [
+                "予約",
+                "変更",
+                "キャンセル",
+                "予定",
+                "回収",
+                "したい",
+                "希望",
+                "お願い",
+                "はい",
+                "いいえ",
+            ]
+            if (
+                candidate
+                and not cls._is_generic_caller_name(candidate)
+                and "会社" not in candidate
+                and "会社の" not in candidate
+                and not any(fragment in candidate for fragment in invalid_fragments)
             ):
                 return candidate
 
@@ -2037,8 +2291,18 @@ class ChatService:
                 template=template,
             )
 
-            appt_time = self._parse_appointment_time(extraction_result.appointment_time)
             raw_data = extraction_result.raw_data or {}
+            operation_resolution = await self._try_apply_extracted_operation_request(
+                call=call,
+                raw_data=raw_data,
+                extraction_summary=extraction_result.summary or extraction_result.appointment_content,
+                extraction_confidence=extraction_result.confidence,
+                extra_data=dict(extra_data),
+            )
+            if operation_resolution is not None:
+                return operation_resolution
+
+            appt_time = self._parse_appointment_time(extraction_result.appointment_time)
             resolved_amount = self._resolve_amount(
                 raw_data,
                 extraction_result.summary,

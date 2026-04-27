@@ -405,15 +405,326 @@
         "route": "Route",
         "routeDirect": "Browser direct to Gemini",
         "routeTwilio": "Phone gateway (Official Conversational Agents)",
+        "routeOfficial": "Phone gateway (Official Conversational Agents)",
+        "routeMediaStream": "Phone gateway (Self-hosted Media Streams + backend controller)",
         "connection": "Connection",
         "audio": "Audio Capture",
         "prompt": "Prompt",
-        "voice": "Gemini Voice"
+        "voice": "Gemini Voice",
+        "promptManaged": "Managed in Google CA",
+        "voiceManaged": "Managed in Google CA"
       },
       "notifications": {
         "errorTitle": "Request failed",
         "successTitle": "Success",
         "warningTitle": "Configuration warning"
+      },
+      "transport": {
+        "official": "Official Conversational Agents (Google CX Agent Studio + Twilio)",
+        "mediaStream": "Self-hosted Media Streams (Twilio + backend controller + Gemini Live)"
+      },
+      "promptSelect": {
+        "loading": "Loading...",
+        "empty": "No prompts available"
+      },
+      "routeSelector": {
+        "title": "Test mode",
+        "description": "This page focuses only on whether the voice path is stable enough for conversation. Twilio is only used as the phone ingress gateway, not the business flow itself.",
+        "label": "Voice route",
+        "options": {
+          "direct": "Browser direct to Gemini (without Twilio)",
+          "twilioOfficial": "Phone gateway (Twilio, official Conversational Agents)",
+          "twilioMediaStream": "Phone gateway (Twilio, self-hosted Media Streams + backend controller)"
+        },
+        "badges": {
+          "regression": "Connectivity regression",
+          "direct": "Direct mode",
+          "twilioOfficial": "Official phone mode",
+          "twilioMediaStream": "Self-hosted phone mode"
+        },
+        "sessionLocked": "A session is in progress, so the route is locked. Disconnect first before switching.",
+        "hints": {
+          "direct": "The browser microphone is sent directly to Gemini Live, which is the best way to validate model conversation connectivity first.",
+          "twilioOfficial": "Run end-to-end verification through Google official Conversational Agents plus the Twilio phone gateway. You can place a browser outbound call here, or prepare the next inbound call and then dial the Twilio number from a real phone.",
+          "twilioMediaStream": "Run end-to-end verification through Twilio Media Streams plus your own backend controller. This mode bridges raw phone audio into Gemini Live and is suited to validating a thin transport implementation."
+        }
+      },
+      "session": {
+        "configTitle": "Session configuration",
+        "configDescription": "Lock in the Prompt, model, and voice first, then move on to connection controls. Keep configuration minimal and the route clear for easier troubleshooting.",
+        "loadingConfig": "Loading configuration...",
+        "refreshConfig": "Refresh configuration",
+        "configLocked": "A session is active, so configuration is locked. Disconnect the current session before editing.",
+        "promptLabel": "Prompt template",
+        "modelLabel": "Gemini Live model",
+        "voiceLabel": "Gemini voice (optional)",
+        "voiceLoading": "Loading Gemini voices...",
+        "voiceAuto": "Auto (Prompt/default)",
+        "directModelHelper": "Follows the Prompt llm_model by default and can be manually overridden here. Voice tests must use a Gemini Live or Native Audio model.",
+        "directVoiceHelper": "Leave blank to prefer the Prompt default voice; otherwise the system default voice is used.",
+        "currentAccessMode": "Current access mode",
+        "agentConfigSource": "Agent configuration source",
+        "agentConfigSourceValue": "Google CX Agent Studio / CES Deployment",
+        "agentConfigSourceHelper": "Phone-side dialog logic, opening utterance, model selection, and tool capabilities are all managed in Google official Conversational Agents.",
+        "currentPhoneRoute": "Current phone route",
+        "officialPhoneRouteValue": "official_conversational_agents",
+        "officialPhoneRouteHelper": "The Google-managed conversation layer owns turn detection, orchestration, and tool capabilities, while the backend only handles phone ingress and bridging.",
+        "officialTransportHelper": "Twilio handles phone ingress, while Google official Conversational Agents handle conversation orchestration and voice capabilities.",
+        "mediaStreamModelHelper": "This mode directly uses the Gemini Live / Native Audio model resolved from the local Prompt configuration.",
+        "mediaStreamVoiceHelper": "Leave blank to prefer the Prompt default voice. This value is used as the Gemini Live voice override for the self-hosted Twilio Media Streams bridge.",
+        "mediaStreamPhoneRouteValue": "media_stream_live",
+        "mediaStreamPhoneRouteHelper": "Self-hosted Twilio Media Streams plus backend-controlled route. The current bridge has been refactored around a thin transport principle: continuous transcoding and forwarding without locally slicing input turns.",
+        "effectiveVoiceLabel": "Effective Gemini voice",
+        "effectiveVoiceHelper": "Resolved in this order: manual override -> Prompt default voice -> system default voice.",
+        "clientIdentity": "Client Identity",
+        "targetNumberLabel": "Target number (E.164)",
+        "targetNumberLockedHelper": "Locked to the backend TWILIO_PHONE_NUMBER. \"Start voice conversation\" on this page will place a browser outbound call to this Twilio number first.",
+        "targetNumberEditableHelper": "Enter a dialable number, for example +8150xxxxxxx. The browser Twilio test will dial here first and then enter the phone gateway route.",
+        "inboundNumberLabel": "Configured inbound number (Twilio)",
+        "inboundNumberOfficialHelper": "Dialing this number from a real phone will also use the same official CA phone route.",
+        "inboundNumberMediaHelper": "Dialing this number from a real phone will also use the same self-hosted Media Streams phone bridge.",
+        "controlsTitle": "Connection controls",
+        "controlsDirectDescription": "Establish the browser direct session first, then enable the microphone. The browser only handles capture and playback-time suppression; actual turn detection is handled by Gemini Live.",
+        "controlsOfficialDescription": "You can prepare the next inbound call here and then dial the Twilio number from a real phone, or go through Token -> device registration -> Start voice conversation for browser outbound. Both enter the same official Conversational Agents phone route.",
+        "controlsMediaDescription": "You can prepare the next inbound call here and then dial the Twilio number from a real phone, or go through Token -> device registration -> Start voice conversation for browser outbound. Both enter the same self-hosted Media Streams plus backend-controlled route.",
+        "controlsOfficialNote": "Browser outbound is only for regressing the phone gateway route, so a headset is recommended. To validate behavior closest to a real phone call, prefer dialing the Twilio number above from a real handset. The current phone path is fixed to the Google official Conversational Agents / CX Agent Studio deployment.",
+        "controlsMediaNote": "Browser outbound is only for regressing the phone gateway route, so a headset is recommended. To validate behavior closest to a real phone call, prefer dialing the Twilio number above from a real handset. The current phone path bridges Twilio Media Streams phone audio directly into Gemini Live.",
+        "actions": {
+          "connectVoiceSession": "Connect voice session",
+          "disconnectAndExtract": "Disconnect and extract",
+          "startMicrophone": "Start microphone",
+          "stopMicrophone": "Stop microphone",
+          "clearSession": "Clear session",
+          "prepareInbound": "Prepare next inbound call",
+          "fetchToken": "Fetch token",
+          "initializeDevice": "Initialize device",
+          "startVoiceConversation": "Start voice conversation",
+          "hangup": "Hang up",
+          "unregisterDevice": "Unregister device"
+        }
+      },
+      "logs": {
+        "directTitle": "Session event log",
+        "twilioTitle": "Dialing and bridge log",
+        "empty": "No logs yet."
+      },
+      "audioLab": {
+        "title": "Offline audio lab",
+        "description": "Use this section to reproduce how the same clip sounds before and after the phone path, and what Gemini Live returns when each version is sent directly.",
+        "summary": {
+          "recording": "Recording",
+          "preparing": "Preparing",
+          "ready": "Prepared {{count}} variants",
+          "idle": "Ready to record"
+        },
+        "actions": {
+          "startRecording": "Start recording",
+          "stopRecording": "Stop recording",
+          "clear": "Clear",
+          "sendToGemini": "Send to Gemini"
+        },
+        "toggle": {
+          "openingNotPlayed": "Opening not played",
+          "openingPlayed": "Opening already played",
+          "label": "Whether to evaluate this as if Twilio has already played the opening message"
+        },
+        "loading": {
+          "prepare": "Preparing the three offline audio variants...",
+          "evaluate": "Evaluating with Gemini Live..."
+        },
+        "empty": "Record a user utterance first. A 3-8 second clip is best for comparing the original recording, the phone preview, and the Gemini uplink preview.",
+        "metrics": "Duration {{duration}} · {{bytes}} · RMS {{rms}} · Peak {{peak}}",
+        "evaluation": {
+          "meta": "Model {{model}} · Prompt {{prompt}} · Send sample rate {{sampleRate}} Hz",
+          "inputTitle": "Gemini heard",
+          "inputEmpty": "No input transcript",
+          "outputTitle": "Gemini response",
+          "outputEmpty": "No output transcript",
+          "flags": "turn_complete={{turnComplete}} · timed_out={{timedOut}} · events={{events}}"
+        },
+        "variants": {
+          "original": {
+            "label": "Original recording",
+            "description": "The raw mono PCM recording captured in the browser, without phone-path degradation."
+          },
+          "twilio": {
+            "label": "Twilio phone preview",
+            "description": "Simulates how 16 kHz PCM sounds after entering the phone path, being downsampled to 8 kHz and encoded/decoded through μ-law."
+          },
+          "gemini": {
+            "label": "Gemini uplink preview",
+            "description": "Simulates the version actually sent to Gemini Live after μ-law decode, input gating, and 8 kHz to 16 kHz upsampling on phone ingress."
+          }
+        },
+        "info": {
+          "variantsPrepared": "Three offline audio variants have been generated. You can replay them individually and send them to Gemini Live for validation.",
+          "evaluationReady": "Gemini Live has returned the offline validation result for {{variant}}."
+        },
+        "errors": {
+          "emptyRecording": "The recording is empty. Record another sample and try again.",
+          "prepareFailed": "Failed to prepare offline audio variants: {{message}}",
+          "webAudioUnsupported": "This browser does not support the Web Audio API.",
+          "recordStartFailed": "Failed to start recording: {{message}}",
+          "promptMissing": "There is no available Prompt, so the clip cannot be sent to Gemini Live.",
+          "evaluationFailed": "Gemini Live validation failed: {{message}}"
+        }
+      },
+      "sidePanel": {
+        "transcriptTitle": "Live conversation transcript",
+        "totalTokens": "Total tokens",
+        "currentPrompt": "Current Prompt",
+        "currentModel": "Current model",
+        "appointmentRecord": "Appointment record",
+        "latestUser": "Latest user utterance",
+        "latestAssistant": "Latest AI utterance",
+        "waitingUser": "Waiting for the user to speak...",
+        "waitingAssistant": "Waiting for the model to reply...",
+        "history": "Full dialogue history",
+        "historyEmpty": "No dialogue history yet.",
+        "userRole": "User",
+        "assistantRole": "AI",
+        "eventRole": "Event",
+        "partialLabel": "partial",
+        "voiceSource": "Voice source",
+        "voiceSourceMedia": "Determined by the local Prompt / Media Streams bridge configuration",
+        "voiceSourceOfficial": "Determined by Google CX Agent Studio / CES Deployment",
+        "phoneTransport": "Phone transport mode",
+        "transportMedia": "Self-hosted Media Streams + Twilio",
+        "transportOfficial": "Official CA + Twilio",
+        "speechEngine": "Speech engine",
+        "engineMedia": "Gemini Live",
+        "engineOfficial": "Conversational Agents",
+        "capabilities": "System capabilities",
+        "twilioCapability": "Phone gateway (Twilio)",
+        "capabilityOk": " OK",
+        "capabilityUnavailable": " Unavailable",
+        "bridgeStatus": "Bridge status",
+        "activeStreams": "Active streams",
+        "lastBackendEvent": "Latest backend event",
+        "transcriptStats": "Transcript stats",
+        "transcriptStatsValue": "User final {{userTurns}} / AI final {{assistantTurns}} / partial {{partialTurns}} / events {{totalEvents}}",
+        "activeTraceCandidates": "Active stream candidates",
+        "activeTraceEmptyMedia": "No active self-hosted phone streams.",
+        "activeTraceEmptyOfficial": "No active official phone streams.",
+        "browserLegSid": "Browser outbound Leg SID",
+        "followupAudioTitle": "Follow-up turn candidate audio comparison",
+        "tailAudioTitle": "Latest 5-second inbound audio comparison",
+        "followupAudioSummary": "The first suspicious user utterance detected after the previous AI playback completed has been saved, so you can compare the raw 8 kHz sample with the 16 kHz uplink sample directly.",
+        "tailAudioSummary": "The most recent 5 seconds of inbound debug audio have been saved, so you can compare the raw 8 kHz sample with the 16 kHz uplink sample directly.",
+        "followupAudioLoading": "Loading both debug audio samples for the follow-up turn candidate...",
+        "tailAudioLoading": "Loading both debug audio samples for the latest 5 seconds...",
+        "audioEmpty": "After the call ends or the bridge fails, the latest 5-second tail sample is saved automatically. If a suspected new user utterance is detected after the previous AI playback completes, that candidate clip is saved with higher priority.",
+        "pcm8kTitle": "Raw PCM8k",
+        "pcm8kEmpty": "No raw PCM8k sample was saved for this call.",
+        "pcm8kDescription": "The raw phone audio after Twilio `μ-law/8kHz` decode, without local 8 kHz to 16 kHz upsampling.",
+        "pcm16kTitle": "PCM16k before uplink",
+        "pcm16kEmpty": "No PCM16k sample was saved for this call.",
+        "pcm16kDescription": "The 16 kHz PCM audio that is actually sent to Gemini Live after backend-local upsampling.",
+        "traceEmpty": "User / AI transcripts and events will appear here after the call connects."
+      },
+      "diagnostics": {
+        "title": "Bridge diagnostics",
+        "loadingShort": "Loading",
+        "loading": "Generating diagnostics for the current route...",
+        "empty": "No diagnostics are available yet. After the call connects or fails, this section will show ownership, evidence, and next actions.",
+        "currentAssessment": "Current assessment",
+        "suggestedActions": "Suggested next actions",
+        "actionsEmpty": "No suggested actions yet.",
+        "evidenceTitle": "Key evidence",
+        "evidenceCount": "Latest {{count}} items",
+        "evidenceEmpty": "No evidence items yet.",
+        "fallbackTitle": "No diagnostic title provided",
+        "status": {
+          "ok": "OK",
+          "error": "Error",
+          "warning": "Warning",
+          "unknown": "Unknown"
+        }
+      },
+      "direct": {
+        "operation": {
+          "cancel": "cancellation",
+          "update": "change"
+        },
+        "info": {
+          "sessionFinalizedWithExtraction": "The voice test session has ended and appointment extraction is complete.",
+          "sessionFinalized": "The voice test session has ended.",
+          "operationCompleted": "The appointment {{operation}} was completed through the business state machine.",
+          "operationEntered": "Entered the appointment {{operation}} business flow.",
+          "autoFinalizedByClosingPhrase": "Detected a closing phrase, automatically disconnected the voice session, and completed extraction."
+        },
+        "errors": {
+          "incompatibleModel": "The current model is not a Gemini Live / Native Audio model. Select a voice model in the Prompt or explicitly override it here.",
+          "connectionErrorFallback": "Gemini Live direct connection error.",
+          "notConnected": "Gemini Live is not connected."
+        },
+        "logs": {
+          "persistTranscriptFailed": "Failed to persist the voice test transcript: {{message}}",
+          "finalizeFailed": "Failed to finalize voice test session: {{message}}",
+          "promptLoadFailed": "Failed to load prompts: {{message}}",
+          "operationAssistantTurn": "AI (business flow): {{text}}",
+          "operationFlowHandled": "ChatService operation flow handled the turn: operation={{operation}} state={{state}} executed={{executed}}",
+          "operationFlowAdvanceFailed": "Failed to advance the ChatService operation flow: {{message}}",
+          "closingPhraseDetected": "Detected a closing phrase. Auto-finalizing the voice test session.",
+          "directSessionAutoClosed": "Gemini Live direct session auto-closed after the closing phrase.",
+          "directSessionClosed": "Gemini Live direct session closed.",
+          "incompatibleModel": "Incompatible voice test model: {{model}}",
+          "sessionCreated": "Voice test session created: {{callId}}",
+          "requestingEphemeralToken": "Requesting a Gemini Live ephemeral token...",
+          "connected": "Gemini Live direct session connected.",
+          "connectionClosedWithReason": "Gemini Live connection closed (code: {{code}}, reason: {{reason}}).",
+          "connectionClosed": "Gemini Live connection closed (code: {{code}}).",
+          "connectFailed": "Failed to connect to Gemini Live directly: {{message}}",
+          "voiceOnlyMode": "Voice-only mode is enabled. Text input is disabled in this tab.",
+          "duplicateTextIgnored": "Duplicate text input ignored.",
+          "textInput": "Text input: {{text}}",
+          "promptLoaded": "Loaded Prompt template: {{name}} ({{code}})"
+        }
+      },
+      "gateway": {
+        "info": {
+          "callStarted": "Call started. Current route: {{transport}}.",
+          "inboundPrepared": "Prepared the next inbound call for {{number}}. Dialing this Twilio number within {{expiresIn}} seconds will use {{promptSource}} and route through {{transport}}{{voiceSegment}}.",
+          "googleCaManaged": "Google official Conversational Agents configuration"
+        },
+        "errors": {
+          "unknownError": "Unknown error",
+          "loadCapabilitiesFailed": "Failed to load capability matrix: {{message}}",
+          "noTokenReturned": "The backend did not return a usable token.",
+          "fetchTokenFailed": "Failed to fetch token: {{message}}",
+          "twilioDeviceError": "Twilio Device error",
+          "registerDeviceFailed": "Failed to register device",
+          "callError": "Call error",
+          "targetNumberMissing": "Configure a valid target number (E.164) first.",
+          "promptMissing": "Select a Prompt template first.",
+          "deviceUnavailable": "Twilio device is unavailable. Initialize it first.",
+          "dialFailed": "Failed to place call",
+          "inboundNumberMissing": "No Twilio inbound number is currently available. Check the backend TWILIO_PHONE_NUMBER configuration first.",
+          "prepareInboundFailed": "Failed to prepare inbound call: {{message}}",
+          "hangupFailed": "Failed to hang up: {{message}}",
+          "unregisterFailed": "Failed to unregister device: {{message}}"
+        },
+        "logs": {
+          "tokenFetched": "Twilio token fetched.",
+          "fetchTokenFailed": "Failed to fetch token: {{message}}",
+          "deviceRegistered": "Twilio device registered.",
+          "deviceUnregistered": "Twilio device unregistered.",
+          "incomingRejected": "An inbound client call event was received. This console is only for browser outbound regression, so it was rejected automatically.",
+          "ringing": "Remote party is ringing...",
+          "callAccepted": "Call connected.",
+          "callDisconnected": "Call ended.",
+          "callCanceled": "Call canceled.",
+          "callRejected": "Call rejected.",
+          "dialing": "Dialing {{target}} ...",
+          "inboundPrepared": "Prepared the next inbound call: {{number}}{{promptSegment}}{{routeSegment}}{{voiceSegment}}.",
+          "prepareInboundFailed": "Failed to prepare inbound call: {{message}}",
+          "hangupRequested": "Hangup requested.",
+          "hangupFailed": "Failed to hang up: {{message}}",
+          "deviceReset": "Device unregistered and state reset.",
+          "unregisterFailed": "Failed to unregister device: {{message}}",
+          "tracePollingFailed": "Trace polling failed: {{message}}",
+          "debugAudioLoadFailed": "Failed to load inbound debug audio. Neither debug sample could be retrieved successfully."
+        }
       }
     },
     "websocket": {

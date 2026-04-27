@@ -1,4 +1,5 @@
 import { Stack, Tag, Tile } from '@carbon/react';
+import { useTranslation } from 'react-i18next';
 
 import type { VoiceDiagnostic } from '../../../../features/test-lab/voice/diagnostics';
 import styles from '../TwilioTabContent.module.scss';
@@ -15,11 +16,11 @@ function toTagType(status: VoiceDiagnostic['status']): 'green' | 'red' | 'blue' 
   return 'cool-gray';
 }
 
-function toStatusLabel(status: VoiceDiagnostic['status']): string {
-  if (status === 'ok') return '正常';
-  if (status === 'error') return '错误';
-  if (status === 'warning') return '警告';
-  return '未知';
+function toStatusLabel(status: VoiceDiagnostic['status'], t: (key: string, defaultValue?: string) => string): string {
+  if (status === 'ok') return t('pages:test.voiceLab.diagnostics.status.ok', 'OK');
+  if (status === 'error') return t('pages:test.voiceLab.diagnostics.status.error', 'Error');
+  if (status === 'warning') return t('pages:test.voiceLab.diagnostics.status.warning', 'Warning');
+  return t('pages:test.voiceLab.diagnostics.status.unknown', 'Unknown');
 }
 
 function toMetaTagType(status: VoiceDiagnostic['status']): 'green' | 'red' | 'blue' | 'cool-gray' {
@@ -105,18 +106,29 @@ function formatEvidenceLabel(label: string): string {
 }
 
 export function VoiceDiagnosticsTile({ diagnostic, loading = false }: VoiceDiagnosticsTileProps) {
+  const { t } = useTranslation(['pages']);
+
   return (
     <Tile className={styles.sideTile}>
       <div className={styles.diagnosticHeader}>
-        <h4 className="cds--heading-02">链路诊断</h4>
+        <h4 className="cds--heading-02">{t('pages:test.voiceLab.diagnostics.title', 'Bridge diagnostics')}</h4>
         <Tag type={toTagType(diagnostic?.status || 'unknown')}>
-          {diagnostic ? toStatusLabel(diagnostic.status) : loading ? '加载中' : '未判定'}
+          {diagnostic
+            ? toStatusLabel(diagnostic.status, (key, defaultValue) => t(key, defaultValue || ''))
+            : loading
+              ? t('pages:test.voiceLab.diagnostics.loadingShort', 'Loading')
+              : t('pages:test.voiceLab.diagnostics.status.unknown', 'Unknown')}
         </Tag>
       </div>
 
       {!diagnostic ? (
         <p className={styles.emptyText}>
-          {loading ? '正在生成当前链路诊断...' : '当前还没有可用诊断。接通或报错后，这里会显示责任面、证据和处理建议。'}
+          {loading
+            ? t('pages:test.voiceLab.diagnostics.loading', 'Generating diagnostics for the current route...')
+            : t(
+                'pages:test.voiceLab.diagnostics.empty',
+                'No diagnostics are available yet. After the call connects or fails, this section will show ownership, evidence, and next actions.'
+              )}
         </p>
       ) : (
         <Stack gap={4}>
@@ -127,16 +139,16 @@ export function VoiceDiagnosticsTile({ diagnostic, loading = false }: VoiceDiagn
               <Tag type="cool-gray">{formatDiagnosticSource(diagnostic.source)}</Tag>
             </div>
             <div className={styles.diagnosticBlock}>
-              <p className={styles.diagnosticEyebrow}>当前判断</p>
+              <p className={styles.diagnosticEyebrow}>{t('pages:test.voiceLab.diagnostics.currentAssessment', 'Current assessment')}</p>
               <h5 className={styles.diagnosticTitle}>{diagnostic.title}</h5>
               <p className={styles.description}>{diagnostic.summary}</p>
             </div>
           </div>
 
           <div className={styles.diagnosticBlock}>
-            <h5 className={styles.transcriptHeading}>建议先做</h5>
+            <h5 className={styles.transcriptHeading}>{t('pages:test.voiceLab.diagnostics.suggestedActions', 'Suggested next actions')}</h5>
             {diagnostic.actions.length === 0 ? (
-              <p className={styles.emptyText}>暂无建议动作。</p>
+              <p className={styles.emptyText}>{t('pages:test.voiceLab.diagnostics.actionsEmpty', 'No suggested actions yet.')}</p>
             ) : (
               <ul className={styles.diagnosticList}>
                 {diagnostic.actions.map((item, index) => (
@@ -150,11 +162,15 @@ export function VoiceDiagnosticsTile({ diagnostic, loading = false }: VoiceDiagn
 
           <div className={styles.diagnosticBlock}>
             <div className={styles.diagnosticSectionHeader}>
-              <h5 className={styles.transcriptHeading}>关键证据</h5>
-              <span className={styles.diagnosticHint}>最近 {diagnostic.evidence.length} 条</span>
+              <h5 className={styles.transcriptHeading}>{t('pages:test.voiceLab.diagnostics.evidenceTitle', 'Key evidence')}</h5>
+              <span className={styles.diagnosticHint}>
+                {t('pages:test.voiceLab.diagnostics.evidenceCount', 'Latest {{count}} items', {
+                  count: diagnostic.evidence.length,
+                })}
+              </span>
             </div>
             {diagnostic.evidence.length === 0 ? (
-              <p className={styles.emptyText}>暂无证据项。</p>
+              <p className={styles.emptyText}>{t('pages:test.voiceLab.diagnostics.evidenceEmpty', 'No evidence items yet.')}</p>
             ) : (
               <ul className={styles.diagnosticEvidenceList}>
                 {diagnostic.evidence.map((item, index) => (

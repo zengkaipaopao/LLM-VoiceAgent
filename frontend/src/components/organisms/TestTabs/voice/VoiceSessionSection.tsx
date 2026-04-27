@@ -1,4 +1,5 @@
 import { Button, InlineLoading, Select, SelectItem, TextInput } from '@carbon/react';
+import { useTranslation } from 'react-i18next';
 
 import type { UseLiveWebSocketConsoleResult } from '../../../../hooks/useLiveWebSocketConsole';
 import type { UseTwilioVoiceGatewayResult } from '../../../../hooks/testTabs/useTwilioVoiceGateway';
@@ -50,20 +51,26 @@ export function VoiceSessionSection({
   const isTwilioMode = routeMode !== 'direct';
   const isOfficialTwilio = routeMode === 'twilio_official';
   const isMediaStreamTwilio = routeMode === 'twilio_media_stream';
+  const { t } = useTranslation(['pages']);
+  const geminiVoiceLoadingText = t('pages:test.voiceLab.session.voiceLoading', 'Loading Gemini voices...');
+  const geminiVoiceAutoText = t('pages:test.voiceLab.session.voiceAuto', 'Auto (Prompt/default)');
 
   return (
     <div className={styles.mainTile}>
       <section className={styles.sectionBlock}>
         <div className={styles.headerRow}>
           <div className={styles.sectionHeader}>
-            <h4 className="cds--heading-03">会话配置</h4>
+            <h4 className="cds--heading-03">{t('pages:test.voiceLab.session.configTitle', 'Session configuration')}</h4>
             <p className={styles.description}>
-              先确定 Prompt、模型与音色，再进入连接控制。保持配置最少、路径清晰，便于排障。
+              {t(
+                'pages:test.voiceLab.session.configDescription',
+                'Lock in the Prompt, model, and voice first, then move on to connection controls. Keep configuration minimal and the route clear for easier troubleshooting.'
+              )}
             </p>
           </div>
           {isTwilioMode &&
             (twilioGateway.loadingCapability ? (
-              <InlineLoading description="加载配置中..." />
+              <InlineLoading description={t('pages:test.voiceLab.session.loadingConfig', 'Loading configuration...')} />
             ) : (
               <Button
                 kind="ghost"
@@ -73,18 +80,25 @@ export function VoiceSessionSection({
                   void twilioGateway.refreshCapability();
                 }}
               >
-                刷新配置
+                {t('pages:test.voiceLab.session.refreshConfig', 'Refresh configuration')}
               </Button>
             ))}
         </div>
 
-        {configLocked && <p className={styles.description}>会话进行中，配置已锁定。请先断开当前会话后再修改配置。</p>}
+        {configLocked && (
+          <p className={styles.description}>
+            {t(
+              'pages:test.voiceLab.session.configLocked',
+              'A session is active, so configuration is locked. Disconnect the current session before editing.'
+            )}
+          </p>
+        )}
 
         {routeMode === 'direct' ? (
           <div className={styles.formGrid}>
             <PromptTemplateSelect
               id="direct-prompt-select"
-              labelText="Prompt 模板"
+              labelText={t('pages:test.voiceLab.session.promptLabel', 'Prompt template')}
               value={selectedPromptCode}
               prompts={liveWebsocket.prompts}
               loading={liveWebsocket.loadingPrompts}
@@ -94,31 +108,39 @@ export function VoiceSessionSection({
 
             <TextInput
               id="direct-model"
-              labelText="Gemini Live 模型"
+              labelText={t('pages:test.voiceLab.session.modelLabel', 'Gemini Live model')}
               value={liveWebsocket.model}
               onChange={(event) => liveWebsocket.setModel(event.target.value)}
-              helperText="默认跟随 Prompt 的 llm_model，可在这里手动覆盖；语音测试必须使用 Gemini Live 或 Native Audio 模型。"
+              helperText={t(
+                'pages:test.voiceLab.session.directModelHelper',
+                'Follows the Prompt llm_model by default and can be manually overridden here. Voice tests must use a Gemini Live or Native Audio model.'
+              )}
               disabled={directSessionActive}
             />
 
             <Select
               id="direct-voice"
-              labelText="Gemini 音色（可选）"
+              labelText={t('pages:test.voiceLab.session.voiceLabel', 'Gemini voice (optional)')}
               value={liveWebsocket.voice}
               onChange={(event) => liveWebsocket.setVoice(event.target.value)}
-              helperText="留空则优先跟随 Prompt 的默认音色，否则使用系统默认音色。"
+              helperText={t(
+                'pages:test.voiceLab.session.directVoiceHelper',
+                'Leave blank to prefer the Prompt default voice; otherwise the system default voice is used.'
+              )}
               disabled={directSessionActive || loadingGeminiVoices}
             >
-              <SelectItem
-                value=""
-                text={loadingGeminiVoices ? '正在加载 Gemini 音色...' : '自动（Prompt/默认）'}
-              />
+              <SelectItem value="" text={loadingGeminiVoices ? geminiVoiceLoadingText : geminiVoiceAutoText} />
               {geminiVoiceCatalog.voices.map((voice) => (
                 <SelectItem key={voice} value={voice} text={voice} />
               ))}
             </Select>
 
-            <TextInput id="direct-ws-endpoint" labelText="当前接入方式" value={liveWebsocket.displayWsUrl} readOnly />
+            <TextInput
+              id="direct-ws-endpoint"
+              labelText={t('pages:test.voiceLab.session.currentAccessMode', 'Current access mode')}
+              value={liveWebsocket.displayWsUrl}
+              readOnly
+            />
           </div>
         ) : (
           <>
@@ -127,31 +149,46 @@ export function VoiceSessionSection({
                 <>
                   <TextInput
                     id="twilio-official-ca-source"
-                    labelText="Agent 配置来源"
-                    value="Google CX Agent Studio / CES Deployment"
+                    labelText={t('pages:test.voiceLab.session.agentConfigSource', 'Agent configuration source')}
+                    value={t('pages:test.voiceLab.session.agentConfigSourceValue', 'Google CX Agent Studio / CES Deployment')}
                     readOnly
-                    helperText="电话侧对话逻辑、开场话术、模型与工具能力都由 Google 官方 Conversational Agents 配置管理。"
+                    helperText={t(
+                      'pages:test.voiceLab.session.agentConfigSourceHelper',
+                      'Phone-side dialog logic, opening utterance, model selection, and tool capabilities are all managed in Google official Conversational Agents.'
+                    )}
                   />
                   <TextInput
                     id="twilio-official-ca-mode"
-                    labelText="当前电话路由"
-                    value="official_conversational_agents"
+                    labelText={t('pages:test.voiceLab.session.currentPhoneRoute', 'Current phone route')}
+                    value={t(
+                      'pages:test.voiceLab.session.officialPhoneRouteValue',
+                      'official_conversational_agents'
+                    )}
                     readOnly
-                    helperText="Google 官方会话层负责 turn detection、回合编排与工具能力，后端只做电话接入与桥接。"
+                    helperText={t(
+                      'pages:test.voiceLab.session.officialPhoneRouteHelper',
+                      'The Google-managed conversation layer owns turn detection, orchestration, and tool capabilities, while the backend only handles phone ingress and bridging.'
+                    )}
                   />
                   <TextInput
                     id="twilio-transport"
-                    labelText="当前接入方式"
-                    value="官方 Conversational Agents（Google CX Agent Studio + Twilio）"
+                    labelText={t('pages:test.voiceLab.session.currentAccessMode', 'Current access mode')}
+                    value={t(
+                      'pages:test.voiceLab.transport.official',
+                      'Official Conversational Agents (Google CX Agent Studio + Twilio)'
+                    )}
                     readOnly
-                    helperText="Twilio 负责电话接入，Google 官方 Conversational Agents 负责会话编排与语音能力。"
+                    helperText={t(
+                      'pages:test.voiceLab.session.officialTransportHelper',
+                      'Twilio handles phone ingress, while Google official Conversational Agents handle conversation orchestration and voice capabilities.'
+                    )}
                   />
                 </>
               ) : (
                 <>
                   <PromptTemplateSelect
                     id="twilio-media-stream-prompt-select"
-                    labelText="Prompt 模板"
+                    labelText={t('pages:test.voiceLab.session.promptLabel', 'Prompt template')}
                     value={selectedPromptCode}
                     prompts={liveWebsocket.prompts}
                     loading={liveWebsocket.loadingPrompts}
@@ -160,66 +197,92 @@ export function VoiceSessionSection({
                   />
                   <TextInput
                     id="twilio-media-stream-model"
-                    labelText="Gemini Live 模型"
+                    labelText={t('pages:test.voiceLab.session.modelLabel', 'Gemini Live model')}
                     value={selectedPromptModel || '-'}
                     readOnly
-                    helperText="该模式会直接使用本地 Prompt 配置里解析出的 Gemini Live / Native Audio 模型。"
+                    helperText={t(
+                      'pages:test.voiceLab.session.mediaStreamModelHelper',
+                      'This mode directly uses the Gemini Live / Native Audio model resolved from the local Prompt configuration.'
+                    )}
                   />
                   <Select
                     id="twilio-media-stream-voice"
-                    labelText="Gemini 音色（可选）"
+                    labelText={t('pages:test.voiceLab.session.voiceLabel', 'Gemini voice (optional)')}
                     value={liveWebsocket.voice}
                     onChange={(event) => liveWebsocket.setVoice(event.target.value)}
-                    helperText="留空则优先跟随 Prompt 的默认音色；该值会作为 Twilio Media Streams 自建桥接的 Gemini Live 语音覆盖。"
+                    helperText={t(
+                      'pages:test.voiceLab.session.mediaStreamVoiceHelper',
+                      'Leave blank to prefer the Prompt default voice. This value is used as the Gemini Live voice override for the self-hosted Twilio Media Streams bridge.'
+                    )}
                     disabled={twilioSessionActive || loadingGeminiVoices}
                   >
-                    <SelectItem
-                      value=""
-                      text={loadingGeminiVoices ? '正在加载 Gemini 音色...' : '自动（Prompt/默认）'}
-                    />
+                    <SelectItem value="" text={loadingGeminiVoices ? geminiVoiceLoadingText : geminiVoiceAutoText} />
                     {geminiVoiceCatalog.voices.map((voice) => (
                       <SelectItem key={voice} value={voice} text={voice} />
                     ))}
                   </Select>
                   <TextInput
                     id="twilio-media-stream-route"
-                    labelText="当前电话路由"
-                    value="media_stream_live"
+                    labelText={t('pages:test.voiceLab.session.currentPhoneRoute', 'Current phone route')}
+                    value={t('pages:test.voiceLab.session.mediaStreamPhoneRouteValue', 'media_stream_live')}
                     readOnly
-                    helperText="自建 Twilio Media Streams + 后端主控链路。当前桥接已按“薄传输层”原则重构：以持续转码/转发为主，本地不再切碎输入段。"
+                    helperText={t(
+                      'pages:test.voiceLab.session.mediaStreamPhoneRouteHelper',
+                      'Self-hosted Twilio Media Streams plus backend-controlled route. The current bridge has been refactored around a thin transport principle: continuous transcoding and forwarding without locally slicing input turns.'
+                    )}
                   />
                   <TextInput
                     id="twilio-media-stream-effective-voice"
-                    labelText="当前生效 Gemini 音色"
+                    labelText={t('pages:test.voiceLab.session.effectiveVoiceLabel', 'Effective Gemini voice')}
                     value={effectiveVoice || '-'}
                     readOnly
-                    helperText="最终会按“手动覆盖值 -> Prompt 默认音色 -> 系统默认音色”顺序解析。"
+                    helperText={t(
+                      'pages:test.voiceLab.session.effectiveVoiceHelper',
+                      'Resolved in this order: manual override -> Prompt default voice -> system default voice.'
+                    )}
                   />
                 </>
               )}
 
-              <TextInput id="twilio-identity" labelText="Client Identity" value={clientIdentity} readOnly />
+              <TextInput
+                id="twilio-identity"
+                labelText={t('pages:test.voiceLab.session.clientIdentity', 'Client Identity')}
+                value={clientIdentity}
+                readOnly
+              />
               <TextInput
                 id="twilio-target-number"
-                labelText="目标号码（E.164）"
+                labelText={t('pages:test.voiceLab.session.targetNumberLabel', 'Target number (E.164)')}
                 value={twilioGateway.targetNumber}
                 onChange={(event) => twilioGateway.setTargetNumber(event.target.value)}
                 readOnly={twilioGateway.targetNumberLocked || twilioSessionActive}
                 helperText={
                   twilioGateway.targetNumberLocked
-                    ? '已锁定为后端 TWILIO_PHONE_NUMBER。页面内“开始语音对话”会由浏览器先外呼到这个 Twilio 号码。'
-                    : '请输入可拨打号码，例如 +8150xxxxxxx。浏览器 Twilio 测试会先拨到这里，再进入电话网关链路。'
+                    ? t(
+                        'pages:test.voiceLab.session.targetNumberLockedHelper',
+                        'Locked to the backend TWILIO_PHONE_NUMBER. "Start voice conversation" on this page will place a browser outbound call to this Twilio number first.'
+                      )
+                    : t(
+                        'pages:test.voiceLab.session.targetNumberEditableHelper',
+                        'Enter a dialable number, for example +8150xxxxxxx. The browser Twilio test will dial here first and then enter the phone gateway route.'
+                      )
                 }
               />
               <TextInput
                 id="twilio-inbound-number"
-                labelText="已配置入站号码（Twilio）"
+                labelText={t('pages:test.voiceLab.session.inboundNumberLabel', 'Configured inbound number (Twilio)')}
                 value={twilioGateway.capability.configuredPhoneNumber || '-'}
                 readOnly
                 helperText={
                   isOfficialTwilio
-                    ? '真实手机直接拨打这个号码，也会走同一条官方 CA 电话链路。'
-                    : '真实手机直接拨打这个号码，也会走同一条自建 Media Streams 电话桥接链路。'
+                    ? t(
+                        'pages:test.voiceLab.session.inboundNumberOfficialHelper',
+                        'Dialing this number from a real phone will also use the same official CA phone route.'
+                      )
+                    : t(
+                        'pages:test.voiceLab.session.inboundNumberMediaHelper',
+                        'Dialing this number from a real phone will also use the same self-hosted Media Streams phone bridge.'
+                      )
                 }
               />
             </div>
@@ -228,29 +291,44 @@ export function VoiceSessionSection({
       </section>
 
       <section className={styles.sectionBlock}>
-        <h4 className="cds--heading-03">连接控制</h4>
+        <h4 className="cds--heading-03">{t('pages:test.voiceLab.session.controlsTitle', 'Connection controls')}</h4>
         <p className={styles.description}>
           {routeMode === 'direct'
-            ? '先建立浏览器直连会话，再开启麦克风。浏览器仅负责采音与播放期抑制，实际 turn 判定交给 Gemini Live。'
+            ? t(
+                'pages:test.voiceLab.session.controlsDirectDescription',
+                'Establish the browser direct session first, then enable the microphone. The browser only handles capture and playback-time suppression; actual turn detection is handled by Gemini Live.'
+              )
             : isOfficialTwilio
-              ? '页面内可按“准备下一通入呼”→ 真实手机拨打 Twilio 号码，或按 Token → 设备注册 → 开始语音对话 走浏览器外呼。两者都会进入同一条官方 Conversational Agents 电话链路。'
-              : '页面内可按“准备下一通入呼”→ 真实手机拨打 Twilio 号码，或按 Token → 设备注册 → 开始语音对话 走浏览器外呼。两者都会进入同一条自建 Media Streams + 自己后端主控链路。'}
+              ? t(
+                  'pages:test.voiceLab.session.controlsOfficialDescription',
+                  'You can prepare the next inbound call here and then dial the Twilio number from a real phone, or go through Token -> device registration -> Start voice conversation for browser outbound. Both enter the same official Conversational Agents phone route.'
+                )
+              : t(
+                  'pages:test.voiceLab.session.controlsMediaDescription',
+                  'You can prepare the next inbound call here and then dial the Twilio number from a real phone, or go through Token -> device registration -> Start voice conversation for browser outbound. Both enter the same self-hosted Media Streams plus backend-controlled route.'
+                )}
         </p>
         {isTwilioMode ? (
           <p className={styles.description}>
             {isOfficialTwilio
-              ? '浏览器外呼仅用于回归电话网关链路，建议佩戴耳机；若要验证最接近真实电话的效果，请优先使用真实手机拨打上方 Twilio 号码。当前电话路径固定走 Google 官方 Conversational Agents / CX Agent Studio 部署。'
-              : '浏览器外呼仅用于回归电话网关链路，建议佩戴耳机；若要验证最接近真实电话的效果，请优先使用真实手机拨打上方 Twilio 号码。当前电话路径会把 Twilio Media Streams 电话音频直接桥接到 Gemini Live。'}
+              ? t(
+                  'pages:test.voiceLab.session.controlsOfficialNote',
+                  'Browser outbound is only for regressing the phone gateway route, so a headset is recommended. To validate behavior closest to a real phone call, prefer dialing the Twilio number above from a real handset. The current phone path is fixed to the Google official Conversational Agents / CX Agent Studio deployment.'
+                )
+              : t(
+                  'pages:test.voiceLab.session.controlsMediaNote',
+                  'Browser outbound is only for regressing the phone gateway route, so a headset is recommended. To validate behavior closest to a real phone call, prefer dialing the Twilio number above from a real handset. The current phone path bridges Twilio Media Streams phone audio directly into Gemini Live.'
+                )}
           </p>
         ) : null}
 
         {routeMode === 'direct' ? (
           <div className={styles.actionRow}>
             <Button kind="primary" size="sm" onClick={liveWebsocket.connectSocket} disabled={!canDirectConnect}>
-              连接语音会话
+              {t('pages:test.voiceLab.session.actions.connectVoiceSession', 'Connect voice session')}
             </Button>
             <Button kind="danger--tertiary" size="sm" onClick={liveWebsocket.disconnectSocket} disabled={!canDirectDisconnect}>
-              断开并提取
+              {t('pages:test.voiceLab.session.actions.disconnectAndExtract', 'Disconnect and extract')}
             </Button>
             <Button
               kind={directMicActive ? 'danger--tertiary' : 'secondary'}
@@ -258,10 +336,12 @@ export function VoiceSessionSection({
               onClick={() => liveWebsocket.toggleMicrophone(!directMicActive)}
               disabled={!canDirectToggleMic}
             >
-              {directMicActive ? '关闭麦克风' : '开启麦克风'}
+              {directMicActive
+                ? t('pages:test.voiceLab.session.actions.stopMicrophone', 'Stop microphone')
+                : t('pages:test.voiceLab.session.actions.startMicrophone', 'Start microphone')}
             </Button>
             <Button kind="ghost" size="sm" onClick={liveWebsocket.clearConsole}>
-              清空会话记录
+              {t('pages:test.voiceLab.session.actions.clearSession', 'Clear session')}
             </Button>
           </div>
         ) : (
@@ -277,7 +357,7 @@ export function VoiceSessionSection({
               }
               disabled={twilioSessionActive}
             >
-              准备下一通入呼
+              {t('pages:test.voiceLab.session.actions.prepareInbound', 'Prepare next inbound call')}
             </Button>
             <Button
               kind="secondary"
@@ -289,7 +369,7 @@ export function VoiceSessionSection({
                 twilioSessionActive
               }
             >
-              获取 Token
+              {t('pages:test.voiceLab.session.actions.fetchToken', 'Fetch token')}
             </Button>
             <Button
               kind="secondary"
@@ -297,7 +377,7 @@ export function VoiceSessionSection({
               onClick={() => void twilioGateway.registerDevice()}
               disabled={twilioGateway.dialerStatus === 'registering' || twilioSessionActive}
             >
-              初始化设备
+              {t('pages:test.voiceLab.session.actions.initializeDevice', 'Initialize device')}
             </Button>
             <Button
               kind="primary"
@@ -310,10 +390,10 @@ export function VoiceSessionSection({
               }
               disabled={!canDial}
             >
-              开始语音对话
+              {t('pages:test.voiceLab.session.actions.startVoiceConversation', 'Start voice conversation')}
             </Button>
             <Button kind="danger" size="sm" onClick={twilioGateway.hangupCall} disabled={!canHangup}>
-              挂断
+              {t('pages:test.voiceLab.session.actions.hangup', 'Hang up')}
             </Button>
             <Button
               kind="ghost"
@@ -321,7 +401,7 @@ export function VoiceSessionSection({
               onClick={twilioGateway.unregisterDevice}
               disabled={twilioGateway.dialerStatus === 'registering'}
             >
-              注销设备
+              {t('pages:test.voiceLab.session.actions.unregisterDevice', 'Unregister device')}
             </Button>
           </div>
         )}

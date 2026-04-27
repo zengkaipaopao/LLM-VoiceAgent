@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   GoogleGenAI,
   Modality,
@@ -216,6 +217,7 @@ function normalizeLiveServerMessage(message: LiveServerMessage): LiveEventPayloa
 }
 
 export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
+  const { t } = useTranslation(['pages']);
   const [socketStatus, setSocketStatus] = useState<SocketStatus>('disconnected');
   const [wsOpen, setWsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -291,13 +293,19 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
       queuedPersistMessagesRef.current = [...entries, ...queuedPersistMessagesRef.current];
       pushLog(
         'error',
-        `Failed to persist voice test transcript: ${persistError instanceof Error ? persistError.message : String(persistError)}`
+        t(
+          'pages:test.voiceLab.direct.logs.persistTranscriptFailed',
+          'Failed to persist the voice test transcript: {{message}}',
+          {
+            message: persistError instanceof Error ? persistError.message : String(persistError),
+          }
+        )
       );
     });
 
     appendRequestChainRef.current = appendRequestChainRef.current.then(() => task);
     await appendRequestChainRef.current;
-  }, [pushLog]);
+  }, [pushLog, t]);
 
   const finalizeActiveTestSession = useCallback(
     async (runExtraction: boolean) => {
@@ -316,28 +324,42 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
         setFinalizeResult(result);
         setInfo(
           runExtraction
-            ? result.extraction?.message || '语音测试会话已结束，预约提取已完成。'
-            : '语音测试会话已结束。'
+            ? result.extraction?.message ||
+                t(
+                  'pages:test.voiceLab.direct.info.sessionFinalizedWithExtraction',
+                  'The voice test session has ended and appointment extraction is complete.'
+                )
+            : t('pages:test.voiceLab.direct.info.sessionFinalized', 'The voice test session has ended.')
         );
         return result;
       } catch (finalizeError) {
         const message =
           finalizeError instanceof Error ? finalizeError.message : String(finalizeError);
         setError(message);
-        pushLog('error', `Failed to finalize voice test session: ${message}`);
+        pushLog(
+          'error',
+          t('pages:test.voiceLab.direct.logs.finalizeFailed', 'Failed to finalize voice test session: {{message}}', {
+            message,
+          })
+        );
         return null;
       } finally {
         finalizeInFlightRef.current = false;
       }
     },
-    [pushLog]
+    [pushLog, t]
   );
 
   const handlePromptLoadError = useCallback(
     (loadError: unknown) => {
-      pushLog('error', `Failed to load prompts: ${String(loadError)}`);
+      pushLog(
+        'error',
+        t('pages:test.voiceLab.direct.logs.promptLoadFailed', 'Failed to load prompts: {{message}}', {
+          message: String(loadError),
+        })
+      );
     },
-    [pushLog]
+    [pushLog, t]
   );
 
   const { prompts, loadingPrompts, selectedPromptCode, setSelectedPromptCode } = usePromptTemplates({
@@ -449,7 +471,12 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
       setOutputTranscript(nextHistory);
 
       if (lastLoggedOutputRef.current !== finalized) {
-        pushLog('success', `AI(业务流): ${finalized}`);
+        pushLog(
+          'success',
+          t('pages:test.voiceLab.direct.logs.operationAssistantTurn', 'AI (business flow): {{text}}', {
+            text: finalized,
+          })
+        );
         lastLoggedOutputRef.current = finalized;
       }
       lastCompletedAssistantTurnRef.current = finalized;
@@ -478,27 +505,64 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
           return false;
         }
 
-        suppressGeminiTurnRef.current = true;
+          suppressGeminiTurnRef.current = true;
         appendBackendAssistantTurn(result.response);
         if (result.executed) {
-          setInfo(`已通过业务状态机完成预约${result.operation === 'cancel' ? '取消' : '变更'}。`);
+          setInfo(
+            t(
+              'pages:test.voiceLab.direct.info.operationCompleted',
+              'The appointment {{operation}} was completed through the business state machine.',
+              {
+                operation:
+                  result.operation === 'cancel'
+                    ? t('pages:test.voiceLab.direct.operation.cancel', 'cancellation')
+                    : t('pages:test.voiceLab.direct.operation.update', 'change'),
+              }
+            )
+          );
         } else if (result.operation) {
-          setInfo(`已进入预约${result.operation === 'cancel' ? '取消' : '变更'}业务流程。`);
+          setInfo(
+            t(
+              'pages:test.voiceLab.direct.info.operationEntered',
+              'Entered the appointment {{operation}} business flow.',
+              {
+                operation:
+                  result.operation === 'cancel'
+                    ? t('pages:test.voiceLab.direct.operation.cancel', 'cancellation')
+                    : t('pages:test.voiceLab.direct.operation.update', 'change'),
+              }
+            )
+          );
         }
         pushLog(
           'info',
-          `ChatService operation flow handled turn: operation=${result.operation || '-'} state=${result.state_status || '-'} executed=${result.executed ? 'yes' : 'no'}`
+          t(
+            'pages:test.voiceLab.direct.logs.operationFlowHandled',
+            'ChatService operation flow handled the turn: operation={{operation}} state={{state}} executed={{executed}}',
+            {
+              operation: result.operation || '-',
+              state: result.state_status || '-',
+              executed: result.executed ? 'yes' : 'no',
+            }
+          )
         );
         return true;
       } catch (operationError) {
         pushLog(
           'error',
-          `Failed to advance ChatService operation flow: ${operationError instanceof Error ? operationError.message : String(operationError)}`
+          t(
+            'pages:test.voiceLab.direct.logs.operationFlowAdvanceFailed',
+            'Failed to advance the ChatService operation flow: {{message}}',
+            {
+              message:
+                operationError instanceof Error ? operationError.message : String(operationError),
+            }
+          )
         );
         return false;
       }
     },
-    [appendBackendAssistantTurn, flushPersistedMessages, pushLog]
+    [appendBackendAssistantTurn, flushPersistedMessages, pushLog, t]
   );
 
   const appendInputTranscript = useCallback(
@@ -640,12 +704,27 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
         shouldAutoFinalizeByClosingPhrase(lastCompletedAssistantTurnRef.current)
       ) {
         autoFinalizeTriggeredRef.current = true;
-        pushLog('info', 'Detected closing phrase. Auto-finalizing voice test session.');
-        closeDirectTransport('Gemini Live direct session auto-closed after closing phrase.');
+        pushLog(
+          'info',
+          t(
+            'pages:test.voiceLab.direct.logs.closingPhraseDetected',
+            'Detected a closing phrase. Auto-finalizing the voice test session.'
+          )
+        );
+        closeDirectTransport(
+          t(
+            'pages:test.voiceLab.direct.logs.directSessionAutoClosed',
+            'Gemini Live direct session auto-closed after the closing phrase.'
+          )
+        );
         const result = await finalizeActiveTestSession(true);
         if (result) {
           setInfo(
-            result.extraction?.message || '检测到结束语，已自动断开语音会话并完成提取。'
+            result.extraction?.message ||
+              t(
+                'pages:test.voiceLab.direct.info.autoFinalizedByClosingPhrase',
+                'Detected a closing phrase, automatically disconnected the voice session, and completed extraction.'
+              )
           );
         }
       }
@@ -711,7 +790,7 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
         inputTranscriptHistoryRef.current.trim() || outputTranscriptHistoryRef.current.trim()
       );
 
-      closeDirectTransport('Gemini Live direct session closed.');
+      closeDirectTransport(t('pages:test.voiceLab.direct.logs.directSessionClosed', 'Gemini Live direct session closed.'));
       suppressGeminiTurnRef.current = false;
 
       await finalizeActiveTestSession(hasDialogue);
@@ -726,8 +805,18 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
   const connectSocket = useCallback(() => {
     const normalizedModel = model.trim();
     if (!isLiveModelId(normalizedModel)) {
-      setError('当前模型不是 Gemini Live / Native Audio 模型。请在 Prompt 中选择语音模型，或在此处显式覆盖。');
-      pushLog('error', `Incompatible voice test model: ${normalizedModel || '(empty)'}`);
+      setError(
+        t(
+          'pages:test.voiceLab.direct.errors.incompatibleModel',
+          'The current model is not a Gemini Live / Native Audio model. Select a voice model in the Prompt or explicitly override it here.'
+        )
+      );
+      pushLog(
+        'error',
+        t('pages:test.voiceLab.direct.logs.incompatibleModel', 'Incompatible voice test model: {{model}}', {
+          model: normalizedModel || '(empty)',
+        })
+      );
       return;
     }
 
@@ -779,9 +868,17 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
           mode: 'voice',
         });
         setTestSession(createdSession);
-        pushLog('info', `Voice test session created: ${createdSession.call_id}`);
+        pushLog(
+          'info',
+          t('pages:test.voiceLab.direct.logs.sessionCreated', 'Voice test session created: {{callId}}', {
+            callId: createdSession.call_id,
+          })
+        );
 
-        pushLog('info', 'Requesting Gemini Live ephemeral token...');
+        pushLog(
+          'info',
+          t('pages:test.voiceLab.direct.logs.requestingEphemeralToken', 'Requesting a Gemini Live ephemeral token...')
+        );
         const auth = await fetchLiveAuthToken({
           model: normalizedModel,
           modalities: ['AUDIO'],
@@ -821,7 +918,7 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
             onopen: () => {
               setWsOpen(true);
               setSocketStatus('connected');
-              pushLog('success', 'Gemini Live direct session connected.');
+              pushLog('success', t('pages:test.voiceLab.direct.logs.connected', 'Gemini Live direct session connected.'));
             },
             onmessage: (message) => {
               const payloads = normalizeLiveServerMessage(message);
@@ -830,7 +927,9 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
               }
             },
             onerror: (event) => {
-              const message = event.message || 'Gemini Live direct connection error.';
+              const message =
+                event.message ||
+                t('pages:test.voiceLab.direct.errors.connectionErrorFallback', 'Gemini Live direct connection error.');
               setError(message);
               setSocketStatus('error');
               pushLog('error', message);
@@ -838,8 +937,14 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
             onclose: (event) => {
               const detail =
                 event.reason && event.reason.length
-                  ? `Gemini Live connection closed (code: ${event.code}, reason: ${event.reason}).`
-                  : `Gemini Live connection closed (code: ${event.code}).`;
+                  ? t(
+                      'pages:test.voiceLab.direct.logs.connectionClosedWithReason',
+                      'Gemini Live connection closed (code: {{code}}, reason: {{reason}}).',
+                      { code: event.code, reason: event.reason }
+                    )
+                  : t('pages:test.voiceLab.direct.logs.connectionClosed', 'Gemini Live connection closed (code: {{code}}).', {
+                      code: event.code,
+                    });
               if (!isManualDisconnectRef.current) {
                 pushLog('info', detail);
               }
@@ -863,7 +968,12 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
         setError(message);
         setSocketStatus('error');
         setWsOpen(false);
-        pushLog('error', `Failed to connect to Gemini Live directly: ${message}`);
+        pushLog(
+          'error',
+          t('pages:test.voiceLab.direct.logs.connectFailed', 'Failed to connect to Gemini Live directly: {{message}}', {
+            message,
+          })
+        );
       }
     })();
   }, [
@@ -875,6 +985,7 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
     resetRemotePlayback,
     selectedPromptCode,
     systemInstruction,
+    t,
     voice,
     finalizeActiveTestSession,
     finalizeResult,
@@ -882,29 +993,32 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
 
   const sendText = useCallback(() => {
     if (voiceOnlyMode) {
-      pushLog('warning', 'Voice-only mode enabled. Text input is disabled in this tab.');
+      pushLog(
+        'warning',
+        t('pages:test.voiceLab.direct.logs.voiceOnlyMode', 'Voice-only mode is enabled. Text input is disabled in this tab.')
+      );
       return;
     }
 
     const text = textInput.trim();
     if (!text) return;
     if (!sessionRef.current) {
-      setError('Gemini Live is not connected.');
+      setError(t('pages:test.voiceLab.direct.errors.notConnected', 'Gemini Live is not connected.'));
       return;
     }
 
     const now = Date.now();
     const previous = lastTextSendRef.current;
     if (previous.text === text && now - previous.ts < 1200) {
-      pushLog('warning', 'Duplicate text input ignored.');
+      pushLog('warning', t('pages:test.voiceLab.direct.logs.duplicateTextIgnored', 'Duplicate text input ignored.'));
       return;
     }
     lastTextSendRef.current = { text, ts: now };
 
     sessionRef.current.sendClientContent({ turns: text, turnComplete: true });
-    pushLog('info', `Text input: ${text}`);
+    pushLog('info', t('pages:test.voiceLab.direct.logs.textInput', 'Text input: {{text}}', { text }));
     setTextInput('');
-  }, [pushLog, textInput, voiceOnlyMode]);
+  }, [pushLog, t, textInput, voiceOnlyMode]);
 
   useEffect(() => {
     if (!selectedPromptCode) return;
@@ -923,8 +1037,14 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
       return;
     }
     lastLoadedPromptLogRef.current = signature;
-    pushLog('info', `Loaded prompt template: ${selected.name} (${selected.code})`);
-  }, [prompts, pushLog, selectedPromptCode]);
+    pushLog(
+      'info',
+      t('pages:test.voiceLab.direct.logs.promptLoaded', 'Loaded Prompt template: {{name}} ({{code}})', {
+        name: selected.name,
+        code: selected.code,
+      })
+    );
+  }, [prompts, pushLog, selectedPromptCode, t]);
 
   useEffect(() => {
     return () => {

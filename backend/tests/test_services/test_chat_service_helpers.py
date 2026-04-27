@@ -255,6 +255,28 @@ def test_extract_datetime_from_text():
     assert parsed.minute == 30
 
 
+def test_extract_datetime_from_spaced_voice_transcript_hour_only():
+    parsed = ChatService._extract_datetime_from_text("2026 年 の 5 月 1 日 の 11 時 、 田中 です 。")
+
+    assert parsed is not None
+    assert parsed.year == 2026
+    assert parsed.month == 5
+    assert parsed.day == 1
+    assert parsed.hour == 11
+    assert parsed.minute == 0
+
+
+def test_collect_operation_identity_hints_from_long_voice_transcript():
+    call = SimpleNamespace(caller_name="Test Caller", counterpart="chat_user")
+    hints = ChatService._collect_operation_identity_hints(
+        call,
+        "会社 に 着く の は 、 ええ と 、 2026 年 の 5 月 1 日 の 11 時 、 田中 です 。",
+    )
+
+    assert hints["caller_name"] == "田中"
+    assert hints["appointment_date"] == "2026-05-01"
+
+
 def test_select_candidate_id_from_text():
     candidate_ids = [
         "11111111-1111-1111-1111-111111111111",
@@ -314,6 +336,82 @@ async def test_find_operation_candidates_prefers_counterpart_when_name_is_generi
     kwargs = repo.search_operation_candidates_with_call.await_args.kwargs
     assert kwargs["caller_name"] is None
     assert kwargs["counterpart"] == "+819012345678"
+
+
+@pytest.mark.asyncio
+async def test_resolve_extracted_operation_target_matches_name_and_original_time():
+    service = ChatService.__new__(ChatService)
+    target = SimpleNamespace(
+        id=uuid4(),
+        call_id=uuid4(),
+        caller_name="田中",
+        company="株式会社IAI",
+        appointment=datetime(2026, 5, 1, 11, 0),
+        timestamp=datetime(2026, 4, 27, 10, 2),
+        address="品川区1-2-3",
+        extra_data={},
+    )
+    service.appointment_repo = SimpleNamespace(
+        get=AsyncMock(return_value=None),
+        search_operation_candidates_with_call=AsyncMock(
+            return_value=[(target, SimpleNamespace(counterpart="+817000000000", caller_name="田中"))]
+        ),
+    )
+
+    resolved = await service._resolve_extracted_operation_target(
+        call=SimpleNamespace(id=uuid4()),
+        raw_data={
+            "request_type": "cancel",
+            "caller_name": "田中",
+            "company": None,
+            "original_appointment_time": "2026-05-01T11:00:00+09:00",
+        },
+    )
+
+    assert resolved == target
+    service.appointment_repo.search_operation_candidates_with_call.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_try_apply_extracted_cancel_request_returns_operation_event():
+    service = ChatService.__new__(ChatService)
+    target = SimpleNamespace(id=uuid4())
+    operation_event_id = uuid4()
+    call = SimpleNamespace(id=uuid4(), extra_data={})
+    service.db = SimpleNamespace(commit=AsyncMock())
+    service._resolve_extracted_operation_target = AsyncMock(return_value=target)
+
+    async def execute_operation(**kwargs):
+        kwargs["call"].extra_data = {
+            **kwargs["extra_data"],
+            "operation_execution": {
+                "operation": kwargs["operation"],
+                "appointment_id": str(operation_event_id),
+                "target_appointment_id": str(target.id),
+            },
+        }
+        return "キャンセルが完了しました。"
+
+    service._execute_operation_flow_action = execute_operation
+
+    result = await service._try_apply_extracted_operation_request(
+        call=call,
+        raw_data={
+            "request_type": "cancel",
+            "caller_name": "田中",
+            "original_appointment_time": "2026-05-01T11:00:00+09:00",
+        },
+        extraction_summary="田中様からの2026年5月1日11時の予約キャンセル依頼。",
+        extraction_confidence=1.0,
+        extra_data={"source": "test_lab"},
+    )
+
+    assert result is not None
+    assert result.success is True
+    assert result.appointment_id == operation_event_id
+    assert result.extracted_data["operation"] == "cancel"
+    assert result.extracted_data["target_appointment_id"] == str(target.id)
+    service.db.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio

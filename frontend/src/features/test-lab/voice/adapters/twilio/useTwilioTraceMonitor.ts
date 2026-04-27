@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { API_BASE_URL, buildApiRequestHeaders, http } from '../../../../../api/http';
 import type { BackendTraceDiagnosticResponse } from '../../diagnostics';
@@ -44,6 +45,7 @@ export function useTwilioTraceMonitor({
   sdkCallSid,
   appendLog,
 }: UseTwilioTraceMonitorOptions): UseTwilioTraceMonitorResult {
+  const { t } = useTranslation(['pages']);
   const [traceCallSid, setTraceCallSid] = useState('');
   const [traceSeq, setTraceSeq] = useState(0);
   const [traceEvents, setTraceEvents] = useState<TwilioTraceEvent[]>([]);
@@ -273,7 +275,10 @@ export function useTwilioTraceMonitor({
             : 'unknown',
           category: String(diagnosticPayload.category ?? 'unknown'),
           owner: String(diagnosticPayload.owner ?? 'unknown'),
-          title: String(diagnosticPayload.title ?? '未提供诊断标题'),
+          title: String(
+            diagnosticPayload.title ??
+              t('pages:test.voiceLab.diagnostics.fallbackTitle', 'No diagnostic title provided')
+          ),
           summary: String(diagnosticPayload.summary ?? ''),
           actions: Array.isArray(diagnosticPayload.actions)
             ? diagnosticPayload.actions
@@ -302,10 +307,13 @@ export function useTwilioTraceMonitor({
       }
     } catch (pollError) {
       const message = pollError instanceof Error ? pollError.message : String(pollError);
-      appendLog('warning', `转写轮询失败: ${message}`);
+      appendLog(
+        'warning',
+        t('pages:test.voiceLab.gateway.logs.tracePollingFailed', 'Trace polling failed: {{message}}', { message })
+      );
       setLoadingTraceDiagnostic(false);
     }
-  }, [appendLog, bindTraceCallSid, loadActiveTraceCalls, loadLatestTraceCallSid]);
+  }, [appendLog, bindTraceCallSid, loadActiveTraceCalls, loadLatestTraceCallSid, t]);
 
   useEffect(() => {
     const shouldPoll = callStatus === 'dialing' || callStatus === 'in-call';
@@ -456,7 +464,13 @@ export function useTwilioTraceMonitor({
         }
 
         if (shouldWarn && loadedCount === 0) {
-          appendLog('warning', '入站调试音频加载失败，两个调试样本都未能成功获取。');
+          appendLog(
+            'warning',
+            t(
+              'pages:test.voiceLab.gateway.logs.debugAudioLoadFailed',
+              'Failed to load inbound debug audio. Neither debug sample could be retrieved successfully.'
+            )
+          );
         }
       })
       .finally(() => {
@@ -471,7 +485,7 @@ export function useTwilioTraceMonitor({
     return () => {
       controller.abort();
     };
-  }, [appendLog, clearInboundDebugAudio, traceCallSid, traceEvents]);
+  }, [appendLog, clearInboundDebugAudio, t, traceCallSid, traceEvents]);
 
   useEffect(() => {
     return () => {
