@@ -233,8 +233,10 @@ def test_format_appointment_brief_hides_internal_id():
         appointment=datetime(2026, 4, 10, 0, 0),
         caller_name="CCC",
         company="ABC会社",
+        category="粗大ゴミ",
         amount="2立方米",
         address="東京都千代田区神田2-4-33",
+        extra_request="時間厳守",
     )
 
     summary = ChatService._format_appointment_brief(appointment)
@@ -242,6 +244,29 @@ def test_format_appointment_brief_hides_internal_id():
     assert "ID:" not in summary
     assert "予約日時:" in summary
     assert "CCC" in summary
+    assert "品目: 粗大ゴミ" in summary
+    assert "重量・容量: 2立方米" in summary
+    assert "回収先住所: 東京都千代田区神田2-4-33" in summary
+    assert "備考: 時間厳守" in summary
+
+
+def test_format_appointment_brief_uses_extracted_volume_and_waste_type_fallbacks():
+    appointment = SimpleNamespace(
+        appointment=datetime(2026, 5, 1, 11, 0),
+        caller_name="田中",
+        company=None,
+        category=None,
+        amount=None,
+        address="品川区1-2-3",
+        extra_request=None,
+        extracted_data={"waste_type": ["粗大ゴミ"], "estimated_volume_m3": 2.5},
+    )
+
+    summary = ChatService._format_appointment_brief(appointment)
+
+    assert "品目: 粗大ゴミ" in summary
+    assert "重量・容量: 2.5m3" in summary
+    assert "回収先住所: 品川区1-2-3" in summary
 
 
 def test_extract_datetime_from_text():

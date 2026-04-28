@@ -244,6 +244,7 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
 
   const sessionRef = useRef<Session | null>(null);
   const testSessionRef = useRef<StartTestSessionResponse | null>(null);
+  const finalizeResultRef = useRef<FinalizeTestSessionResponse | null>(null);
   const inputTranscriptHistoryRef = useRef('');
   const inputTranscriptTurnRef = useRef('');
   const outputTranscriptHistoryRef = useRef('');
@@ -322,6 +323,7 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
           run_extraction: runExtraction,
         });
         setFinalizeResult(result);
+        finalizeResultRef.current = result;
         setInfo(
           runExtraction
             ? result.extraction?.message ||
@@ -350,6 +352,53 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
     [pushLog, t]
   );
 
+  const finalizeSessionSilently = useCallback(async () => {
+    const activeSession = testSessionRef.current;
+    if (!activeSession || finalizeResultRef.current || finalizeInFlightRef.current) {
+      return;
+    }
+
+    finalizeInFlightRef.current = true;
+    try {
+      const entries = queuedPersistMessagesRef.current.splice(0);
+      const pendingInput = inputTranscriptTurnRef.current.trim();
+      const pendingOutput = outputTranscriptTurnRef.current.trim();
+      if (pendingInput) {
+        entries.push({ role: 'user', content: pendingInput });
+      }
+      if (pendingOutput) {
+        entries.push({ role: 'assistant', content: pendingOutput });
+      }
+
+      if (entries.length) {
+        await appendTestSessionMessages({
+          call_id: activeSession.call_id,
+          template_code: activeSession.template_code || undefined,
+          provider: activeSession.llm_provider,
+          model: activeSession.llm_model,
+          messages: entries,
+        });
+      }
+
+      const hasDialogue = Boolean(
+        inputTranscriptHistoryRef.current.trim() ||
+          outputTranscriptHistoryRef.current.trim() ||
+          entries.length
+      );
+
+      const result = await finalizeTestSession({
+        call_id: activeSession.call_id,
+        template_code: activeSession.template_code || undefined,
+        run_extraction: hasDialogue,
+      });
+      finalizeResultRef.current = result;
+    } catch (error) {
+      console.error('Failed to silently finalize voice test session:', error);
+    } finally {
+      finalizeInFlightRef.current = false;
+    }
+  }, []);
+
   const handlePromptLoadError = useCallback(
     (loadError: unknown) => {
       pushLog(
@@ -370,6 +419,10 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
   useEffect(() => {
     testSessionRef.current = testSession;
   }, [testSession]);
+
+  useEffect(() => {
+    finalizeResultRef.current = finalizeResult;
+  }, [finalizeResult]);
 
   const { playPcmAudioChunk, isRemotePlaybackActive, resetRemotePlayback } = useRemoteAudioPlayback({ pushLog });
 
@@ -778,6 +831,7 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
       setInfo(null);
       setTestSession(null);
       setFinalizeResult(null);
+      finalizeResultRef.current = null;
     })();
   }, [finalizeActiveTestSession, finalizeResult, flushPersistedMessages]);
 
@@ -849,6 +903,7 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
         setSessionId('');
         setDisplayWsUrl(DEFAULT_DISPLAY_ENDPOINT);
         setFinalizeResult(null);
+        finalizeResultRef.current = null;
         inputTranscriptHistoryRef.current = '';
         inputTranscriptTurnRef.current = '';
         outputTranscriptHistoryRef.current = '';
@@ -1048,6 +1103,7 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
 
   useEffect(() => {
     return () => {
+      void finalizeSessionSilently();
       if (hasActiveMicrophoneResources()) {
         stopMicrophone();
       }
@@ -1056,7 +1112,7 @@ export function useVoiceTestConsole(): UseLiveWebSocketConsoleResult {
       suppressGeminiTurnRef.current = false;
       resetRemotePlayback();
     };
-  }, [hasActiveMicrophoneResources, resetRemotePlayback, stopMicrophone]);
+  }, [finalizeSessionSilently, hasActiveMicrophoneResources, resetRemotePlayback, stopMicrophone]);
 
   return {
     socketStatus,

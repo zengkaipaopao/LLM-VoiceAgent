@@ -163,8 +163,13 @@ async def test_finalize_test_session_reuses_existing_appointment_without_reextra
     assert result.already_extracted is True
     assert result.extraction is not None
     assert result.extraction.extracted_data == {"foo": "bar"}
-    db.commit.assert_awaited_once()
-    db.refresh.assert_awaited_once_with(call)
+    assert call.extra_data["finalized_at"]
+    assert call.extra_data["appointment_id"] == str(appointment_id)
+    assert call.extra_data["already_extracted"] is True
+    assert call.extra_data["extraction_status"] == "success"
+    assert call.extra_data["extraction_message"] == "已有预约记录，跳过重复提取"
+    assert db.commit.await_count == 2
+    assert db.refresh.await_count == 2
 
 
 @pytest.mark.asyncio

@@ -233,7 +233,7 @@ class TestSessionService:
         call.status = "completed"
         call.is_answered = True
 
-        extra_data = call.extra_data or {}
+        extra_data = dict(call.extra_data or {})
         extra_data.setdefault("simulation", True)
         extra_data.setdefault("source", "test_lab")
         if template_code:
@@ -253,6 +253,22 @@ class TestSessionService:
                 call=call,
                 template_code=template_code,
             )
+            final_extra_data = dict(call.extra_data or {})
+            final_extra_data["appointment_id"] = str(appointment_id) if appointment_id else None
+            final_extra_data["already_extracted"] = already_extracted
+            if extraction_result:
+                final_extra_data["extraction_status"] = "success" if extraction_result.success else "failed"
+                final_extra_data["extraction_message"] = extraction_result.message
+                final_extra_data["extraction_confidence"] = extraction_result.confidence
+            call.extra_data = final_extra_data
+            await self.db.commit()
+            await self.db.refresh(call)
+        else:
+            final_extra_data = dict(call.extra_data or {})
+            final_extra_data["extraction_status"] = "skipped"
+            call.extra_data = final_extra_data
+            await self.db.commit()
+            await self.db.refresh(call)
 
         return TestSessionFinalizeResponse(
             call_id=call.id,
