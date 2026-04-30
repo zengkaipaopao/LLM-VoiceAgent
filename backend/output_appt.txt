@@ -1,0 +1,4 @@
+Latest Appointment ID: 29d34d70-5309-4c16-8985-67b19534ddb9
+Prompt ID: e9f750c1-d2a3-4d1c-9d64-87a803512fb6
+Caller Name: CCC
+Extra Data: {'source': 'test_lab', 'llm_model': 'gemini-2.5-flash', 'simulation': True, 'llm_provider': 'gemini', 'simulated_phone': '+818078251517'}

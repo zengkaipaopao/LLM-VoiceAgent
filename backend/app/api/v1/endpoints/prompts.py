@@ -70,14 +70,8 @@ async def get_template_by_code(code: str, db: AsyncSession = Depends(get_db)):
 async def create_template(template_in: PromptTemplateCreate, db: AsyncSession = Depends(get_db)):
     prompt_service = PromptService(db)
 
-    if await prompt_service.get_template(template_in.code):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Template code '{template_in.code}' already exists",
-        )
-
     try:
-        template = await prompt_service.create_template(**template_in.dict())
+        template = await prompt_service.create_template_checked(template_in.dict())
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -94,32 +88,22 @@ async def update_template(
     db: AsyncSession = Depends(get_db),
 ):
     prompt_service = PromptService(db)
-    template = await prompt_service.get_template_by_id(str(template_id))
+    try:
+        template = await prompt_service.update_template(
+            str(template_id),
+            template_in.dict(exclude_unset=True),
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
 
     if not template:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Template {template_id} not found",
         )
-
-    update_data = template_in.dict(exclude_unset=True)
-    if "twilio_inbound_numbers" in update_data:
-        try:
-            update_data["twilio_inbound_numbers"] = await prompt_service.validate_twilio_inbound_numbers(
-                numbers=update_data["twilio_inbound_numbers"],
-                exclude_template_id=str(template.id),
-            )
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(exc),
-            ) from exc
-    for field, value in update_data.items():
-        setattr(template, field, value)
-
-    await prompt_service.sync_twilio_incoming_default(template)
-    await db.commit()
-    await db.refresh(template)
 
     return ResponseBase(success=True, data=PromptTemplateResponse.from_orm(template))
 
@@ -127,14 +111,12 @@ async def update_template(
 @router.delete("/{template_id}", response_model=ResponseBase[None], status_code=status.HTTP_200_OK)
 async def delete_template(template_id: UUID, db: AsyncSession = Depends(get_db)):
     prompt_service = PromptService(db)
-    template = await prompt_service.get_template_by_id(str(template_id))
+    deleted = await prompt_service.delete_template(str(template_id))
 
-    if not template:
+    if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Template {template_id} not found",
         )
 
-    await db.delete(template)
-    await db.commit()
     return ResponseBase(success=True, message="Template deleted successfully", data=None)

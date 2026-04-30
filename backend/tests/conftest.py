@@ -2,13 +2,12 @@
 Test configuration and fixtures.
 """
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from fastapi.testclient import TestClient
 
 from app.core.database import Base
 from app.main import app
-
 
 # Test database URL (use SQLite for testing)
 TEST_DATABASE_URL = "sqlite:///./test.db"

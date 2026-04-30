@@ -1,4 +1,4 @@
-import { API_BASE_URL } from '../../api/http';
+import { API_BASE_URL, buildApiRequestHeaders } from '../../api/http';
 import { sanitizeAssistantPrefix } from '../unifiedTestLab/streamUtils';
 import { parseSSEEvent } from './sse';
 import type { ChatRequest } from './types';
@@ -20,10 +20,10 @@ export async function streamChatResponse({
 }: StreamChatResponseOptions): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/chat/stream`, {
     method: 'POST',
-    headers: {
+    headers: buildApiRequestHeaders({
       'Content-Type': 'application/json',
       Accept: 'text/event-stream',
-    },
+    }),
     body: JSON.stringify(requestBody),
     signal,
   });

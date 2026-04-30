@@ -1,10 +1,10 @@
 # 后端架构审视与改善方案
 
-最后更新: 2026-04-27
+最后更新: 2026-04-30
 
 ## 1. 结论
 
-当前后端已经有基础分层结构：`api -> services -> repositories -> models/schemas`。这个方向是对的，Twilio Media Streams 相关代码也已经比早期更模块化。但是业务领域边界还不够清晰，尤其是 `app/services/chat_service.py` 目前承担了过多职责，已经成为后端可维护性的主要风险点。
+当前后端已经有基础分层结构：`api -> services -> repositories -> models/schemas`。这个方向是对的，Twilio Media Streams 相关代码也已经比早期更模块化。本轮重构已经把主要业务边界拆开，`app/services/chat_service.py` 已从上帝类收缩成 facade。
 
 当前最需要治理的不是“重写系统”，而是把已经混在一起的职责拆回明确的领域模块，让新接手的人可以通过目录名理解系统：
 
@@ -16,21 +16,49 @@
 
 ## 1.1 当前落地状态
 
-截至 2026-04-27，Phase 1 已开始落地：
+截至 2026-04-30，Phase 1-6 的主体工作已落地：
 
 - 已新增 `app/services/appointments/parsers.py`，集中维护日文预约文本解析、ASR 空格日期解析、姓名/公司/电话/数量/地址提取、目标匹配打分辅助逻辑。
 - 已新增 `app/services/appointments/presenter.py`，集中维护预约复唱文案格式化。
 - 已新增 `app/services/appointments/operation_matcher.py`，集中维护预约变更/取消的目标候选查询与匹配。
 - 已新增 `app/services/appointments/operation_executor.py`，集中维护确认后的预约更新/取消、操作事件创建、`operation_execution` 写回。
 - 已新增 `app/services/appointments/operation_flow.py`，集中维护预约变更/取消的多状态对话流。
-- `ChatService` 已通过兼容别名调用上述模块，原解析/复唱实现已从 `chat_service.py` 删除。
+- 已新增 `app/services/appointments/extraction_applier.py`，集中维护 LLM 抽取结果落库、变更/取消兜底执行、目标匹配失败响应。
+- 已新增 `app/services/conversation/chat_orchestrator.py`，集中维护普通文字聊天、SSE 流式聊天、quota notice、助手输出清洗、模型注入 `User:` 截断。
+- 已新增 `app/services/test_lab/operation_turn_service.py`，集中维护测试台 operation turn，只推进预约变更/取消状态机，不走普通 LLM fallback。
+- 已新增 `app/services/extraction/appointment_application_service.py`，集中维护完成通话后的抽取编排、重复抽取短路、已执行变更/取消短路、LLM extraction 调用与 applier 调用。
+- 已新增 `app/services/live_gateway/browser_realtime.py` 与 `browser_websocket_bridge.py`，把浏览器直连 Gemini Live 的配置解析、音频编解码、WebSocket 长循环从 API endpoint 下沉到 live gateway service。
+- 已新增 `app/services/twilio/trace_service.py`，集中维护 Twilio trace 查询、诊断聚合、audio lab、debug wav 路径、手动音频注入和 active stream 汇总。
+- 已新增 `app/services/twilio/incoming_service.py`，集中维护 Twilio TwiML app webhook、入站语音路由、Gather 回合的 Prompt/runtime 解析与 TwiML 生成。
+- 已新增 `app/services/twilio/management_service.py`，集中维护 Twilio Voice SDK token、Gemini 音色列表、下一通入站 override 准备。
+- 已新增 `app/services/twilio/status_service.py`，集中维护 Twilio stream/call status callback 的 trace 写入、session 清理与通话结束 finalize。
+- 已新增 `app/services/twilio/media_stream_websocket_service.py`，集中维护 Twilio Media Streams WebSocket 的 bootstrap、runtime 解析、模型/音色选择与 bridge context 构建。
+- 已新增 `app/services/dashboard_service.py`，集中维护仪表盘统计 SQL、趋势生成、数据库/Redis/AI 健康检查。
+- `ChatService` 已委托上述模块，原解析/复唱实现已从 `chat_service.py` 删除。
 - `ChatService` 的目标匹配、执行动作、多状态对话流已通过兼容入口委托到 appointment domain 模块。
-- `chat_service.py` 已从 2415 行收缩到 927 行。
-- 已新增 `tests/test_services/test_appointment_parser_presenter.py`、`test_appointment_operation_matcher.py`、`test_appointment_operation_executor.py`、`test_appointment_operation_flow.py` 覆盖新模块。
+- `ChatService.extract_appointment()` 已委托 `AppointmentExtractionApplier`，不再直接处理预约创建/变更/取消兜底细节。
+- `ChatService.process_chat()` 与 `stream_chat()` 已委托 `ConversationOrchestrator`，`ChatService` 开始接近 facade。
+- `ChatService.process_test_session_operation_turn()` 已委托 `TestSessionOperationTurnService`。
+- `ChatService.extract_appointment()` 已委托 `AppointmentExtractionApplicationService`。
+- `ChatService` 中用于迁移期的旧私有 helper alias 已删除；解析、复唱、候选匹配测试已直接指向所属领域模块。
+- `chat_service.py` 已从 2415 行收缩到 217 行。
+- 已新增并按领域整理 `tests/test_services/appointments/`、`conversation/`、`extraction/`、`test_lab/`、`twilio/`、`live_gateway/` 等测试目录，覆盖新模块。
 - 已修复 Test Lab 直连语音会话结束收口：`finalize_test_session()` 现在会复制 JSON 后写入 `finalized_at / appointment_id / extraction_status`，避免 SQLAlchemy JSON 字段未被判定 dirty。
 - 已在前端直连语音页增加离开页面时的静默 finalize，避免用户从语音测试页直接切到预约管理时，会话没有统一完成抽取。
 
-下一步建议进入 Phase 3：拆 `ExtractionApplicationService`，让最终抽取后的预约创建/变更/取消兜底不再留在 `ChatService.extract_appointment()` 中。
+Phase 4 的核心目标已经完成：`ChatService` 已低于 300 行，并且对话、测试台 operation turn、抽取落库都已有明确领域模块。
+Phase 5 的主体目标已经完成：`app/api/v1/router.py` 已改为 re-export `app.api.routes.api_router` 的兼容入口，避免旧 router 暴露过期半套路由；`realtime.py` 已从 654 行收缩到 148 行；`twilio_trace.py` 已从 322 行收缩到 207 行；`twilio_incoming.py` 已从 465 行收缩到 112 行；`twilio_management.py` 已从 132 行收缩到 75 行；`twilio_status.py` 已从 125 行收缩到 73 行；`twilio_legacy_stream.py` 已从 196 行收缩到 23 行。
+`dashboard.py` 已从 240 行收缩到 19 行，统计查询和健康检查已下沉到 `DashboardService`。`chat.py` 已统一通过 `ChatService` facade 处理 test session start/append/finalize，并清理了重复异常分支。
+`prompts.py` 的创建、更新、删除细节已回收到 `PromptService`，endpoint 只保留参数接收、HTTP 错误映射和响应包装。
+Phase 6 已完成文档基线更新：`ARCHITECTURE.md` 与 `SERVICE_LAYER_GUIDE.md` 已从 simulation-era 文档改为当前 Twilio/Gemini/Test Lab/预约域结构文档，并补充本机 bundled Node 构建说明；同时新增 `VOICE_GATEWAYS.md`、`MEDIA_STREAM_TRACE_FIELDS.md`、`APPOINTMENT_OPERATION_FLOW.md` 和 `BUSINESS_TEMPLATE_DESIGN.md` 四个专项文档。
+
+当前回归基线：
+
+- `PYTHONPATH=. poetry run pytest`: 210 passed, 4 warnings。
+- touched Python 文件 `ruff check --select I001,F401,F821,E999`: passed。
+- `git diff --check`: passed。
+- `PATH=/Users/zeng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH npm run build`: passed。
+- 关键 HTTP/WebSocket 路由断言：14 个 HTTP route + 1 个 WebSocket route passed。
 
 ## 2. 当前目录状态
 
@@ -57,9 +85,27 @@ app/services/appointments/parsers.py                  815 行
 app/services/twilio/official_conversational_agents.py 706 行
 app/services/twilio/media_stream_bridge_service.py    687 行
 app/services/appointments/operation_flow.py           648 行
-app/api/v1/endpoints/realtime.py                      654 行
+app/services/live_gateway/browser_websocket_bridge.py 520 行
 app/services/twilio/trace_diagnostics.py              499 行
-app/services/chat_service.py                          927 行
+app/services/chat_service.py                          217 行
+app/services/conversation/chat_orchestrator.py        448 行
+app/services/appointments/extraction_applier.py       235 行
+app/services/dashboard_service.py                     216 行
+app/services/twilio/incoming_service.py               583 行
+app/services/twilio/media_stream_websocket_service.py 239 行
+app/api/v1/endpoints/twilio_trace.py                  207 行
+app/services/twilio/trace_service.py                  195 行
+app/api/v1/endpoints/realtime.py                      148 行
+app/services/extraction/appointment_application_service.py 147 行
+app/services/twilio/status_service.py                 121 行
+app/services/twilio/management_service.py             118 行
+app/services/test_lab/operation_turn_service.py       117 行
+app/api/v1/endpoints/twilio_incoming.py               112 行
+app/api/v1/endpoints/twilio_management.py             75 行
+app/api/v1/endpoints/twilio_status.py                 73 行
+app/api/v1/endpoints/twilio_legacy_stream.py          23 行
+app/api/v1/endpoints/dashboard.py                     19 行
+app/api/v1/endpoints/prompts.py                       122 行
 ```
 
 这些文件本身不是“行数大就一定错”，但它们已经暴露出职责边界不清的问题。
@@ -95,34 +141,29 @@ API endpoint -> Service -> Repository -> Model/DB
 
 ## 4. 主要问题
 
-### 4.1 `ChatService` 是当前最大上帝类
+### 4.1 `ChatService` 已降级为 facade
 
-`ChatService` 现在同时负责：
+`ChatService` 已经移除了预约解析、复唱、匹配、执行、状态机、抽取落库、抽取编排、普通文字聊天、SSE 流式聊天和测试台 operation turn 的主要细节。它现在主要负责：
 
-- 文字聊天编排
-- 流式聊天编排
-- Gemini/LLM 调用和 quota fallback
-- 测试会话 start/finalize
-- transcript/message 清洗
-- 冗余开场白清理
-- 预约信息抽取
-- 新预约落库
-- 修改/取消状态机
-- 目标预约匹配
-- 日文姓名/公司/日期/地址/数量解析
-- 预约复唱文案格式化
-- 操作事件创建
+- 对外兼容 facade
+- 领域服务 builder
+- 保持旧 API 调用入口稳定
 
-这导致几个现实问题：
+当前风险已经从“上帝类太大”变成“后续维护时不要把新业务逻辑写回 facade”：
 
-- 修改“复唱文案”需要进入 2000 多行服务文件。
-- 修改取消逻辑可能影响文字测试、浏览器直连、电话后处理。
-- 新人无法从文件名判断某段逻辑属于聊天、预约、抽取还是测试系统。
-- 单测只能围绕 `test_chat_service_helpers.py` 堆积，测试命名也会越来越模糊。
+- 新 helper 不应再加到 `ChatService`，应该直接进入对应领域模块。
+- 如果 facade 继续膨胀到 300 行以上，应立即拆到对应 domain service。
 
-### 4.2 API 层仍有偏厚 endpoint
+### 4.2 API 层已完成第一轮瘦身
 
-`app/api/v1/endpoints/realtime.py` 已经 654 行。API endpoint 应该主要负责：
+主要 endpoint 已经完成第一轮下沉：
+
+- `realtime.py` 从 654 行降到 148 行。
+- `twilio_legacy_stream.py` 从 196 行降到 23 行。
+- `dashboard.py` 从 240 行降到 19 行。
+- Twilio incoming/management/status/trace 已下沉到对应 service。
+
+API endpoint 仍应只负责：
 
 - 参数接收
 - 鉴权/签名验证调用
@@ -130,33 +171,31 @@ API endpoint -> Service -> Repository -> Model/DB
 - 调用 service
 - 返回响应
 
-如果 endpoint 内有长生命周期 WebSocket、音频处理、状态机、业务判断，就应该下沉到 service 或 runtime。
+后续如果 endpoint 内再次出现长生命周期 WebSocket、音频处理、状态机、业务判断，就应该下沉到 service 或 runtime。
 
-### 4.3 业务域没有显式目录
+### 4.3 业务域目录已建立，legacy 文件仍需逐步归位
 
-目前 `services/` 是按技术或历史命名混放：
+当前已经建立显式业务域：
 
 ```text
-chat_service.py
-test_session_service.py
-extraction_service.py
-extraction_bridge.py
-prompt_service.py
+appointments/
+conversation/
+extraction/
+test_lab/
 twilio/
-llm/
-voice_runtime/
 live_gateway/
 ```
 
-但是系统真实业务域至少有这些：
+仍保留的历史文件包括：
 
-- `appointments`: 预约创建、变更、取消、匹配、复唱、落库
-- `conversation`: 文本/语音对话编排、消息持久化、transcript 清洗
-- `voice_gateway`: Twilio、浏览器直连、CX/CA、Media Stream
-- `prompt_runtime`: Prompt 模板解析、模型/音色配置
-- `test_lab`: 测试页面会话生命周期、离线音频实验、trace
+- `test_session_service.py`
+- `extraction_service.py`
+- `extraction_bridge.py`
+- `prompt_service.py`
+- `twilio_voice_agent_service.py`
+- `twilio_webcall_service.py`
 
-这些业务域没有明确落在目录上，所以维护者只能靠搜索和记忆。
+这些不必一次性移动。后续改到对应逻辑时，再按风险可控的方式迁移。
 
 ### 4.4 Prompt 与确定性业务逻辑边界不清
 
@@ -170,20 +209,23 @@ live_gateway/
 
 这三者不应该混在一个 `ChatService` 中。
 
-### 4.5 文档部分已经过期
+### 4.5 文档基线已更新
 
-`backend/docs/ARCHITECTURE.md` 和 `SERVICE_LAYER_GUIDE.md` 仍有“Simulation 阶段”“等待 SIP 集成”的描述，但项目现在已经有 Twilio、Gemini Live、CX/Conversational Agents、Media Stream、Test Lab。
+`backend/docs/ARCHITECTURE.md` 和 `SERVICE_LAYER_GUIDE.md` 已更新为当前结构，内容已经对齐真实 Twilio、Gemini Live、CX/Conversational Agents、Media Streams 和 Test Lab 链路。
 
-这会误导新接手的人，以为系统还停留在模拟数据阶段。
+后续要求：
 
-### 4.6 API router 存在历史入口
+- 新领域模块落地后同步更新这两个文档。
+- 回归命令变化后同步更新 bundled Node / pytest / ruff 说明。
 
-当前实际入口是 `app/api/routes.py`，而 `app/api/v1/router.py` 只 include 了早期模拟和 calls 路由。这个文件如果继续存在但不作为真实入口，会让新人困惑。
+### 4.6 API router 历史入口已收口
 
-建议后续选择一种：
+当前实际入口是 `app/api/routes.py`。`app/api/v1/router.py` 已改成兼容 re-export，不再维护过期的半套路由集合。
 
-- 删除/废弃 `app/api/v1/router.py`。
-- 或让 `app/api/v1/router.py` 成为唯一 v1 聚合入口，`app/api/routes.py` 只负责挂载版本前缀。
+后续建议：
+
+- 保持一个 canonical router，避免两个文件各自 include router。
+- 如果未来要改为 `app/api/v1/router.py` 作为唯一入口，需要同时让 `app/api/routes.py` 变成薄 re-export，不能再分叉维护。
 
 ## 5. 推荐目标结构
 
@@ -231,7 +273,7 @@ backend/app/
 │   │
 │   ├── conversation/
 │   │   ├── chat_orchestrator.py
-│   │   ├── message_runtime.py
+│   │   ├── chat_orchestrator.py
 │   │   └── transcript_sanitizer.py
 │   │
 │   ├── extraction/
@@ -348,7 +390,7 @@ backend/app/
 
 它应该是编排层，不应该自己解析日文日期、不应该自己创建预约。
 
-### 6.8 `services/test_lab/session_service.py`
+### 6.8 `test_session_service.py` / `services/test_lab/`
 
 职责：
 
@@ -423,7 +465,7 @@ services/twilio/audio_codec -> appointments
 
 优先拆不会碰数据库的模块：
 
-- `AppointmentTextParser`
+- `JapaneseAppointmentParser`
 - `AppointmentBriefPresenter`
 - transcript sanitizer 已有，可继续保留或移动到 `conversation/`
 
@@ -450,6 +492,8 @@ services/twilio/audio_codec -> appointments
 
 ### Phase 3: 拆 extraction applier
 
+状态：已完成。
+
 拆出：
 
 - `AppointmentExtractionApplier`
@@ -464,6 +508,8 @@ services/twilio/audio_codec -> appointments
   5. 返回 response
 
 ### Phase 4: 收缩 ChatService
+
+状态：核心目标已完成。`process_chat()` / `stream_chat()` 已委托 `ConversationOrchestrator`，`process_test_session_operation_turn()` 已委托 `TestSessionOperationTurnService`，`extract_appointment()` 已委托 `AppointmentExtractionApplicationService`。
 
 目标：
 
@@ -483,6 +529,8 @@ services/twilio/audio_codec -> appointments
 
 ### Phase 5: 整理 API router 与 endpoints
 
+状态：主体已完成。API router 入口已统一，`realtime.py` 的 Live Gateway 运行时已下沉到 `services/live_gateway/`；Twilio trace、incoming、management、status、media stream WebSocket 入口已下沉到 `services/twilio/` 对应 service；Dashboard 统计查询已下沉到 `DashboardService`；Prompt 模板写操作已收敛到 `PromptService`。
+
 目标：
 
 - 统一实际入口：`app/api/routes.py` 或 `app/api/v1/router.py` 二选一。
@@ -493,15 +541,22 @@ services/twilio/audio_codec -> appointments
 
 - endpoint 文件只负责 HTTP/WebSocket 边界。
 - service 文件承担业务/运行时逻辑。
+- 当前剩余较厚 endpoint 主要是非 Twilio 的 `chat.py`；Twilio endpoint、Dashboard endpoint 和 Prompt 写操作主体已经基本变薄。
 
 ### Phase 6: 更新文档
 
-需要更新：
+状态：当前基线已完成。
+
+已更新：
 
 - `backend/docs/ARCHITECTURE.md`
 - `backend/docs/SERVICE_LAYER_GUIDE.md`
-- 新增或更新 voice/media stream 链路文档
-- 新增 appointment operation flow 文档
+- `backend/docs/VOICE_GATEWAYS.md`
+- `backend/docs/MEDIA_STREAM_TRACE_FIELDS.md`
+- `backend/docs/APPOINTMENT_OPERATION_FLOW.md`
+- `backend/docs/BUSINESS_TEMPLATE_DESIGN.md`
+
+后续可继续细化：如果要真正落地 BusinessTemplate，需要新增 renderer/resolver、测试和前端配置 UI。
 
 ## 9. 推荐测试结构
 
@@ -519,7 +574,7 @@ backend/tests/
 │   │   └── test_presenter.py
 │   ├── conversation/
 │   │   ├── test_chat_orchestrator.py
-│   │   └── test_message_runtime.py
+│   │   └── test_chat_orchestrator.py
 │   ├── test_lab/
 │   │   └── test_session_service.py
 │   ├── twilio/
@@ -567,7 +622,7 @@ AppointmentOperationExecutor
 AppointmentExtractionApplier
 AppointmentBriefPresenter
 JapaneseAppointmentParser
-ChatOrchestrator
+ConversationOrchestrator
 ```
 
 ## 11. Prompt 管理与业务模板的边界
@@ -611,22 +666,21 @@ BusinessTemplate
 7. `services/appointments/operation_executor.py`
 8. `services/twilio/media_stream_bridge_service.py`
 9. `tests/test_services/appointments/`
+10. `tests/test_services/twilio/`
 
-当前最大问题是第 5-7 步都被压在 `chat_service.py` 里。
+当前第 5-10 步已经有明确模块；下一步建议只在有实际产品需求时实现 BusinessTemplate renderer/resolver。
 
 ## 13. 优先级建议
 
 ### P0: 必须做
 
-- 把 `ChatService` 的预约操作相关逻辑拆出来。
-- 保证取消/变更的状态机与最终抽取兜底共用同一个 executor。
-- 更新架构文档，避免文档继续停留在 simulation 阶段。
+- 保证新增预约、取消、变更的所有入口继续只通过 appointments 域服务落库。
+- 防止新的业务逻辑回流到 `ChatService` 或 endpoint。
+- 保持路由、预约落库、浏览器直连 Gemini、Twilio 回调回归测试稳定。
 
 ### P1: 应该做
 
-- 拆 `AppointmentBriefPresenter`，让复唱文案有明确位置。
-- 拆 `JapaneseAppointmentParser`，让语音 ASR 规则集中维护。
-- 统一 API router 入口。
+- 按 `BUSINESS_TEMPLATE_DESIGN.md` 实现 BusinessTemplate renderer/resolver。
 
 ### P2: 可以后续做
 

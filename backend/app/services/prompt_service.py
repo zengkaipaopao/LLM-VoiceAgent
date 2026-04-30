@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.prompt_template import PromptTemplate
 
-
 _TWILIO_E164_PATTERN = re.compile(r"^\+[1-9]\d{7,14}$")
 
 
@@ -189,3 +188,37 @@ class PromptService:
         await self.db.refresh(template)
 
         return template
+
+    async def create_template_checked(self, template_data: dict[str, Any]) -> PromptTemplate:
+        code = str(template_data.get("code") or "")
+        if await self.get_template(code):
+            raise ValueError(f"Template code '{code}' already exists")
+        return await self.create_template(**template_data)
+
+    async def update_template(self, template_id: str, update_data: dict[str, Any]) -> Optional[PromptTemplate]:
+        template = await self.get_template_by_id(template_id)
+        if not template:
+            return None
+
+        if "twilio_inbound_numbers" in update_data:
+            update_data["twilio_inbound_numbers"] = await self.validate_twilio_inbound_numbers(
+                numbers=update_data["twilio_inbound_numbers"],
+                exclude_template_id=str(template.id),
+            )
+
+        for field, value in update_data.items():
+            setattr(template, field, value)
+
+        await self.sync_twilio_incoming_default(template)
+        await self.db.commit()
+        await self.db.refresh(template)
+        return template
+
+    async def delete_template(self, template_id: str) -> bool:
+        template = await self.get_template_by_id(template_id)
+        if not template:
+            return False
+
+        await self.db.delete(template)
+        await self.db.commit()
+        return True

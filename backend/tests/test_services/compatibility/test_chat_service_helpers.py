@@ -5,14 +5,19 @@ from uuid import uuid4
 
 import pytest
 
+from app.services.appointments.operation_flow import AppointmentOperationFlowService
+from app.services.appointments.operation_matcher import AppointmentOperationMatcher
+from app.services.appointments.parsers import JapaneseAppointmentParser
+from app.services.appointments.presenter import AppointmentBriefPresenter
 from app.services.chat_service import ChatService
+from app.services.conversation.chat_orchestrator import ConversationOrchestrator
 
 
 def test_resolve_chat_response_mode_for_test_lab_forces_text():
     call = SimpleNamespace(extra_data={"source": "test_lab"})
     template = SimpleNamespace(response_format="json_object", output_schema={"type": "object"})
 
-    response_format, output_schema = ChatService._resolve_chat_response_mode(call, template)
+    response_format, output_schema = ConversationOrchestrator.resolve_chat_response_mode(call, template)
 
     assert response_format == "text"
     assert output_schema is None
@@ -21,7 +26,7 @@ def test_resolve_chat_response_mode_for_test_lab_forces_text():
 def test_parse_messages_from_transcript_fallback():
     transcript = "用户: 你好\n助手: 你好，我是助手。\n\n用户: 你是谁\n助手: 我是预约助手。"
 
-    messages = ChatService._parse_messages_from_transcript(transcript)
+    messages = ConversationOrchestrator.parse_messages_from_transcript(transcript)
 
     assert messages == [
         {"role": "user", "content": "你好"},
@@ -32,9 +37,9 @@ def test_parse_messages_from_transcript_fallback():
 
 
 def test_sanitize_assistant_response_prefix():
-    assert ChatService._sanitize_assistant_response("Assistant: こんにちは") == "こんにちは"
-    assert ChatService._sanitize_assistant_response("AI助手：您好") == "您好"
-    assert ChatService._sanitize_assistant_response("助手: 测试") == "测试"
+    assert ConversationOrchestrator.sanitize_assistant_response("Assistant: こんにちは") == "こんにちは"
+    assert ConversationOrchestrator.sanitize_assistant_response("AI助手：您好") == "您好"
+    assert ConversationOrchestrator.sanitize_assistant_response("助手: 测试") == "测试"
 
 
 def test_sanitize_assistant_response_truncates_injected_user_turn():
@@ -43,15 +48,16 @@ def test_sanitize_assistant_response_truncates_injected_user_turn():
         "User: はい\n\n"
         "Assistant: 依頼内容を承りました。"
     )
-    assert ChatService._sanitize_assistant_response(raw) == "ご依頼内容を確認しました。"
+    assert ConversationOrchestrator.sanitize_assistant_response(raw) == "ご依頼内容を確認しました。"
 
 
 def test_sanitize_assistant_response_removes_inline_assistant_prefix():
     raw = (
         "いつもお世話になっております。光洲産業の自動受付AIです。本日はどのようなご用件でしょうか。\n\n"
-        "Assistant: 2026年4月1日の粗大ゴミ回収のご希望ですね。新規予約ということで承ってよろしいでしょうか？"
+        "Assistant: 2026年4月1日の粗大ゴミ回収のご希望ですね。"
+        "新規予約ということで承ってよろしいでしょうか？"
     )
-    sanitized = ChatService._sanitize_assistant_response(raw)
+    sanitized = ConversationOrchestrator.sanitize_assistant_response(raw)
     assert "Assistant:" not in sanitized
     assert "新規予約ということで承ってよろしいでしょうか？" in sanitized
 
@@ -61,18 +67,22 @@ def test_strip_redundant_opening_greeting_after_first_turn():
         "いつもお世話になっております。光洲産業の自動受付AIです。本日はどのようなご用件でしょうか。"
         "\n\n粗大ゴミの回収をご希望とのこと、承知いたしました。"
     )
-    cleaned = ChatService._strip_redundant_opening_greeting(
+    cleaned = ConversationOrchestrator.strip_redundant_opening_greeting(
         raw,
         prior_assistant_messages=[
-            "いつもお世話になっております。光洲産業の自動受付AIです。本日はどのようなご用件でしょうか。"
+            "いつもお世話になっております。光洲産業の自動受付AIです。"
+            "本日はどのようなご用件でしょうか。"
         ],
     )
     assert cleaned == "粗大ゴミの回収をご希望とのこと、承知いたしました。"
 
 
 def test_strip_redundant_opening_greeting_keeps_first_turn():
-    raw = "いつもお世話になっております。光洲産業の自動受付AIです。本日はどのようなご用件でしょうか。"
-    cleaned = ChatService._strip_redundant_opening_greeting(raw, prior_assistant_messages=[])
+    raw = (
+        "いつもお世話になっております。光洲産業の自動受付AIです。"
+        "本日はどのようなご用件でしょうか。"
+    )
+    cleaned = ConversationOrchestrator.strip_redundant_opening_greeting(raw, prior_assistant_messages=[])
     assert cleaned == raw
 
 
@@ -80,20 +90,23 @@ def test_strip_redundant_opening_greeting_uses_prior_message_leading_sentence():
     prior = ["こんにちは。廃棄物回収受付です。ご用件をお伺いします。"]
     raw = "こんにちは。廃棄物回収受付です。ご用件をお伺いします。\n次に回収先住所を教えてください。"
 
-    cleaned = ChatService._strip_redundant_opening_greeting(raw, prior_assistant_messages=prior)
+    cleaned = ConversationOrchestrator.strip_redundant_opening_greeting(
+        raw,
+        prior_assistant_messages=prior,
+    )
 
     assert cleaned == "次に回収先住所を教えてください。"
 
 
 def test_find_injected_user_turn_start():
     text = "ご案内します。\n\nUser: はい"
-    start = ChatService._find_injected_user_turn_start(text)
+    start = ConversationOrchestrator.find_injected_user_turn_start(text)
     assert start is not None
     assert text[start:].startswith("\n\nUser:")
 
 
 def test_normalize_messages_sanitizes_assistant_prefix():
-    normalized = ChatService._normalize_messages(
+    normalized = ConversationOrchestrator.normalize_messages(
         [
             {"role": "system", "content": "sys"},
             {"role": "assistant", "content": "Assistant: こんにちは"},
@@ -116,7 +129,7 @@ def test_resolve_amount_fallback_from_summary_text():
         "summary": "2026年4月22日に粗大ゴミ3kgの回収依頼。",
     }
 
-    amount = ChatService._resolve_amount(raw_data)
+    amount = JapaneseAppointmentParser.resolve_amount(raw_data)
 
     assert amount == "3kg"
 
@@ -126,7 +139,7 @@ def test_resolve_amount_handles_string_estimated_weight():
         "estimated_weight_kg": "3",
     }
 
-    amount = ChatService._resolve_amount(raw_data)
+    amount = JapaneseAppointmentParser.resolve_amount(raw_data)
 
     assert amount == "3 kg"
 
@@ -135,15 +148,15 @@ def test_resolve_amount_fallback_from_transcript_text():
     raw_data = {}
     transcript = "用户: 粗大ゴミ３kg\n助手: 承知しました。"
 
-    amount = ChatService._resolve_amount(raw_data, transcript)
+    amount = JapaneseAppointmentParser.resolve_amount(raw_data, transcript)
 
     assert amount == "３kg"
 
 
 def test_resolve_amount_supports_ton_and_cubic_aliases():
-    amount_ton = ChatService._resolve_amount({}, "重量は2tです。")
-    amount_volume = ChatService._resolve_amount({}, "体積は8立方米です。")
-    amount_short_volume = ChatService._resolve_amount({}, "体積は3立方です。")
+    amount_ton = JapaneseAppointmentParser.resolve_amount({}, "重量は2tです。")
+    amount_volume = JapaneseAppointmentParser.resolve_amount({}, "体積は8立方米です。")
+    amount_short_volume = JapaneseAppointmentParser.resolve_amount({}, "体積は3立方です。")
 
     assert amount_ton == "2t"
     assert amount_volume == "8立方米"
@@ -151,35 +164,35 @@ def test_resolve_amount_supports_ton_and_cubic_aliases():
 
 
 def test_resolve_amount_ignores_iso_datetime():
-    amount = ChatService._resolve_amount({}, "2026-04-02T09:33:26+09:00")
+    amount = JapaneseAppointmentParser.resolve_amount({}, "2026-04-02T09:33:26+09:00")
 
     assert amount is None
 
 
 def test_detect_operation_intent_update_and_cancel():
-    assert ChatService._detect_operation_intent("预约を変更したいです") == "update"
-    assert ChatService._detect_operation_intent("この予約をキャンセルしてください") == "cancel"
-    assert ChatService._detect_operation_intent("新規予約をしたいです") is None
+    assert JapaneseAppointmentParser.detect_operation_intent("预约を変更したいです") == "update"
+    assert JapaneseAppointmentParser.detect_operation_intent("この予約をキャンセルしてください") == "cancel"
+    assert JapaneseAppointmentParser.detect_operation_intent("新規予約をしたいです") is None
 
 
 def test_generic_identity_detection():
-    assert ChatService._is_generic_caller_name("Test Caller")
-    assert ChatService._is_generic_caller_name("chat_user")
-    assert ChatService._is_placeholder_counterpart("chat_user")
-    assert ChatService._is_placeholder_counterpart("UNKNOWN")
-    assert not ChatService._is_generic_caller_name("山田太郎")
-    assert not ChatService._is_placeholder_counterpart("+819012345678")
+    assert JapaneseAppointmentParser.is_generic_caller_name("Test Caller")
+    assert JapaneseAppointmentParser.is_generic_caller_name("chat_user")
+    assert JapaneseAppointmentParser.is_placeholder_counterpart("chat_user")
+    assert JapaneseAppointmentParser.is_placeholder_counterpart("UNKNOWN")
+    assert not JapaneseAppointmentParser.is_generic_caller_name("山田太郎")
+    assert not JapaneseAppointmentParser.is_placeholder_counterpart("+819012345678")
 
 
 def test_extract_company_name_pair_from_natural_sentence():
-    company, caller_name = ChatService._extract_company_name_pair("ABC会社のCCCです。")
+    company, caller_name = JapaneseAppointmentParser.extract_company_name_pair("ABC会社のCCCです。")
     assert company == "ABC会社"
     assert caller_name == "CCC"
 
 
 def test_collect_operation_identity_hints_expected_company_accepts_short_reply():
     call = SimpleNamespace(caller_name="Test Caller", counterpart="chat_user")
-    hints = ChatService._collect_operation_identity_hints(
+    hints = JapaneseAppointmentParser.collect_operation_identity_hints(
         call,
         "ABC",
         base_hints={"caller_name": "CCC"},
@@ -191,7 +204,7 @@ def test_collect_operation_identity_hints_expected_company_accepts_short_reply()
 
 def test_collect_operation_identity_hints_expected_company_accepts_individual():
     call = SimpleNamespace(caller_name="Test Caller", counterpart="chat_user")
-    hints = ChatService._collect_operation_identity_hints(
+    hints = JapaneseAppointmentParser.collect_operation_identity_hints(
         call,
         "個人です",
         base_hints={"caller_name": "CCC"},
@@ -202,7 +215,7 @@ def test_collect_operation_identity_hints_expected_company_accepts_individual():
 
 def test_collect_operation_identity_hints_expected_name_accepts_short_reply():
     call = SimpleNamespace(caller_name="Test Caller", counterpart="chat_user")
-    hints = ChatService._collect_operation_identity_hints(
+    hints = JapaneseAppointmentParser.collect_operation_identity_hints(
         call,
         "山田",
         base_hints={},
@@ -212,14 +225,16 @@ def test_collect_operation_identity_hints_expected_name_accepts_short_reply():
 
 
 def test_build_operation_identity_prompt_single_step():
-    prompt = ChatService._build_operation_identity_prompt({"caller_name": "CCC", "counterpart": "+8190xxxx"})
+    prompt = JapaneseAppointmentParser.build_operation_identity_prompt(
+        {"caller_name": "CCC", "counterpart": "+8190xxxx"}
+    )
     assert "続けて" in prompt
     assert "会社名" in prompt
     assert "回収希望日" not in prompt
 
 
 def test_build_operation_identity_prompt_no_match_does_not_mention_reservation_id():
-    prompt = ChatService._build_operation_identity_prompt(
+    prompt = JapaneseAppointmentParser.build_operation_identity_prompt(
         {"caller_name": "CCC", "company": "ABC会社", "appointment_date": "2026-04-01"},
         no_match=True,
         mismatch_count=2,
@@ -239,7 +254,7 @@ def test_format_appointment_brief_hides_internal_id():
         extra_request="時間厳守",
     )
 
-    summary = ChatService._format_appointment_brief(appointment)
+    summary = AppointmentBriefPresenter.format_appointment_brief(appointment)
 
     assert "ID:" not in summary
     assert "予約日時:" in summary
@@ -262,7 +277,7 @@ def test_format_appointment_brief_uses_extracted_volume_and_waste_type_fallbacks
         extracted_data={"waste_type": ["粗大ゴミ"], "estimated_volume_m3": 2.5},
     )
 
-    summary = ChatService._format_appointment_brief(appointment)
+    summary = AppointmentBriefPresenter.format_appointment_brief(appointment)
 
     assert "品目: 粗大ゴミ" in summary
     assert "重量・容量: 2.5m3" in summary
@@ -270,7 +285,7 @@ def test_format_appointment_brief_uses_extracted_volume_and_waste_type_fallbacks
 
 
 def test_extract_datetime_from_text():
-    parsed = ChatService._extract_datetime_from_text("日時を2026年4月10日10:30に変更したいです")
+    parsed = JapaneseAppointmentParser.extract_datetime_from_text("日時を2026年4月10日10:30に変更したいです")
 
     assert parsed is not None
     assert parsed.year == 2026
@@ -281,7 +296,9 @@ def test_extract_datetime_from_text():
 
 
 def test_extract_datetime_from_spaced_voice_transcript_hour_only():
-    parsed = ChatService._extract_datetime_from_text("2026 年 の 5 月 1 日 の 11 時 、 田中 です 。")
+    parsed = JapaneseAppointmentParser.extract_datetime_from_text(
+        "2026 年 の 5 月 1 日 の 11 時 、 田中 です 。"
+    )
 
     assert parsed is not None
     assert parsed.year == 2026
@@ -293,7 +310,7 @@ def test_extract_datetime_from_spaced_voice_transcript_hour_only():
 
 def test_collect_operation_identity_hints_from_long_voice_transcript():
     call = SimpleNamespace(caller_name="Test Caller", counterpart="chat_user")
-    hints = ChatService._collect_operation_identity_hints(
+    hints = JapaneseAppointmentParser.collect_operation_identity_hints(
         call,
         "会社 に 着く の は 、 ええ と 、 2026 年 の 5 月 1 日 の 11 時 、 田中 です 。",
     )
@@ -308,22 +325,29 @@ def test_select_candidate_id_from_text():
         "22222222-2222-2222-2222-222222222222",
     ]
 
-    assert ChatService._select_candidate_id_from_text("2", candidate_ids) == candidate_ids[1]
     assert (
-        ChatService._select_candidate_id_from_text(candidate_ids[0], candidate_ids)
+        AppointmentOperationFlowService.select_candidate_id_from_text("2", candidate_ids)
+        == candidate_ids[1]
+    )
+    assert (
+        AppointmentOperationFlowService.select_candidate_id_from_text(candidate_ids[0], candidate_ids)
         == candidate_ids[0]
     )
 
 
 @pytest.mark.asyncio
 async def test_find_operation_candidates_without_identity_returns_empty():
-    service = ChatService.__new__(ChatService)
-    repo = SimpleNamespace(search_operation_candidates=AsyncMock(return_value=[SimpleNamespace(id="x")]))
+    repo = SimpleNamespace(
+        search_operation_candidates=AsyncMock(return_value=[SimpleNamespace(id="x")])
+    )
     repo.search_operation_candidates_with_call = AsyncMock(return_value=[])
-    service.appointment_repo = repo
+    matcher = AppointmentOperationMatcher(repo)
 
     call = SimpleNamespace(caller_name="Test Caller", counterpart="chat_user")
-    candidates, hints = await service._find_operation_candidates(call, "こないだの予定を変更したいです")
+    candidates, hints = await matcher.find_candidates(
+        call,
+        "こないだの予定を変更したいです",
+    )
 
     assert candidates == []
     assert hints == {}
@@ -332,7 +356,6 @@ async def test_find_operation_candidates_without_identity_returns_empty():
 
 @pytest.mark.asyncio
 async def test_find_operation_candidates_prefers_counterpart_when_name_is_generic():
-    service = ChatService.__new__(ChatService)
     expected = [
         SimpleNamespace(
             id="a",
@@ -345,13 +368,25 @@ async def test_find_operation_candidates_prefers_counterpart_when_name_is_generi
     repo = SimpleNamespace(
         search_operation_candidates=AsyncMock(return_value=expected),
         search_operation_candidates_with_call=AsyncMock(
-            return_value=[(expected[0], SimpleNamespace(counterpart="+819012345678", caller_name=None))]
+            return_value=[
+                (
+                    expected[0],
+                    SimpleNamespace(counterpart="+819012345678", caller_name=None),
+                )
+            ]
         ),
     )
-    service.appointment_repo = repo
+    matcher = AppointmentOperationMatcher(repo)
 
-    call = SimpleNamespace(caller_name="Test Caller", counterpart="+819012345678", id="call-id")
-    candidates, hints = await service._find_operation_candidates(call, "会社名: ABC会社 予約日: 2026-04-01")
+    call = SimpleNamespace(
+        caller_name="Test Caller",
+        counterpart="+819012345678",
+        id="call-id",
+    )
+    candidates, hints = await matcher.find_candidates(
+        call,
+        "会社名: ABC会社 予約日: 2026-04-01",
+    )
 
     assert candidates == expected
     assert hints["counterpart"] == "+819012345678"
@@ -365,7 +400,6 @@ async def test_find_operation_candidates_prefers_counterpart_when_name_is_generi
 
 @pytest.mark.asyncio
 async def test_resolve_extracted_operation_target_matches_name_and_original_time():
-    service = ChatService.__new__(ChatService)
     target = SimpleNamespace(
         id=uuid4(),
         call_id=uuid4(),
@@ -376,14 +410,20 @@ async def test_resolve_extracted_operation_target_matches_name_and_original_time
         address="品川区1-2-3",
         extra_data={},
     )
-    service.appointment_repo = SimpleNamespace(
+    repo = SimpleNamespace(
         get=AsyncMock(return_value=None),
         search_operation_candidates_with_call=AsyncMock(
-            return_value=[(target, SimpleNamespace(counterpart="+817000000000", caller_name="田中"))]
+            return_value=[
+                (
+                    target,
+                    SimpleNamespace(counterpart="+817000000000", caller_name="田中"),
+                )
+            ]
         ),
     )
+    matcher = AppointmentOperationMatcher(repo)
 
-    resolved = await service._resolve_extracted_operation_target(
+    resolved = await matcher.resolve_extracted_operation_target(
         call=SimpleNamespace(id=uuid4()),
         raw_data={
             "request_type": "cancel",
@@ -394,49 +434,7 @@ async def test_resolve_extracted_operation_target_matches_name_and_original_time
     )
 
     assert resolved == target
-    service.appointment_repo.search_operation_candidates_with_call.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_try_apply_extracted_cancel_request_returns_operation_event():
-    service = ChatService.__new__(ChatService)
-    target = SimpleNamespace(id=uuid4())
-    operation_event_id = uuid4()
-    call = SimpleNamespace(id=uuid4(), extra_data={})
-    service.db = SimpleNamespace(commit=AsyncMock())
-    service._resolve_extracted_operation_target = AsyncMock(return_value=target)
-
-    async def execute_operation(**kwargs):
-        kwargs["call"].extra_data = {
-            **kwargs["extra_data"],
-            "operation_execution": {
-                "operation": kwargs["operation"],
-                "appointment_id": str(operation_event_id),
-                "target_appointment_id": str(target.id),
-            },
-        }
-        return "キャンセルが完了しました。"
-
-    service._execute_operation_flow_action = execute_operation
-
-    result = await service._try_apply_extracted_operation_request(
-        call=call,
-        raw_data={
-            "request_type": "cancel",
-            "caller_name": "田中",
-            "original_appointment_time": "2026-05-01T11:00:00+09:00",
-        },
-        extraction_summary="田中様からの2026年5月1日11時の予約キャンセル依頼。",
-        extraction_confidence=1.0,
-        extra_data={"source": "test_lab"},
-    )
-
-    assert result is not None
-    assert result.success is True
-    assert result.appointment_id == operation_event_id
-    assert result.extracted_data["operation"] == "cancel"
-    assert result.extracted_data["target_appointment_id"] == str(target.id)
-    service.db.commit.assert_awaited_once()
+    repo.search_operation_candidates_with_call.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -472,8 +470,6 @@ async def test_process_test_session_operation_turn_persists_handled_turn():
     service = ChatService.__new__(ChatService)
     service._build_chat_runtime_service = lambda: runtime
     service._handle_appointment_operation_flow = handle_flow
-    service._sanitize_assistant_response = lambda value: value
-    service._strip_redundant_opening_greeting = lambda value, prior_assistant_messages: value
 
     result = await service.process_test_session_operation_turn(
         call_id=call_id,
@@ -518,8 +514,6 @@ async def test_process_test_session_operation_turn_skips_persist_when_not_handle
     service = ChatService.__new__(ChatService)
     service._build_chat_runtime_service = lambda: runtime
     service._handle_appointment_operation_flow = AsyncMock(return_value=None)
-    service._sanitize_assistant_response = lambda value: value
-    service._strip_redundant_opening_greeting = lambda value, prior_assistant_messages: value
 
     result = await service.process_test_session_operation_turn(
         call_id=call_id,

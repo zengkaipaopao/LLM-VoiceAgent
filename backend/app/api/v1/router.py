@@ -1,13 +1,10 @@
+"""Compatibility entrypoint for the API v1 router.
+
+The canonical router assembly lives in ``app.api.routes`` because it wires both
+public Twilio webhooks and protected application routes in one place. Keep this
+module as a thin re-export so older imports do not see a stale partial route set.
 """
-API v1 router.
-"""
-from fastapi import APIRouter
-from app.api.v1.endpoints import calls, call_simulation, appointment_simulation
 
-api_router = APIRouter()
+from app.api.routes import api_router
 
-# Include all endpoint routers
-api_router.include_router(calls.router)
-api_router.include_router(call_simulation.router, prefix="/calls/simulate", tags=["Simulation"])  # 测试用模拟API
-api_router.include_router(appointment_simulation.router, prefix="/appointments/simulate", tags=["Simulation"])
-
+__all__ = ["api_router"]
