@@ -1,10 +1,7 @@
-"""
-Call service for business logic.
+"""Read-model service for call management pages.
 
-This service handles call-related business logic.
-It sits between the API layer and the Repository layer.
-
-TODO: Implement real business logic when SIP service is ready.
+Realtime voice behavior lives in the Twilio/live-gateway domain services. This
+service intentionally keeps only list/detail helpers used by management APIs.
 """
 from datetime import datetime
 from typing import List, Optional, Tuple
@@ -57,24 +54,20 @@ class CallService:
 
     def create_outbound_call(self, counterpart: str, caller_name: Optional[str] = None, **kwargs) -> Call:
         raise NotImplementedError(
-            "Outbound call creation requires SIP service integration. "
-            "Currently only simulation is supported."
+            "Outbound call creation is handled by the Twilio voice gateway services."
         )
 
     def answer_call(self, call_id: UUID) -> Call:
         raise NotImplementedError(
-            "Call answering requires SIP service integration. "
-            "Currently only simulation is supported."
+            "Call answering is handled by the Twilio voice gateway services."
         )
 
     def transfer_call(self, call_id: UUID, target: str, reason: Optional[str] = None) -> Call:
         raise NotImplementedError(
-            "Call transfer requires SIP service integration. "
-            "Currently only simulation is supported."
+            "Call transfer is not part of the call management read-model service."
         )
 
     def end_call(self, call_id: UUID) -> Call:
         raise NotImplementedError(
-            "Call ending requires SIP service integration. "
-            "Currently only simulation is supported."
+            "Call ending is handled by Twilio status and voice gateway services."
         )

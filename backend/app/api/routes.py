@@ -17,6 +17,7 @@ from app.api.v1.endpoints import (
     twilio_incoming,
     twilio_legacy_stream,
     twilio_management,
+    twilio_official_ca,
     twilio_status,
     twilio_trace,
 )
@@ -24,7 +25,6 @@ from app.api.v1.endpoints import (
 api_router = APIRouter()
 protected_router = APIRouter(dependencies=[Depends(require_api_key)])
 
-# Existing routes
 api_router.include_router(health.router, tags=["health"])
 protected_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 protected_router.include_router(
@@ -40,7 +40,6 @@ protected_router.include_router(
 protected_router.include_router(appointments.router, prefix="/appointments", tags=["appointments"])
 protected_router.include_router(calls.router, prefix="/calls", tags=["calls"])
 
-# New LLM chat routes
 protected_router.include_router(chat.router, prefix="/chat", tags=["chat"])
 protected_router.include_router(prompts.router, prefix="/prompts", tags=["prompts"])
 protected_router.include_router(llm.router, prefix="/llm", tags=["llm"])
@@ -51,6 +50,7 @@ api_router.include_router(twilio.router, prefix="/twilio", tags=["twilio"])
 api_router.include_router(twilio_incoming.router, prefix="/twilio", tags=["twilio"])
 api_router.include_router(twilio_legacy_stream.router, prefix="/twilio", tags=["twilio"])
 api_router.include_router(twilio_management.router, prefix="/twilio", tags=["twilio"])
+api_router.include_router(twilio_official_ca.router, prefix="/twilio", tags=["twilio"])
 api_router.include_router(twilio_status.router, prefix="/twilio", tags=["twilio"])
 api_router.include_router(twilio_trace.router, prefix="/twilio", tags=["twilio"])
 api_router.include_router(protected_router)

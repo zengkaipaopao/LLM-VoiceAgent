@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query, WebSocket
+from fastapi import APIRouter
 
 from app.core.config import settings
 from app.core.model_defaults import require_live_model, resolve_vertex_live_model
@@ -10,11 +10,7 @@ from app.services.twilio.live_config import (
     _validate_twilio_activity_mode,
     _validate_twilio_media_stream_bridge_profile,
 )
-from app.services.twilio.media_stream_bootstrap import receive_twilio_media_stream_start
 from app.services.twilio.normalizers import _resolve_twilio_inbound_voice_route
-from app.services.twilio.official_conversational_agents import (
-    bridge_twilio_to_official_conversational_agents,
-)
 from app.services.twilio.pending_overrides import (
     _consume_pending_inbound_override_for_number,
     _set_pending_inbound_override_for_number,
@@ -28,7 +24,6 @@ from app.services.twilio.twiml_builders import (
     _build_twilio_media_stream_twiml,
     _candidate_websocket_signature_urls,
     _extract_stream_custom_parameters,
-    _verify_websocket_or_close,
 )
 from app.services.twilio.voice_catalog import (
     _extract_twilio_google_voice_names,
@@ -69,28 +64,3 @@ def _resolve_gemini_live_model(candidate_model: str | None) -> str:
             fallback_model=settings.default_live_model,
         )
     return resolved
-
-
-@router.websocket(
-    "/voice/stream/official-ca",
-    name="twilio_voice_official_conversational_agents_stream",
-)
-async def twilio_voice_official_conversational_agents_stream(
-    websocket: WebSocket,
-    prompt_code: str | None = Query(default=None),
-    voice_name: str | None = Query(default=None),
-):
-    if not await _verify_websocket_or_close(websocket):
-        return
-    await websocket.accept()
-    bootstrap = await receive_twilio_media_stream_start(
-        websocket,
-        prompt_code=prompt_code,
-        voice_name=voice_name,
-    )
-    if bootstrap is None:
-        return
-    await bridge_twilio_to_official_conversational_agents(
-        websocket=websocket,
-        bootstrap=bootstrap,
-    )

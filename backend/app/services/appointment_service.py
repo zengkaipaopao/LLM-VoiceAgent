@@ -1,10 +1,8 @@
-"""
-Appointment service for business logic.
+"""Read-model service for appointment management pages.
 
-This service handles appointment-related business logic.
-It sits between the API layer and the Repository layer.
-
-TODO: Implement real business logic when calendar integration is ready.
+Realtime appointment creation, update, cancel, matching, and confirmation live
+in the ``services.appointments`` domain package. This service intentionally
+keeps list/detail helpers used by management APIs.
 """
 from datetime import datetime
 from typing import List, Optional, Tuple
@@ -72,30 +70,25 @@ class AppointmentService:
         **kwargs,
     ) -> Appointment:
         raise NotImplementedError(
-            "Appointment creation requires calendar integration. "
-            "Currently only simulation is supported."
+            "Appointment creation is handled by the appointments domain services."
         )
 
     def update_appointment(self, appointment_id: UUID, **updates) -> Appointment:
         raise NotImplementedError(
-            "Appointment update requires calendar integration. "
-            "Currently only simulation is supported."
+            "Appointment updates are handled by the appointments domain services."
         )
 
     def confirm_appointment(self, appointment_id: UUID) -> Appointment:
         raise NotImplementedError(
-            "Appointment confirmation requires calendar integration. "
-            "Currently only simulation is supported."
+            "Appointment confirmation is handled by the appointments domain services."
         )
 
     def cancel_appointment(self, appointment_id: UUID, reason: Optional[str] = None) -> Appointment:
         raise NotImplementedError(
-            "Appointment cancellation requires calendar integration. "
-            "Currently only simulation is supported."
+            "Appointment cancellation is handled by the appointments domain services."
         )
 
     def reschedule_appointment(self, appointment_id: UUID, new_time: datetime) -> Appointment:
         raise NotImplementedError(
-            "Appointment rescheduling requires calendar integration. "
-            "Currently only simulation is supported."
+            "Appointment rescheduling is handled by the appointments domain services."
         )
