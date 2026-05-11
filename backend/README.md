@@ -1,4 +1,4 @@
-# LLM Voice Agent - 后端
+# LLMVoiceDesk - 后端
 
 企业级语音AI助手后端服务
 
@@ -146,10 +146,10 @@ pytest --cov=app tests/
 
 ```bash
 # 构建镜像
-docker build -t llm-voice-agent-backend .
+docker build -t llm-voice-desk-backend .
 
 # 运行容器
-docker run -p 8000:8000 llm-voice-agent-backend
+docker run -p 8000:8000 llm-voice-desk-backend
 ```
 
 ### AWS部署

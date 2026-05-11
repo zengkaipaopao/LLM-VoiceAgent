@@ -1,4 +1,4 @@
-# LLM Voice Agent - 前端
+# LLMVoiceDesk - 前端
 
 企业级语音 AI 助手前端应用
 

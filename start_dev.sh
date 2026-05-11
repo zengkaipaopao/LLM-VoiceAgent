@@ -73,7 +73,7 @@ for arg in "$@"; do
   esac
 done
 
-print_header "🚀 LLM-VoiceAgent 开发环境启动"
+print_header "🚀 LLMVoiceDesk 开发环境启动"
 
 # ============================================
 # 检查并启动 PostgreSQL

@@ -8,6 +8,7 @@ import {
 import { Notification, UserAvatarFilledAlt } from '@carbon/icons-react';
 
 import { LanguageSwitcher } from '../../molecules/LanguageSwitcher';
+import styles from './AppLayout.module.scss';
 
 interface AppHeaderBarProps {
   isSideNavExpanded: boolean;
@@ -23,7 +24,7 @@ export function AppHeaderBar({
   t,
 }: AppHeaderBarProps) {
   return (
-    <Header aria-label="LLM Voice Agent">
+    <Header aria-label="LLM VoiceDesk">
       <HeaderMenuButton
         aria-label={
           isSideNavExpanded ? t('navigation:header.menuCollapse') : t('navigation:header.menuExpand')
@@ -35,12 +36,18 @@ export function AppHeaderBar({
       <HeaderName
         href="/"
         prefix="LLM"
+        className={styles['brand-name']}
         onClick={(event) => {
           event.preventDefault();
           onNavigate('/');
         }}
       >
-        Voice Agent
+        <span className={styles['brand-lockup']}>
+          <span className={styles['brand-mark']} aria-hidden="true">
+            VD
+          </span>
+          <span>VoiceDesk</span>
+        </span>
       </HeaderName>
 
       <HeaderGlobalBar>

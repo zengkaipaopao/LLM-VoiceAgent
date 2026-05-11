@@ -1,4 +1,4 @@
-# LLM-VoiceAgent
+# LLMVoiceDesk
 
 企业级 LLM 语音座席项目的单体架构骨架，包含：
 

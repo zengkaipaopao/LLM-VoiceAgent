@@ -46,6 +46,7 @@
       "headers": {
         "callId": "通話ID",
         "caller": "発信者",
+        "phoneNumber": "電話番号",
         "status": "ステータス",
         "handler": "処理方法",
         "time": "日時",

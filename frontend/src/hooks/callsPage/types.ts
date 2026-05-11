@@ -6,6 +6,7 @@ export type CallTableRow = {
   id: string;
   call_id: string;
   caller: string;
+  phone_number: string;
   status: string;
   handler: string | undefined;
   started_at: string;

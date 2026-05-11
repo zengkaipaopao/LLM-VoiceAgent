@@ -46,6 +46,7 @@
       "headers": {
         "callId": "Call ID",
         "caller": "Caller",
+        "phoneNumber": "Phone Number",
         "status": "Status",
         "handler": "Handler",
         "time": "Time",

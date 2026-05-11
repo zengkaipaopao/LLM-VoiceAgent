@@ -31,7 +31,8 @@ export function mapCallsToTableRows(calls: CallLog[]): CallTableRow[] {
   return calls.map((call) => ({
     id: call.id,
     call_id: call.id.substring(0, 8),
-    caller: call.callerName || call.counterpart,
+    caller: call.callerName || '-',
+    phone_number: call.counterpart || '-',
     status: call.status,
     handler: call.handlerType,
     started_at: call.startedAt,

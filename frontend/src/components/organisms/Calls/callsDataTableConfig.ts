@@ -49,6 +49,7 @@ export function buildCallsHeaders(t: TranslateFn): Header[] {
   return [
     { key: 'call_id', header: t('calls.table.headers.callId') },
     { key: 'caller', header: t('calls.table.headers.caller') },
+    { key: 'phone_number', header: t('calls.table.headers.phoneNumber') },
     { key: 'status', header: t('calls.table.headers.status') },
     { key: 'handler', header: t('calls.table.headers.handler') },
     { key: 'started_at', header: t('calls.table.headers.time') },

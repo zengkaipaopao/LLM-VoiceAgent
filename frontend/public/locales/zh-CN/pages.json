@@ -46,6 +46,7 @@
       "headers": {
         "callId": "通话ID",
         "caller": "来电者",
+        "phoneNumber": "电话号码",
         "status": "状态",
         "handler": "处理",
         "time": "时间",
