@@ -7,7 +7,6 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass
-from typing import Optional
 
 import google.auth
 import httpx

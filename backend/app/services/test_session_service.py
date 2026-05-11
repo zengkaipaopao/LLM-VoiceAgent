@@ -10,7 +10,6 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.model_defaults import require_generate_model, require_live_model
 from app.repositories.appointment_repository import AppointmentRepository
 from app.repositories.call_repository import CallRepository
