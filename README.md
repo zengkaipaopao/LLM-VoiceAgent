@@ -30,6 +30,7 @@ poetry run uvicorn app.main:app --reload
 ## 📚 文档
 
 - [系统架构](./docs/ARCHITECTURE.md) - 完整的系统架构设计
+- [项目交接文档集](./docs/handover/README.md) - 需求分析、基本设计、详细设计、运维交接、当前阶段与 TODO
 - [后端文档](./backend/README.md) - 后端开发文档
 - [前端文档](./frontend/README.md) - 前端开发文档
 
