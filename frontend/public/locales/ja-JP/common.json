@@ -24,6 +24,20 @@
     "english": "English",
     "japanese": "日本語"
   },
+  "login": {
+    "heroLine1": "すべての対話を",
+    "heroLine2": "確かな次の一歩へ",
+    "heroDescription": "AI音声エージェント、通話履歴、予約業務を一元管理します。",
+    "title": "管理画面にログイン",
+    "description": "管理者アカウントで続行してください。",
+    "username": "ユーザー名",
+    "password": "パスワード",
+    "submit": "ログイン",
+    "submitting": "確認中…",
+    "errorTitle": "ログインに失敗しました",
+    "errorMessage": "ユーザー名またはパスワードが正しくありません。",
+    "security": "セッションは安全なCookieに保存され、パスワードはブラウザに保存されません。"
+  },
   "emptyState": {
     "title": "コンテンツなし",
     "description": "このページは開発中です"

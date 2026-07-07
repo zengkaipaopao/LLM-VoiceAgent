@@ -5,8 +5,9 @@ import {
   HeaderMenuButton,
   HeaderName,
 } from '@carbon/react';
-import { Notification, UserAvatarFilledAlt } from '@carbon/icons-react';
+import { Logout, Notification } from '@carbon/icons-react';
 
+import { useAuth } from '../../../auth/AuthContext';
 import { LanguageSwitcher } from '../../molecules/LanguageSwitcher';
 import styles from './AppLayout.module.scss';
 
@@ -23,6 +24,8 @@ export function AppHeaderBar({
   onNavigate,
   t,
 }: AppHeaderBarProps) {
+  const { user, logout } = useAuth();
+
   return (
     <Header aria-label="LLM VoiceDesk">
       <HeaderMenuButton
@@ -57,8 +60,11 @@ export function AppHeaderBar({
           <Notification size={24} />
         </HeaderGlobalAction>
 
-        <HeaderGlobalAction aria-label={t('navigation:header.account')}>
-          <UserAvatarFilledAlt size={24} />
+        <HeaderGlobalAction
+          aria-label={`退出登录（${user?.display_name || user?.username || ''}）`}
+          onClick={() => void logout()}
+        >
+          <Logout size={24} />
         </HeaderGlobalAction>
       </HeaderGlobalBar>
     </Header>

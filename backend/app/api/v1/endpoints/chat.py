@@ -69,7 +69,7 @@ async def start_test_session(request: TestSessionStartRequest, db: AsyncSession 
         logger.warning("Invalid test session start request: %s", e)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid test session request.",
+            detail=str(e),
         ) from e
 
 

@@ -24,6 +24,20 @@
     "english": "English",
     "japanese": "日本語"
   },
+  "login": {
+    "heroLine1": "Turn every conversation",
+    "heroLine2": "into the right next step",
+    "heroDescription": "Manage AI voice agents, call records, and appointment workflows.",
+    "title": "Sign in to the console",
+    "description": "Continue with your administrator account.",
+    "username": "Username",
+    "password": "Password",
+    "submit": "Sign in",
+    "submitting": "Verifying…",
+    "errorTitle": "Sign-in failed",
+    "errorMessage": "The username or password is incorrect. Please try again.",
+    "security": "Your session uses a secure cookie. Passwords are never stored in the browser."
+  },
   "emptyState": {
     "title": "No Content",
     "description": "This page is under development"

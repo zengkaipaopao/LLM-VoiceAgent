@@ -44,7 +44,14 @@ app.add_middleware(
     else ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"]
     if settings.environment == "local"
-    else ["Authorization", "Content-Type", "X-Request-ID", "X-API-Key"],
+    else [
+        "Authorization",
+        "Content-Type",
+        "X-Request-ID",
+        "X-API-Key",
+        "X-CSRF-Token",
+    ],
+    allow_credentials=True,
 )
 
 app.include_router(api_router, prefix=settings.api_prefix)

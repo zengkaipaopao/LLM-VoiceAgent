@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.deps import require_api_key
 from app.api.v1.endpoints import (
+    auth,
     appointment_simulation,
     appointments,
     call_simulation,
@@ -26,6 +27,7 @@ api_router = APIRouter()
 protected_router = APIRouter(dependencies=[Depends(require_api_key)])
 
 api_router.include_router(health.router, tags=["health"])
+api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 protected_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 protected_router.include_router(
     call_simulation.router,

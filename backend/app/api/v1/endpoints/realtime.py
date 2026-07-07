@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Query, WebSocket, status
 from google import genai
 from google.genai import types
 
-from app.api.deps import require_api_key, verify_websocket_api_key
+from app.api.deps import require_api_key, verify_admin_websocket_session
 from app.core.config import settings
 from app.core.model_defaults import require_live_model
 from app.schemas.base import ResponseBase
@@ -58,6 +58,10 @@ async def create_live_auth_token(
         system_instruction=resolved_system_instruction,
     )
     auth_client = genai.Client(
+        # Ephemeral auth tokens are only available through the Gemini
+        # Developer API. Explicitly opt out of Vertex AI because the SDK also
+        # reads GOOGLE_GENAI_USE_VERTEXAI from the process environment.
+        vertexai=False,
         api_key=settings.google_api_key,
         http_options={"api_version": "v1alpha"},
     )
@@ -124,7 +128,7 @@ async def live_websocket(
     """
     await websocket.accept()
 
-    is_authorized, auth_error = verify_websocket_api_key(websocket)
+    is_authorized, auth_error = await verify_admin_websocket_session(websocket)
     if not is_authorized:
         await websocket.send_json(
             {

@@ -6,33 +6,12 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ========================================
--- 枚举类型定义
--- ========================================
-DO $$ BEGIN
-    CREATE TYPE call_direction AS ENUM ('inbound', 'outbound');
-EXCEPTION
-    WHEN duplicate_object THEN null;
-END $$;
-
-DO $$ BEGIN
-    CREATE TYPE call_status AS ENUM ('ringing', 'ongoing', 'completed', 'failed', 'no_answer', 'busy');
-EXCEPTION
-    WHEN duplicate_object THEN null;
-END $$;
-
-DO $$ BEGIN
-    CREATE TYPE handler_type AS ENUM ('ai', 'human', 'transferred');
-EXCEPTION
-    WHEN duplicate_object THEN null;
-END $$;
-
--- ========================================
 -- 通话记录表
 -- ========================================
 CREATE TABLE IF NOT EXISTS calls (
     -- 基础信息
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    direction call_direction NOT NULL,
+    direction VARCHAR(20) NOT NULL,
     counterpart VARCHAR(50) NOT NULL,
     caller_name VARCHAR(100),
     
@@ -43,8 +22,8 @@ CREATE TABLE IF NOT EXISTS calls (
     duration_seconds INTEGER NOT NULL DEFAULT 0,
     
     -- 状态信息
-    status call_status NOT NULL DEFAULT 'ringing',
-    handler_type handler_type DEFAULT 'ai',
+    status VARCHAR(20) NOT NULL DEFAULT 'ringing',
+    handler_type VARCHAR(20) DEFAULT 'ai',
     is_answered BOOLEAN DEFAULT FALSE,
     
     -- 内容信息

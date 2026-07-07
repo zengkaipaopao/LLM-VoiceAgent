@@ -8,6 +8,52 @@
 
 ## 快速开始
 
+### Docker Compose（推荐）
+
+首次运行时复制环境变量模板：
+
+```bash
+cp .env.example .env
+```
+
+将本地使用的 Google、Twilio 等密钥填入根目录 `.env`。该文件已被
+Git 忽略。容器内数据库与 Redis 的主机名必须分别保持为 `postgres`
+和 `redis`，不能使用 `localhost`。
+
+启动完整环境：
+
+```bash
+docker compose up --build -d
+docker compose ps
+```
+
+首次启动后，创建后台管理员（密码至少 12 位）：
+
+```bash
+docker compose exec backend python scripts/create_admin.py \
+  --username admin \
+  --display-name "Administrator"
+```
+
+管理员账号、密码哈希和角色保存在 PostgreSQL；登录 Session 保存在 Redis，
+Key 使用 Session Token 的 SHA-256 哈希并设置自动过期 TTL。浏览器仅保存
+HttpOnly Session Cookie，不保存明文密码或原始 Session 到数据库。
+
+浏览器访问 <http://localhost:8080>，查看日志使用：
+
+```bash
+docker compose logs -f backend
+```
+
+停止服务：
+
+```bash
+docker compose down
+```
+
+以上命令不会删除 PostgreSQL、Redis 和录音卷。如需连同本地数据一起删除，
+可明确执行 `docker compose down -v`。
+
 ### Frontend
 ```bash
 cd frontend

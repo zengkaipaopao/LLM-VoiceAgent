@@ -1,0 +1,133 @@
+@use '@carbon/styles/scss/spacing';
+@use '@carbon/styles/scss/breakpoint';
+
+.page {
+  background: #161616;
+  display: grid;
+  min-height: 100vh;
+  grid-template-columns: minmax(0, 1.15fr) minmax(28rem, 0.85fr);
+}
+
+.hero {
+  background:
+    radial-gradient(circle at 20% 18%, rgba(15, 98, 254, 0.35), transparent 34%),
+    radial-gradient(circle at 76% 76%, rgba(36, 161, 72, 0.18), transparent 30%),
+    linear-gradient(145deg, #0b1739 0%, #161616 62%);
+  display: flex;
+  min-height: 100vh;
+  overflow: hidden;
+  padding: spacing.$spacing-10;
+  position: relative;
+}
+
+.hero::after {
+  background-image:
+    linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+  background-size: 48px 48px;
+  content: '';
+  inset: 0;
+  mask-image: linear-gradient(to bottom right, black, transparent 72%);
+  position: absolute;
+}
+
+.heroContent {
+  align-self: center;
+  max-width: 42rem;
+  position: relative;
+  z-index: 1;
+}
+
+.mark {
+  align-items: center;
+  background: linear-gradient(135deg, #0f62fe, #24a148);
+  border-radius: 1rem;
+  color: white;
+  display: flex;
+  height: 4rem;
+  justify-content: center;
+  margin-bottom: spacing.$spacing-08;
+  width: 4rem;
+}
+
+.eyebrow {
+  color: #78a9ff;
+  font-size: .875rem;
+  font-weight: 600;
+  letter-spacing: .12em;
+  margin-bottom: spacing.$spacing-06;
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  color: #f4f4f4;
+  font-size: clamp(2.75rem, 5vw, 5.25rem);
+  font-weight: 300;
+  letter-spacing: -.04em;
+  line-height: 1.02;
+  margin: 0;
+}
+
+.heroCopy {
+  color: #c6c6c6;
+  font-size: 1.125rem;
+  line-height: 1.6;
+  margin-top: spacing.$spacing-07;
+}
+
+.signal {
+  align-items: center;
+  display: flex;
+  gap: .55rem;
+  height: 6rem;
+  margin-top: spacing.$spacing-09;
+}
+
+.signal span {
+  background: linear-gradient(#78a9ff, #42be65);
+  border-radius: 1rem;
+  display: block;
+  opacity: .78;
+  width: .3rem;
+}
+
+.loginTheme {
+  background: #f4f4f4;
+  min-height: 100vh;
+  position: relative;
+}
+
+.languageSwitcher {
+  position: absolute;
+  right: spacing.$spacing-06;
+  top: spacing.$spacing-05;
+  z-index: 2;
+}
+
+.loginPanel {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: spacing.$spacing-09;
+}
+
+.formWrap { max-width: 25rem; width: 100%; }
+.product { color: #525252; margin-bottom: spacing.$spacing-10; }
+.formWrap h2 { color: #161616; font-size: 2rem; font-weight: 400; margin: 0; }
+.intro { color: #525252; margin: spacing.$spacing-04 0 spacing.$spacing-07; }
+.form { display: grid; gap: spacing.$spacing-06; margin-top: spacing.$spacing-06; }
+.submit { max-width: none; width: 100%; }
+.security { color: #6f6f6f; font-size: .75rem; line-height: 1.4; margin-top: spacing.$spacing-07; }
+
+@media (max-width: 66rem) {
+  .page { grid-template-columns: 1fr 28rem; }
+  .hero { padding: spacing.$spacing-08; }
+}
+
+@media (max-width: 48rem) {
+  .page { display: block; }
+  .hero { display: none; }
+  .loginTheme { min-height: 100vh; }
+  .loginPanel { padding: spacing.$spacing-07; }
+}

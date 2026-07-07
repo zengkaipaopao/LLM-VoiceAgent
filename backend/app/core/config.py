@@ -110,6 +110,13 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     app_api_key: str = ""
     enforce_api_key_auth_in_local: bool = False
+    auth_session_cookie_name: str = "llm_voice_session"
+    auth_csrf_cookie_name: str = "llm_voice_csrf"
+    auth_session_redis_prefix: str = "llm_voice_agent:admin_session"
+    auth_session_hours: int = 12
+    auth_cookie_secure: bool = False
+    auth_max_failed_attempts: int = 5
+    auth_lockout_minutes: int = 15
     twilio_validate_webhooks: bool = True
     twilio_webhook_tolerance_seconds: int = 300
 
@@ -122,6 +129,11 @@ class Settings(BaseSettings):
         if not (self.app_api_key or "").strip():
             return False
         return self.environment != "local" or self.enforce_api_key_auth_in_local
+
+    @property
+    def auth_cookie_secure_effective(self) -> bool:
+        """Never allow an insecure administrative session cookie outside local development."""
+        return self.environment != "local" or self.auth_cookie_secure
 
     @property
     def google_vertex_enabled(self) -> bool:

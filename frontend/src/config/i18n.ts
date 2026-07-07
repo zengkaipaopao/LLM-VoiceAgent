@@ -5,7 +5,7 @@ import LanguageDetector from 'i18next-browser-languagedetector';
 
 const localeCacheVersion = import.meta.env.DEV
   ? 'dev'
-  : import.meta.env.VITE_I18N_VERSION || 'v1';
+  : import.meta.env.VITE_I18N_VERSION || 'v2';
 
 /**
  * i18n配置 - 模块化翻译文件结构

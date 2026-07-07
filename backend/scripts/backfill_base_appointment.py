@@ -10,6 +10,7 @@ backend_dir = os.path.dirname(current_dir)
 sys.path.append(backend_dir)
 
 from app.core.database import AsyncSessionLocal
+from app.core.config import settings
 from app.models.appointment import Appointment
 from app.services.prompt_service import PromptService
 
@@ -26,18 +27,69 @@ async def main():
             if not template:
                 print("Creating 'base_appointment' prompt template...")
                 template = await prompt_service.create_template(
-                    name="通用预约 (Base Appointment)",
+                    name="多语言通用预约 (Multilingual Base Appointment)",
                     code="base_appointment",
-                    description="Default schema for appointments created before dynamic schemas were introduced.",
+                    description="根据客户当前使用的语言自动切换回复语言，处理新建、变更和取消预约。",
                     category="booking",
-                    system_prompt="You are an AI assistant specialized in booking general appointments.",
-                    extraction_prompt="Extract caller name, company, appointment time, category, amount, address, and summary.",
-                    response_format="json_object",
+                    system_prompt=(
+                        "あなたは企業の電話受付を担当する多言語AIアシスタントです。"
+                        "相手の最初の意味のある発話から使用言語を判断し、同じ言語で応答してください。"
+                        "会話の途中で相手が言語を切り替えた場合は、次の応答から同じ言語へ自然に切り替えてください。"
+                        "言語を判断できない場合は日本語を使用してください。"
+                        "相手が明示的に別の言語を希望した場合は、その希望を優先してください。"
+                        "どの言語でも自然で簡潔かつ丁寧に話し、相手の話を遮らず、"
+                        "一度に一つだけ質問してください。"
+                        "新規予約、予約変更、予約取消、一般的な問い合わせに対応します。"
+                        "予約に必要な氏名、会社名、希望日時、用件、場所、追加要望を確認してください。"
+                        "氏名、日時、電話番号などの重要情報は、相手が使用している言語で復唱して確認してください。"
+                        "変更・取消の場合は、氏名、電話番号、元の予約日など複数の情報で対象を確認し、"
+                        "確認できない場合は推測で処理しないでください。"
+                        "会話開始時は短く挨拶し、まず用件を伺ってください。"
+                    ),
+                    extraction_prompt=(
+                        "以下の会話から予約情報をJSONで抽出してください。"
+                        "不明な項目はnullにし、推測で補完しないでください。"
+                        "operationはcreate、update、cancelのいずれかにしてください。\n"
+                        "{conversation}"
+                    ),
+                    extraction_schema={
+                        "type": "object",
+                        "properties": {
+                            "caller_name": {"type": ["string", "null"]},
+                            "company": {"type": ["string", "null"]},
+                            "appointment_time": {"type": ["string", "null"]},
+                            "appointment_content": {"type": "string"},
+                            "category": {"type": ["string", "null"]},
+                            "amount": {"type": ["string", "null"]},
+                            "address": {"type": ["string", "null"]},
+                            "extra_request": {"type": ["string", "null"]},
+                            "operation": {
+                                "type": "string",
+                                "enum": ["create", "update", "cancel"],
+                            },
+                            "summary": {"type": "string"},
+                            "confidence": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1,
+                            },
+                        },
+                        "required": [
+                            "appointment_content",
+                            "operation",
+                            "summary",
+                            "confidence",
+                        ],
+                    },
+                    response_format="text",
                     is_active=True,
+                    is_twilio_incoming_default=True,
                     llm_provider="gemini",
-                    llm_model="gemini-2.5-flash",
+                    llm_model=settings.default_live_model,
                     temperature=0.7,
                     max_tokens=2048,
+                    voice_provider="gemini",
+                    voice_id=settings.default_live_voice or "Aoede",
                 )
                 print(f"Created template with ID: {template.id}")
             else:

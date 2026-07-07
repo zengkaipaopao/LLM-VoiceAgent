@@ -8,7 +8,14 @@ const APP_API_KEY = (import.meta.env.VITE_APP_API_KEY ?? '').trim();
 export const http = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10_000,
+  withCredentials: true,
 });
+
+function readCookie(name: string): string {
+  const prefix = `${encodeURIComponent(name)}=`;
+  const item = document.cookie.split('; ').find((value) => value.startsWith(prefix));
+  return item ? decodeURIComponent(item.slice(prefix.length)) : '';
+}
 
 const ApiErrorPayloadSchema = z.object({
   code: z.string(),
@@ -40,6 +47,10 @@ export class ApiError extends Error {
 
 export function buildApiRequestHeaders(init?: HeadersInit): Headers {
   const headers = new Headers(init);
+  const csrfToken = readCookie('llm_voice_csrf');
+  if (csrfToken && !headers.has('X-CSRF-Token')) {
+    headers.set('X-CSRF-Token', csrfToken);
+  }
   if (APP_API_KEY && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${APP_API_KEY}`);
   }
@@ -87,16 +98,18 @@ const toApiError = (error: AxiosError): ApiError => {
   return new ApiError('NETWORK_ERROR', error.message || 'Network error', status);
 };
 
-if (APP_API_KEY) {
-  http.interceptors.request.use((config) => {
-    const headers = AxiosHeaders.from(config.headers ?? {});
-    if (!headers.get('Authorization')) {
-      headers.set('Authorization', `Bearer ${APP_API_KEY}`);
-    }
-    config.headers = headers;
-    return config;
-  });
-}
+http.interceptors.request.use((config) => {
+  const headers = AxiosHeaders.from(config.headers ?? {});
+  const csrfToken = readCookie('llm_voice_csrf');
+  if (csrfToken && !headers.get('X-CSRF-Token')) {
+    headers.set('X-CSRF-Token', csrfToken);
+  }
+  if (APP_API_KEY && !headers.get('Authorization')) {
+    headers.set('Authorization', `Bearer ${APP_API_KEY}`);
+  }
+  config.headers = headers;
+  return config;
+});
 
 http.interceptors.response.use(
   (response) => parseEnvelopeOrThrow(response),

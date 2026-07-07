@@ -16,8 +16,15 @@ from app.models.appointment import Appointment
 # access to the values within the .ini file in use.
 config = context.config
 
-# Overwrite sqlalchemy.url with app settings
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# Alembic uses SQLAlchemy's synchronous engine below. The application runtime
+# may use asyncpg, so normalize that URL to the installed synchronous driver
+# for migrations.
+migration_database_url = settings.database_url.replace(
+    "postgresql+asyncpg://",
+    "postgresql+psycopg2://",
+    1,
+)
+config.set_main_option("sqlalchemy.url", migration_database_url)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
