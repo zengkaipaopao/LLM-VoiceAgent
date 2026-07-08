@@ -145,14 +145,14 @@ class Settings(BaseSettings):
 
     @property
     def google_genai_backend_enabled(self) -> bool:
-        return self.google_vertex_enabled or bool((self.google_api_key or "").strip())
+        return bool((self.google_api_key or "").strip()) or self.google_vertex_enabled
 
     @property
     def google_genai_backend_mode(self) -> str:
-        if self.google_vertex_enabled:
-            return "vertexai"
         if (self.google_api_key or "").strip():
             return "developer_api"
+        if self.google_vertex_enabled:
+            return "vertexai"
         return "disabled"
 
     @property

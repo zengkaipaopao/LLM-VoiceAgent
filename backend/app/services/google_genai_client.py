@@ -32,9 +32,9 @@ def prepare_google_genai_environment() -> None:
 
 
 def google_genai_available() -> tuple[bool, str | None]:
-    if use_vertex_for_google_genai():
-        return True, None
     if google_genai_has_api_key():
+        return True, None
+    if use_vertex_for_google_genai():
         return True, None
     if settings.google_genai_use_vertexai:
         return False, "Vertex AI is enabled but GOOGLE_CLOUD_PROJECT / GOOGLE_CLOUD_LOCATION is incomplete."
@@ -43,6 +43,11 @@ def google_genai_available() -> tuple[bool, str | None]:
 
 def google_genai_backend_candidates() -> list[str]:
     candidates: list[str] = []
+    # Prefer the Gemini Developer API when an API key is configured. This keeps
+    # EC2/docker deployments independent from local Google service-account JSON
+    # paths that may remain in GOOGLE_APPLICATION_CREDENTIALS.
+    if google_genai_has_api_key():
+        candidates.append("developer_api")
     if use_vertex_for_google_genai():
         candidates.append("vertexai")
     if (
@@ -97,7 +102,13 @@ def create_google_genai_client(*, api_version: str | None = None, backend: str |
     if not api_key:
         raise RuntimeError("Google GenAI backend is not configured.")
 
-    kwargs: dict[str, object] = {"api_key": api_key}
+    kwargs: dict[str, object] = {
+        # Explicitly disable Vertex for API-key clients. The Google GenAI SDK can
+        # otherwise infer Vertex mode from GOOGLE_GENAI_USE_VERTEXAI in the
+        # process environment and then try loading GOOGLE_APPLICATION_CREDENTIALS.
+        "vertexai": False,
+        "api_key": api_key,
+    }
     if http_options is not None:
         kwargs["http_options"] = http_options
     return genai.Client(**kwargs)

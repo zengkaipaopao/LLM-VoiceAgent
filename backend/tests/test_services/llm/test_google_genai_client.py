@@ -110,6 +110,41 @@ def test_create_google_genai_client_uses_vertex_when_enabled(monkeypatch):
     assert captured["http_options"].api_version == "v1beta1"
 
 
+def test_create_google_genai_client_prefers_api_key_when_both_are_configured(monkeypatch):
+    captured: dict[str, object] = {}
+
+    class DummyClient:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(
+        google_genai_client,
+        "settings",
+        type(
+            "StubSettings",
+            (),
+            {
+                "google_application_credentials": "/tmp/demo-vertex-creds.json",
+                "google_genai_allow_api_key_fallback": True,
+                "google_vertex_enabled": True,
+                "google_genai_use_vertexai": True,
+                "google_api_key": "test-key",
+                "google_cloud_project": "demo-project",
+                "google_cloud_location": "global",
+            },
+        )(),
+    )
+    monkeypatch.setattr(google_genai_client.genai, "Client", DummyClient)
+
+    google_genai_client.create_google_genai_client(api_version="v1beta1")
+
+    assert captured["vertexai"] is False
+    assert captured["api_key"] == "test-key"
+    assert "project" not in captured
+    assert "location" not in captured
+    assert captured["http_options"].api_version == "v1beta1"
+
+
 def test_create_google_genai_client_uses_api_key_fallback(monkeypatch):
     captured: dict[str, object] = {}
 
@@ -138,4 +173,5 @@ def test_create_google_genai_client_uses_api_key_fallback(monkeypatch):
 
     google_genai_client.create_google_genai_client()
 
+    assert captured["vertexai"] is False
     assert captured["api_key"] == "test-key"
